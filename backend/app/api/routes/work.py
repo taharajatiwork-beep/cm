@@ -1,0 +1,561 @@
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import AuthContext, get_current_user, handle_authz
+from app.core.permissions import AuthorizationError, PermissionCode, require_permission
+from app.db.session import get_db
+from app.models import Notification
+from app.models.enums import CaseStatus, CaseType
+from app.schemas import (
+    CaseCreate,
+    CaseOut,
+    ConversationCreate,
+    ConversationOut,
+    DelegateIn,
+    EventOut,
+    MessageCreate,
+    MessageOut,
+    NotificationOut,
+    ProgressOut,
+    SlaPolicyCreate,
+    SlaPolicyOut,
+    TaskCreate,
+    TaskDependencyCreate,
+    TaskOut,
+    WorkItemCreate,
+    WorkItemOut,
+)
+from app.services import CommunicationService, SlaService, TimelineService, WorkService
+
+router = APIRouter(tags=["work"])
+
+
+@router.post("/conversations", response_model=ConversationOut)
+async def create_conversation(
+    body: ConversationCreate,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.CONVERSATION_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await CommunicationService(db).create_conversation(
+        organization_id=ctx.organization_id,
+        channel=body.channel,
+        participant_ids=body.participant_ids,
+        topic=body.topic,
+        branch_id=body.branch_id,
+        team_id=body.team_id,
+        work_item_id=body.work_item_id,
+        case_id=body.case_id,
+        vehicle_id=body.vehicle_id,
+        campaign_id=body.campaign_id,
+        actor_id=ctx.user.id,
+    )
+
+
+@router.post("/conversations/{conversation_id}/messages", response_model=MessageOut)
+async def post_message(
+    conversation_id: UUID,
+    body: MessageCreate,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.CONVERSATION_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await CommunicationService(db).post_message(
+        organization_id=ctx.organization_id,
+        conversation_id=conversation_id,
+        sender_id=ctx.user.id,
+        text=body.text,
+        channel=body.channel,
+        message_type=body.message_type,
+        reply_to_message_id=body.reply_to_message_id,
+    )
+
+
+@router.get("/conversations/{conversation_id}/messages", response_model=list[MessageOut])
+async def list_messages(
+    conversation_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.CONVERSATION_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await CommunicationService(db).list_messages(conversation_id)
+
+
+@router.post("/work-items", response_model=WorkItemOut)
+async def create_work_item(
+    body: WorkItemCreate,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.WORK_ITEM_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await WorkService(db).create_work_item(
+        organization_id=ctx.organization_id,
+        title=body.title,
+        owner_id=ctx.user.id,
+        description=body.description,
+        priority=body.priority,
+        branch_id=body.branch_id,
+        vehicle_id=body.vehicle_id,
+        customer_id=body.customer_id,
+        deadline=body.deadline,
+        participant_ids=body.participant_ids,
+    )
+
+
+@router.get("/work-items/{work_item_id}", response_model=WorkItemOut)
+async def get_work_item(
+    work_item_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models import WorkItem
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.WORK_ITEM_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    wi = await db.get(WorkItem, work_item_id)
+    if not wi or wi.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Work item not found")
+    return wi
+
+
+@router.get("/work-items/{work_item_id}/progress", response_model=ProgressOut)
+async def work_item_progress(
+    work_item_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.WORK_ITEM_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    try:
+        data = await WorkService(db).work_item_progress(work_item_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+    return data
+
+
+@router.get("/work-items/{work_item_id}/timeline", response_model=list[EventOut])
+async def work_item_timeline(
+    work_item_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.EVENT_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await TimelineService(db).for_work_item(work_item_id)
+
+
+@router.get("/work-items")
+async def list_work_items(
+    status: str | None = None,
+    owner_id: UUID | None = None,
+    vehicle_id: UUID | None = None,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.enums import WorkItemStatus
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.WORK_ITEM_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    items = await WorkService(db).list_work_items(
+        ctx.organization_id,
+        status=WorkItemStatus(status) if status else None,
+        owner_id=owner_id,
+        vehicle_id=vehicle_id,
+    )
+    return items
+
+
+@router.post("/work-items/{work_item_id}/participants")
+async def add_work_item_participant(
+    work_item_id: UUID,
+    body: dict,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.enums import ParticipantRole
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.WORK_ITEM_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    try:
+        row = await WorkService(db).add_work_item_participant(
+            work_item_id=work_item_id,
+            user_id=UUID(body["user_id"]),
+            role=ParticipantRole(body.get("role", ParticipantRole.MEMBER.value)),
+            actor_id=ctx.user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+    return {"id": row.id, "user_id": row.user_id, "role": row.role.value}
+
+
+@router.get("/conversations", response_model=list[ConversationOut])
+async def list_conversations(
+    work_item_id: UUID | None = None,
+    case_id: UUID | None = None,
+    campaign_id: UUID | None = None,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.CONVERSATION_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await CommunicationService(db).list_conversations(
+        ctx.organization_id,
+        work_item_id=work_item_id,
+        case_id=case_id,
+        campaign_id=campaign_id,
+    )
+
+
+@router.get("/tasks")
+async def list_tasks(
+    work_item_id: UUID | None = None,
+    assignee_id: UUID | None = None,
+    status: str | None = None,
+    overdue_only: bool = False,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.enums import TaskStatus
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.TASK_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    tasks = await WorkService(db).list_tasks(
+        ctx.organization_id,
+        work_item_id=work_item_id,
+        assignee_id=assignee_id,
+        status=TaskStatus(status) if status else None,
+        overdue_only=overdue_only,
+    )
+    return tasks
+
+
+@router.post("/tasks/{task_id}/participants")
+async def add_task_participant(
+    task_id: UUID,
+    body: dict,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.enums import TaskRole
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.TASK_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    try:
+        row = await WorkService(db).add_task_participant(
+            task_id=task_id,
+            user_id=UUID(body["user_id"]),
+            role=TaskRole(body.get("role", TaskRole.FOLLOWER.value)),
+            actor_id=ctx.user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+    return {"id": row.id, "user_id": row.user_id, "role": row.role.value}
+
+
+@router.post("/tasks/{task_id}/assign", response_model=TaskOut)
+async def assign_task(
+    task_id: UUID,
+    body: DelegateIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alias of delegate — assign to user and/or team/department/branch target."""
+    try:
+        return await WorkService(db).delegate_task(
+            task_id=task_id,
+            actor_id=ctx.user.id,
+            actor_permissions=ctx.permissions,
+            to_user_id=body.to_user_id,
+            to_target_type=body.to_target_type,
+            to_target_id=body.to_target_id,
+        )
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@router.get("/tasks/{task_id}/timeline", response_model=list[EventOut])
+async def task_timeline(
+    task_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.EVENT_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await TimelineService(db).for_entity("task", task_id)
+
+
+@router.get("/cases/{case_id}/timeline", response_model=list[EventOut])
+async def case_timeline(
+    case_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.EVENT_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await TimelineService(db).for_entity("case", case_id)
+
+
+@router.get("/users/{user_id}/workload")
+async def user_workload(
+    user_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.TASK_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await WorkService(db).user_workload(user_id)
+
+
+@router.get("/cases", response_model=list[CaseOut])
+async def list_cases(
+    type: CaseType | None = None,
+    status: CaseStatus | None = None,
+    owner_id: UUID | None = None,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.CASE_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await WorkService(db).list_cases(
+        ctx.organization_id,
+        case_type=type,
+        status=status,
+        owner_id=owner_id,
+    )
+
+
+@router.post("/cases", response_model=CaseOut)
+async def create_case(
+    body: CaseCreate,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.CASE_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await WorkService(db).create_case(
+        organization_id=ctx.organization_id,
+        subject=body.subject,
+        case_type=body.type,
+        created_by=ctx.user.id,
+        work_item_id=body.work_item_id,
+        owner_id=body.owner_id,
+        priority=body.priority,
+        branch_id=body.branch_id,
+        vehicle_id=body.vehicle_id,
+        customer_id=body.customer_id,
+        deadline=body.deadline,
+        sla_policy_id=body.sla_policy_id,
+    )
+
+
+@router.post("/tasks", response_model=TaskOut)
+async def create_task(
+    body: TaskCreate,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await WorkService(db).create_task(
+            organization_id=ctx.organization_id,
+            title=body.title,
+            owner_id=ctx.user.id,
+            work_item_id=body.work_item_id,
+            case_id=body.case_id,
+            description=body.description,
+            priority=body.priority,
+            assignee_ids=body.assignee_ids,
+            assignment_target_type=body.assignment_target_type,
+            assignment_target_id=body.assignment_target_id,
+            deadline=body.deadline,
+            sla_policy_id=body.sla_policy_id,
+            actor_permissions=ctx.permissions,
+        )
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+
+
+@router.post("/tasks/dependencies")
+async def add_dependency(
+    body: TaskDependencyCreate,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.TASK_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    dep = await WorkService(db).add_dependency(
+        body.dependent_task_id, body.prerequisite_task_id, actor_id=ctx.user.id
+    )
+    return {"id": dep.id}
+
+
+@router.post("/tasks/{task_id}/delegate", response_model=TaskOut)
+async def delegate_task(
+    task_id: UUID,
+    body: DelegateIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await WorkService(db).delegate_task(
+            task_id=task_id,
+            actor_id=ctx.user.id,
+            actor_permissions=ctx.permissions,
+            to_user_id=body.to_user_id,
+            to_target_type=body.to_target_type,
+            to_target_id=body.to_target_id,
+        )
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@router.post("/tasks/{task_id}/complete", response_model=TaskOut)
+async def complete_task(
+    task_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.TASK_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    try:
+        return await WorkService(db).complete_task(task_id, ctx.user.id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.post("/sla/policies", response_model=SlaPolicyOut)
+async def create_sla_policy(
+    body: SlaPolicyCreate,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.SLA_MANAGE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await SlaService(db).create_policy(
+        organization_id=ctx.organization_id,
+        name=body.name,
+        priority=body.priority,
+        response_minutes=body.response_minutes,
+        warning_minutes=body.warning_minutes,
+        escalate_on_breach=body.escalate_on_breach,
+    )
+
+
+@router.post("/sla/tasks/{task_id}/evaluate", response_model=TaskOut)
+async def evaluate_task_sla(
+    task_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.SLA_MANAGE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await SlaService(db).evaluate_task(task_id)
+
+
+@router.post("/sla/cases/{case_id}/evaluate", response_model=CaseOut)
+async def evaluate_case_sla(
+    case_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.SLA_MANAGE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await SlaService(db).evaluate_case(case_id)
+
+
+@router.get("/notifications", response_model=list[NotificationOut])
+async def list_notifications(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.NOTIFICATION_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    result = await db.execute(
+        select(Notification)
+        .where(Notification.user_id == ctx.user.id)
+        .order_by(Notification.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+@router.get("/timeline/{entity_type}/{entity_id}", response_model=list[EventOut])
+async def entity_timeline(
+    entity_type: str,
+    entity_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.EVENT_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await TimelineService(db).for_entity(entity_type, entity_id)
+
+
+@router.get("/timeline/users/{user_id}", response_model=list[EventOut])
+async def user_timeline(
+    user_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.EVENT_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return await TimelineService(db).for_user_activity(user_id)

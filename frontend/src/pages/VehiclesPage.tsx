@@ -1,0 +1,779 @@
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { api } from "../api";
+import { useAuth } from "../auth";
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorMessage,
+  Field,
+  Icon,
+  Input,
+  List,
+  ListItem,
+  LoadingState,
+  Muted,
+  PageHeader,
+  SectionHeader,
+  Sheet,
+  Table,
+  TextArea,
+} from "../components/ui";
+import { Bi, useBi } from "../i18n";
+import { StatusLabel } from "../ux";
+
+type VehicleForm = {
+  vin: string;
+  brand: string;
+  model: string;
+  year: string;
+  stock_number: string;
+  color: string;
+  trim: string;
+  mileage: string;
+  sale_price: string;
+  purchase_price: string;
+  body_type: string;
+  transmission: string;
+  fuel_type: string;
+  engine: string;
+  plate_number: string;
+  doors: string;
+  seats: string;
+  options: string;
+  exterior_condition: string;
+  interior_condition: string;
+  description: string;
+  notes: string;
+};
+
+const emptyForm: VehicleForm = {
+  vin: "",
+  brand: "",
+  model: "",
+  year: "",
+  stock_number: "",
+  color: "",
+  trim: "",
+  mileage: "",
+  sale_price: "",
+  purchase_price: "",
+  body_type: "",
+  transmission: "",
+  fuel_type: "",
+  engine: "",
+  plate_number: "",
+  doors: "",
+  seats: "",
+  options: "",
+  exterior_condition: "",
+  interior_condition: "",
+  description: "",
+  notes: "",
+};
+
+function numOrNull(v: string): number | null {
+  const t = v.trim();
+  if (!t) return null;
+  const n = Number(t.replace(/,/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+function strOrNull(v: string): string | null {
+  const t = v.trim();
+  return t || null;
+}
+
+export function VehiclesPage() {
+  const { has } = useAuth();
+  const bi = useBi();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
+  const [q, setQ] = useState("");
+  const [error, setError] = useState("");
+  const [importMsg, setImportMsg] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [form, setForm] = useState<VehicleForm>(emptyForm);
+  const navigate = useNavigate();
+
+  async function load(query = q) {
+    setLoading(true);
+    setError("");
+    try {
+      setRows(await api.vehicles.list(query));
+    } catch (e) {
+      setError(String((e as Error).message));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (has("inventory.read")) void load("");
+  }, [has]);
+
+  function setField<K extends keyof VehicleForm>(key: K, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function create(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    try {
+      const v = await api.vehicles.create({
+        vin: form.vin,
+        brand: form.brand,
+        model: form.model,
+        year: Number(form.year),
+        stock_number: strOrNull(form.stock_number),
+        color: strOrNull(form.color),
+        trim: strOrNull(form.trim),
+        mileage: numOrNull(form.mileage),
+        sale_price: numOrNull(form.sale_price),
+        purchase_price: numOrNull(form.purchase_price),
+        body_type: strOrNull(form.body_type),
+        transmission: strOrNull(form.transmission),
+        fuel_type: strOrNull(form.fuel_type),
+        engine: strOrNull(form.engine),
+        plate_number: strOrNull(form.plate_number),
+        doors: numOrNull(form.doors),
+        seats: numOrNull(form.seats),
+        options: strOrNull(form.options),
+        exterior_condition: strOrNull(form.exterior_condition),
+        interior_condition: strOrNull(form.interior_condition),
+        description: strOrNull(form.description),
+        notes: strOrNull(form.notes),
+      });
+      navigate(`/vehicles/${v.id}`);
+    } catch (err) {
+      setError(String((err as Error).message));
+    }
+  }
+
+  async function onImportFile(file: File | null) {
+    if (!file) return;
+    setImporting(true);
+    setImportMsg("");
+    setError("");
+    try {
+      const result = await api.vehicles.importFile(file);
+      setImportMsg(
+        bi(
+          `Imported ${result.created} vehicle(s), skipped ${result.skipped}.`,
+          `${result.created} خودرو ثبت شد، ${result.skipped} رد شد.`,
+        ) +
+          (result.errors.length
+            ? ` ${bi("First issues:", "اولین خطاها:")} ${result.errors.slice(0, 3).join(" · ")}`
+            : ""),
+      );
+      await load();
+    } catch (e) {
+      setError(String((e as Error).message));
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  const statusCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const r of rows) c[String(r.status)] = (c[String(r.status)] || 0) + 1;
+    return c;
+  }, [rows]);
+
+  const visible =
+    statusFilter === "ALL" ? rows : rows.filter((r) => String(r.status) === statusFilter);
+
+  const statusChips: Array<[string, string, string]> = [
+    ["ALL", "All", "همه"],
+    ["IN_STOCK", "In stock", "موجود"],
+    ["RESERVED", "Reserved", "رزرو"],
+    ["SOLD", "Sold", "فروخته‌شده"],
+  ];
+
+  function text(key: keyof VehicleForm, en: string, fa: string, opts: { required?: boolean; span?: string; placeholder?: string } = {}) {
+    return (
+      <Field
+        label={
+          <>
+            <Bi en={en} fa={fa} />
+            {opts.required ? <span className="req"> *</span> : null}
+          </>
+        }
+        className={opts.span}
+      >
+        <Input
+          value={form[key]}
+          onChange={(e) => setField(key, e.target.value)}
+          required={opts.required}
+          placeholder={opts.placeholder}
+        />
+      </Field>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        title={<Bi en="Vehicles" fa="خودروها" />}
+        description={
+          <Bi
+            en="All cars you have. Click a car to see its details, or add a new one."
+            fa="همه خودروهای شما. روی هر خودرو بزنید تا جزئیاتش را ببینید، یا خودروی جدید اضافه کنید."
+          />
+        }
+        actions={
+          has("inventory.write") ? (
+            <>
+              <Button variant="secondary" onClick={() => setShowImport(true)}>
+                <Icon name="upload" size={14} />
+                <Bi en="Add from Excel" fa="افزودن از اکسل" />
+              </Button>
+              <Button onClick={() => setShowAdd(true)}>
+                <Icon name="plus" size={14} />
+                <Bi en="Add vehicle" fa="افزودن خودرو" />
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
+
+      <ErrorMessage error={error} />
+      {importMsg && !showImport ? (
+        <div className="notice">
+          <Icon name="circleCheck" />
+          {importMsg}
+        </div>
+      ) : null}
+
+      <Card padded={false}>
+        <div className="card-bar">
+          <div className="chips">
+            {statusChips.map(([key, en, fa]) => (
+              <button
+                key={key}
+                type="button"
+                className={`chip${statusFilter === key ? " active" : ""}`}
+                onClick={() => setStatusFilter(key)}
+              >
+                {bi(en, fa)}
+                <span className="chip-count">
+                  {key === "ALL" ? rows.length : statusCounts[key] || 0}
+                </span>
+              </button>
+            ))}
+          </div>
+          <form
+            className="search-field"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void load();
+            }}
+          >
+            <Icon name="search" size={14} />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={bi("Search brand, model, plate…", "جستجوی برند، مدل، پلاک…")}
+            />
+          </form>
+        </div>
+
+        {loading ? (
+          <LoadingState />
+        ) : (
+          <Table
+            rows={visible}
+            rowKey={(v) => String(v.id)}
+            onRowClick={(v) => navigate(`/vehicles/${String(v.id)}`)}
+            empty={
+              <EmptyState
+                titleEn="No vehicles match"
+                titleFa="خودرویی پیدا نشد"
+                bodyEn="Change the filter, or add / import vehicles."
+                bodyFa="فیلتر را تغییر دهید یا خودرو اضافه / وارد کنید."
+                action={
+                  has("inventory.write") ? (
+                    <Button variant="secondary" onClick={() => setShowAdd(true)}>
+                      <Icon name="plus" size={14} />
+                      <Bi en="Add vehicle" fa="افزودن خودرو" />
+                    </Button>
+                  ) : undefined
+                }
+              />
+            }
+            columns={[
+              {
+                key: "vehicle",
+                header: <Bi en="Vehicle" fa="خودرو" />,
+                render: (v) => (
+                  <div className="vehicle-cell">
+                    <span className="vehicle-thumb">
+                      <Icon name="car" />
+                    </span>
+                    <div>
+                      <strong>
+                        {String(v.brand)} {String(v.model)}
+                      </strong>
+                      <div className="cell-sub">
+                        {String(v.year)}
+                        {v.trim ? ` · ${String(v.trim)}` : ""}
+                        {v.stock_number ? ` · #${String(v.stock_number)}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: "specs",
+                header: <Bi en="Specs" fa="مشخصات" />,
+                render: (v) => (
+                  <span className="cell-sub">
+                    {[
+                      v.color,
+                      v.mileage != null ? `${Number(v.mileage).toLocaleString()} km` : null,
+                      v.transmission,
+                      v.fuel_type,
+                    ]
+                      .filter(Boolean)
+                      .map(String)
+                      .join(" · ") || "—"}
+                  </span>
+                ),
+              },
+              {
+                key: "price",
+                header: <Bi en="Price" fa="قیمت" />,
+                render: (v) =>
+                  v.sale_price != null ? (
+                    <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {Number(v.sale_price).toLocaleString()}
+                    </span>
+                  ) : (
+                    <Muted>—</Muted>
+                  ),
+              },
+              {
+                key: "status",
+                header: <Bi en="Status" fa="وضعیت" />,
+                render: (v) => <StatusLabel status={String(v.status)} />,
+              },
+            ]}
+          />
+        )}
+      </Card>
+
+      <Sheet
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        title={<Bi en="Add vehicle" fa="افزودن خودرو" />}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowAdd(false)}>
+              <Bi en="Cancel" fa="انصراف" />
+            </Button>
+            <Button type="submit" form="vehicle-form">
+              <Bi en="Save vehicle" fa="ثبت خودرو" />
+            </Button>
+          </>
+        }
+      >
+        <form id="vehicle-form" className="form-grid" onSubmit={create}>
+          <p className="help-text span-all" style={{ margin: 0 }}>
+            <Bi
+              en="Only the starred fields are required. You can add the rest later."
+              fa="فقط فیلدهای ستاره‌دار لازم است. بقیه را بعداً هم می‌توانید اضافه کنید."
+            />
+          </p>
+          {text("brand", "Brand", "برند", { required: true, placeholder: bi("e.g. Hyundai", "مثلاً هیوندای") })}
+          {text("model", "Model", "مدل", { required: true, placeholder: bi("e.g. Elantra", "مثلاً النترا") })}
+          {text("year", "Year", "سال ساخت", { required: true, placeholder: "2021" })}
+          {text("vin", "Chassis number (VIN)", "شماره شاسی", { required: true, span: "span-2" })}
+          {text("color", "Color", "رنگ")}
+          {text("mileage", "Mileage (km)", "کارکرد (کیلومتر)")}
+          {text("sale_price", "Sale price", "قیمت فروش")}
+          <Field label={<Bi en="Description" fa="توضیحات" />} className="span-all">
+            <TextArea
+              rows={3}
+              value={form.description}
+              onChange={(e) => setField("description", e.target.value)}
+              placeholder={bi("Anything a buyer should know", "هر چیزی که خریدار باید بداند")}
+            />
+          </Field>
+
+          <details className="advanced span-all">
+            <summary>
+              <Bi en="More details" fa="جزئیات بیشتر" />
+              <span className="muted">
+                <Bi en="(optional — price, specs, condition)" fa="(اختیاری — قیمت خرید، مشخصات فنی، وضعیت)" />
+              </span>
+            </summary>
+            <div className="advanced-body">
+              <div className="form-grid">
+                {text("purchase_price", "Purchase price", "قیمت خرید")}
+                {text("plate_number", "Plate", "پلاک")}
+                {text("stock_number", "Stock #", "شماره انبار")}
+                {text("trim", "Trim", "تیپ")}
+                {text("body_type", "Body", "بدنه")}
+                {text("transmission", "Transmission", "گیربکس")}
+                {text("fuel_type", "Fuel", "سوخت")}
+                {text("engine", "Engine", "موتور")}
+                {text("doors", "Doors", "تعداد در")}
+                {text("seats", "Seats", "تعداد صندلی")}
+                {text("options", "Options", "آپشن‌ها", { span: "span-all" })}
+                {text("exterior_condition", "Body condition", "وضعیت بدنه")}
+                {text("interior_condition", "Interior condition", "وضعیت داخل")}
+                <Field label={<Bi en="Private note (only staff see it)" fa="یادداشت داخلی (فقط همکاران می‌بینند)" />} className="span-all">
+                  <TextArea rows={2} value={form.notes} onChange={(e) => setField("notes", e.target.value)} />
+                </Field>
+              </div>
+            </div>
+          </details>
+        </form>
+      </Sheet>
+
+      <Sheet
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        title={<Bi en="Add many cars from Excel" fa="افزودن چند خودرو از اکسل" />}
+      >
+        <div className="stack">
+          <button
+            type="button"
+            className="drop-zone"
+            disabled={importing}
+            onClick={() => fileRef.current?.click()}
+          >
+            <Icon name="upload" size={22} />
+            <strong>
+              {importing ? bi("Importing…", "در حال ورود…") : bi("Choose a file", "انتخاب فایل")}
+            </strong>
+            <span>.xlsx · .csv</span>
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xlsm,.csv"
+            hidden
+            onChange={(e) => void onImportFile(e.target.files?.[0] ?? null)}
+          />
+          {importMsg ? (
+            <div className="notice">
+              <Icon name="circleCheck" />
+              {importMsg}
+            </div>
+          ) : null}
+          <Muted>
+            <Bi
+              en="1. Download the template below.  2. Fill one car per row.  3. Choose the file above. Cars already registered are skipped automatically."
+              fa="۱. قالب زیر را دانلود کنید.  ۲. هر خودرو را در یک ردیف پر کنید.  ۳. فایل را از بالا انتخاب کنید. خودروهای تکراری خودکار رد می‌شوند."
+            />
+          </Muted>
+          <div className="row">
+            <Button variant="secondary" onClick={() => void api.vehicles.downloadImportTemplate("xlsx")}>
+              <Icon name="download" size={14} />
+              <Bi en="Excel template" fa="قالب اکسل" />
+            </Button>
+            <Button variant="secondary" onClick={() => void api.vehicles.downloadImportTemplate("csv")}>
+              <Icon name="download" size={14} />
+              <Bi en="CSV template" fa="قالب CSV" />
+            </Button>
+          </div>
+        </div>
+      </Sheet>
+    </>
+  );
+}
+
+function Spec({ label, value }: { label: ReactNode; value: unknown }) {
+  if (value == null || value === "") return null;
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{String(value)}</dd>
+    </div>
+  );
+}
+
+export function VehicleDetailPage() {
+  const { id = "" } = useParams();
+  const { has } = useAuth();
+  const bi = useBi();
+  const navigate = useNavigate();
+  const [ctx, setCtx] = useState<Awaited<ReturnType<typeof api.vehicles.context>> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    void api.vehicles
+      .context(id)
+      .then(setCtx)
+      .catch((e) => setError(String((e as Error).message)));
+  }, [id]);
+
+  async function startSharedWork() {
+    if (!ctx) return;
+    setBusy(true);
+    try {
+      const v = ctx.vehicle;
+      const wi = await api.workItems.create({
+        title: bi(
+          `Sell ${v.brand} ${v.model} #${v.stock_number || ""}`.trim(),
+          `فروش ${v.brand} ${v.model} #${v.stock_number || ""}`.trim(),
+        ),
+        vehicle_id: id,
+        priority: "HIGH",
+      });
+      navigate(`/work-items/${wi.id}`);
+    } catch (e) {
+      setError(String((e as Error).message));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (error && !ctx) return <ErrorMessage error={error} />;
+  if (!ctx) return <LoadingState />;
+
+  const v = ctx.vehicle;
+  const currency = String(v.currency || "IRR");
+  const money = (n: unknown) => (n != null ? `${Number(n).toLocaleString()} ${currency}` : null);
+  const margin =
+    v.sale_price != null && v.purchase_price != null
+      ? Number(v.sale_price) - Number(v.purchase_price)
+      : null;
+
+  return (
+    <>
+      <PageHeader
+        title={
+          <span className="vehicle-hero">
+            <span className="vehicle-thumb">
+              <Icon name="car" size={22} />
+            </span>
+            <span>
+              {String(v.brand)} {String(v.model)}{" "}
+              <Muted>{String(v.year)}</Muted>
+            </span>
+          </span>
+        }
+        description={
+          <span className="meta-line">
+            <StatusLabel status={String(v.status)} />
+            {v.color ? (
+              <>
+                <span className="dot" />
+                <span>{String(v.color)}</span>
+              </>
+            ) : null}
+            {v.trim ? (
+              <>
+                <span className="dot" />
+                <span>{String(v.trim)}</span>
+              </>
+            ) : null}
+          </span>
+        }
+        actions={
+          <>
+            <Button variant="secondary" to="/vehicles">
+              <Bi en="Back" fa="بازگشت" />
+            </Button>
+            <Button variant="secondary" to={`/agent?q=${encodeURIComponent(`${v.brand} ${v.model} ${v.year}`)}`}>
+              <Icon name="sparkles" size={14} />
+              <Bi en="Ask the assistant" fa="از دستیار بپرس" />
+            </Button>
+            {has("work_item.write") && (
+              <Button
+                disabled={busy}
+                onClick={() => void startSharedWork()}
+                title={bi("Create a team project to sell or prepare this car", "یک پروژه تیمی برای فروش یا آماده‌سازی این خودرو بسازید")}
+              >
+                <Icon name="plus" size={14} />
+                <Bi en="Start selling this car" fa="شروع فروش این خودرو" />
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <ErrorMessage error={error} />
+
+      <div className="split split--wide-side">
+        <div className="stack" style={{ gap: "var(--space-4)" }}>
+          <Card>
+            <SectionHeader icon="layers" title={<Bi en="Specifications" fa="مشخصات" />} />
+            <dl className="spec-grid">
+              <Spec label={bi("Mileage", "کیلومتر")} value={v.mileage != null ? `${Number(v.mileage).toLocaleString()} km` : null} />
+              <Spec label={bi("Body", "بدنه")} value={v.body_type} />
+              <Spec label={bi("Transmission", "گیربکس")} value={v.transmission} />
+              <Spec label={bi("Fuel", "سوخت")} value={v.fuel_type} />
+              <Spec label={bi("Engine", "موتور")} value={v.engine} />
+              <Spec label={bi("Plate", "پلاک")} value={v.plate_number} />
+              <Spec label={bi("Doors", "درب")} value={v.doors} />
+              <Spec label={bi("Seats", "صندلی")} value={v.seats} />
+              <Spec label={bi("Exterior", "بیرونی")} value={v.exterior_condition} />
+              <Spec label={bi("Interior", "داخلی")} value={v.interior_condition} />
+              <Spec label={bi("Chassis (VIN)", "شماره شاسی")} value={v.vin} />
+              <Spec label={bi("Stock #", "شماره انبار")} value={v.stock_number} />
+            </dl>
+            {v.options ? (
+              <>
+                <SectionHeader title={<Bi en="Options" fa="آپشن‌ها" />} />
+                <div className="chips">
+                  {String(v.options)
+                    .split(/[،,;|]/)
+                    .map((o) => o.trim())
+                    .filter(Boolean)
+                    .map((o) => (
+                      <span key={o} className="badge">
+                        {o}
+                      </span>
+                    ))}
+                </div>
+              </>
+            ) : null}
+          </Card>
+
+          {Boolean(v.description || v.notes) && (
+            <div className="grid grid-2">
+              {v.description ? (
+                <Card>
+                  <SectionHeader title={<Bi en="Description" fa="توضیحات" />} />
+                  <p className="prose-block">{String(v.description)}</p>
+                </Card>
+              ) : null}
+              {v.notes ? (
+                <Card>
+                  <SectionHeader title={<Bi en="Internal notes" fa="یادداشت داخلی" />} />
+                  <p className="prose-block">{String(v.notes)}</p>
+                </Card>
+              ) : null}
+            </div>
+          )}
+
+          <Card>
+            <SectionHeader icon="clock" title={<Bi en="Status history" fa="تاریخچه وضعیت" />} />
+            {ctx.history.length === 0 ? (
+              <Muted>
+                <Bi en="No status changes yet." fa="هنوز تغییری ثبت نشده." />
+              </Muted>
+            ) : (
+              <List variant="timeline">
+                {ctx.history.map((h) => (
+                  <ListItem key={String(h.id)}>
+                    <span className="meta-line">
+                      <StatusLabel status={String(h.to_status)} />
+                      {h.from_status ? (
+                        <>
+                          <Bi en="from" fa="از" />
+                          <StatusLabel status={String(h.from_status)} />
+                        </>
+                      ) : null}
+                    </span>
+                    {h.note ? (
+                      <div>
+                        <Muted>{String(h.note)}</Muted>
+                      </div>
+                    ) : null}
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </Card>
+        </div>
+
+        <aside className="side-stack">
+          <Card>
+            <SectionHeader title={<Bi en="Price" fa="قیمت" />} />
+            <div className="price-tag">{money(v.sale_price) || "—"}</div>
+            <div className="mini-stats" style={{ gridTemplateColumns: "1fr 1fr", marginTop: "var(--space-3)", marginBottom: 0 }}>
+              <div className="mini-stat">
+                <span>
+                  <Bi en="Purchase" fa="خرید" />
+                </span>
+                <strong style={{ fontSize: "0.9rem" }}>
+                  {v.purchase_price != null ? Number(v.purchase_price).toLocaleString() : "—"}
+                </strong>
+              </div>
+              <div className="mini-stat">
+                <span>
+                  <Bi en="Margin" fa="حاشیه سود" />
+                </span>
+                <strong style={{ fontSize: "0.9rem" }}>
+                  {margin != null ? margin.toLocaleString() : "—"}
+                </strong>
+              </div>
+            </div>
+          </Card>
+
+          <Card padded={false}>
+            <div style={{ padding: "var(--space-3) var(--space-4) 0" }}>
+              <SectionHeader
+                icon="layers"
+                title={<Bi en="Work on this car" fa="کارهای این خودرو" />}
+                count={ctx.work_items.length}
+              />
+            </div>
+            {ctx.work_items.length === 0 ? (
+              <div style={{ padding: "0 var(--space-4) var(--space-4)" }}>
+                <Muted>
+                  <Bi
+                    en="No one is working on this car yet. Press “Start selling this car” to involve your team."
+                    fa="هنوز کسی روی این خودرو کار نمی‌کند. برای درگیر کردن تیم، «شروع فروش این خودرو» را بزنید."
+                  />
+                </Muted>
+              </div>
+            ) : (
+              <ul className="rows">
+                {ctx.work_items.map((w) => (
+                  <li key={String(w.id)} className="row-item">
+                    <div className="row-main">
+                      <Link to={`/work-items/${w.id}`} className="row-title">
+                        {String(w.title)}
+                      </Link>
+                      {w.status ? (
+                        <span className="row-meta">
+                          <StatusLabel status={String(w.status)} />
+                        </span>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card>
+            <SectionHeader
+              icon="flag"
+              title={<Bi en="Follow-ups" fa="پیگیری‌ها" />}
+              count={ctx.cases.length}
+            />
+            {ctx.cases.length === 0 ? (
+              <Muted>
+                <Bi en="No follow-ups yet." fa="هنوز پیگیری‌ای نیست." />
+              </Muted>
+            ) : (
+              <List>
+                {ctx.cases.map((c) => (
+                  <ListItem key={String(c.id)}>
+                    <span>
+                      {String(c.subject)}
+                    </span>
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </Card>
+        </aside>
+      </div>
+    </>
+  );
+}
+
