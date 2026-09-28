@@ -5,6 +5,11 @@ from collections.abc import AsyncGenerator
 # Force deterministic planners in tests (ignore developer .env LLM settings)
 os.environ["LLM_PROVIDER"] = "rules"
 os.environ["DIVAR_MODE"] = "fake"
+os.environ["REQUIRE_HUMAN_APPROVAL_FOR_SENSITIVE_AI"] = "false"
+os.environ["APP_ENV"] = "development"
+os.environ["TELEGRAM_MODE"] = "off"
+os.environ["TELEGRAM_BOT_TOKEN"] = ""
+os.environ["BALE_MODE"] = "off"
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient

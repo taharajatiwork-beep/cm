@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api } from "./api";
@@ -13,6 +14,7 @@ type NavItem = {
   hintEn: string;
   hintFa: string;
   end?: boolean;
+  perm?: string;
 };
 
 const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
@@ -34,6 +36,10 @@ const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
     items: [
       { to: "/people", icon: "users", labelEn: "Colleagues", labelFa: "همکاران", hintEn: "Who does what", hintFa: "چه کسی چه کاری می‌کند" },
       { to: "/knowledge", icon: "book", labelEn: "Rules & guides", labelFa: "قوانین و راهنماها", hintEn: "Company rules and how-tos", hintFa: "قوانین شرکت و روش انجام کارها" },
+      { to: "/cases", icon: "briefcase", labelEn: "Cases", labelFa: "پرونده‌ها", hintEn: "Follow-ups", hintFa: "پیگیری‌ها", perm: "case.read" },
+      { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "KPIs", hintFa: "شاخص‌ها", perm: "event.read" },
+      { to: "/admin", icon: "settings", labelEn: "Admin", labelFa: "مدیریت", hintEn: "Users and roles", hintFa: "کاربران و نقش‌ها", perm: "org.admin" },
+      { to: "/audit", icon: "filter", labelEn: "Audit", labelFa: "ممیزی", hintEn: "Who did what", hintFa: "چه کسی چه کرد", perm: "org.admin" },
     ],
   },
 ];
@@ -47,21 +53,20 @@ const roleFa: Record<string, string> = {
 };
 
 export function Shell() {
-  const { user, logout, roleHint } = useAuth();
+  const { user, logout, roleHint, has } = useAuth();
   const bi = useBi();
   const { locale } = useLocale();
   const navigate = useNavigate();
-  const [q, setQ] = useState("");
-  const [noteCount, setNoteCount] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [q, setQ] = useState("");
+  const [drawer, setDrawer] = useState(false);
+  const notes = useQuery({
+    queryKey: ["notifications", "badge"],
+    queryFn: () => api.notifications(),
+    refetchInterval: 30_000,
+  });
+  const noteCount = (notes.data ?? []).filter((row) => !row.is_read).length;
   const roleLabel = locale === "fa" ? roleFa[roleHint] || roleHint : roleHint;
-
-  useEffect(() => {
-    void api
-      .notifications()
-      .then((n) => setNoteCount(n.length))
-      .catch(() => setNoteCount(0));
-  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -81,7 +86,10 @@ export function Shell() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${drawer ? " nav-open" : ""}`}>
+      <button type="button" className="nav-toggle" onClick={() => setDrawer((v) => !v)} aria-label={bi("Menu", "منو")}>
+        <Bi en="Menu" fa="منو" />
+      </button>
       <aside className="nav">
         <Link to="/" className="brand">
           <span className="brand-mark">CM</span>
@@ -103,8 +111,8 @@ export function Shell() {
                   <Bi en={g.en} fa={g.fa} />
                 </div>
               ) : null}
-              {g.items.map((l) => (
-                <NavLink key={l.to} to={l.to} end={l.end} title={bi(l.hintEn, l.hintFa)}>
+              {g.items.filter((l) => !l.perm || has(l.perm)).map((l) => (
+                <NavLink key={l.to} to={l.to} end={l.end} title={bi(l.hintEn, l.hintFa)} onClick={() => setDrawer(false)}>
                   <Icon name={l.icon} />
                   <span>
                     <Bi en={l.labelEn} fa={l.labelFa} />

@@ -6,10 +6,11 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.permissions import AuthorizationError
+from app.core.permissions import AuthorizationError, PermissionCode
+from app.core.scope import DataScopeContext
 from app.core.security import decode_access_token
 from app.db.session import get_db
-from app.models import Organization, User
+from app.models import DataScope, Organization, User
 from app.services import get_user_permissions
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
@@ -20,6 +21,7 @@ class AuthContext:
     user: User
     permissions: set[str]
     organization_id: UUID
+    scope: DataScopeContext
 
 
 async def get_current_user(
@@ -37,7 +39,33 @@ async def get_current_user(
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User inactive")
     perms = await get_user_permissions(db, user)
-    return AuthContext(user=user, permissions=perms, organization_id=user.organization_id)
+    scope = await load_data_scope(db, user, perms)
+    return AuthContext(
+        user=user, permissions=perms, organization_id=user.organization_id, scope=scope
+    )
+
+
+_SCOPE_RANK = {"organization": 0, "branch": 1, "department": 2, "team": 3, "self": 4}
+
+
+async def load_data_scope(db: AsyncSession, user: User, permissions: set[str]) -> DataScopeContext:
+    level = "organization"
+    if PermissionCode.ORG_ADMIN not in permissions and user.role_id:
+        rows = list(
+            (
+                await db.execute(select(DataScope).where(DataScope.role_id == user.role_id))
+            ).scalars()
+        )
+        if rows:
+            level = min(rows, key=lambda r: _SCOPE_RANK.get(r.level, 9)).level
+    return DataScopeContext(
+        level=level,
+        user_id=user.id,
+        branch_id=user.branch_id,
+        department_id=user.department_id,
+        team_id=user.team_id,
+        is_org_wide=level == "organization" or PermissionCode.ORG_ADMIN in permissions,
+    )
 
 
 def handle_authz(exc: AuthorizationError) -> HTTPException:

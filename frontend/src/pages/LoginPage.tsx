@@ -12,6 +12,7 @@ export function LoginPage() {
   const [slug, setSlug] = useState("autoco");
   const [email, setEmail] = useState("ali@autoco.example");
   const [password, setPassword] = useState("password");
+  const [totp, setTotp] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -23,7 +24,7 @@ export function LoginPage() {
     setBusy(true);
     setError("");
     try {
-      await login(slug, email, password);
+      await login(slug, email, password, totp || undefined);
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -57,27 +58,34 @@ export function LoginPage() {
           />
         </Muted>
         <div className="field" style={{ marginTop: "1rem" }}>
-          <label>
+          <label htmlFor="login-slug">
             <Bi en="Company code" fa="کد شرکت" />
           </label>
-          <input value={slug} onChange={(e) => setSlug(e.target.value)} required />
+          <input id="login-slug" value={slug} onChange={(e) => setSlug(e.target.value)} required />
         </div>
         <div className="field">
-          <label>
+          <label htmlFor="login-email">
             <Bi en="Email" fa="ایمیل" />
           </label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input id="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
         <div className="field">
-          <label>
+          <label htmlFor="login-password">
             <Bi en="Password" fa="رمز عبور" />
           </label>
           <input
+            id="login-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+        </div>
+        <div className="field">
+          <label>
+            <Bi en="Authenticator code" fa="رمز دو مرحله‌ای" />
+          </label>
+          <input value={totp} onChange={(e) => setTotp(e.target.value)} inputMode="numeric" />
         </div>
         <ErrorMessage message={error} friendly={false} />
         <Button type="submit" disabled={busy}>

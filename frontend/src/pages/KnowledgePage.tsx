@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import {
@@ -51,7 +52,6 @@ const CATEGORIES: Array<[string, string, string]> = [
 export function KnowledgePage() {
   const { has } = useAuth();
   const bi = useBi();
-  const [docs, setDocs] = useState<Doc[]>([]);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("SOP");
   const [content, setContent] = useState("");
@@ -65,14 +65,16 @@ export function KnowledgePage() {
     return c ? bi(c[1], c[2]) : code;
   }
 
+  const qc = useQueryClient();
+  const docsQuery = useQuery({
+    queryKey: ["knowledge-docs"],
+    enabled: has("kb.read"),
+    queryFn: () => api.knowledge.list() as Promise<Doc[]>,
+  });
+  const docs = docsQuery.data ?? [];
   async function refresh() {
-    const rows = await api.knowledge.list();
-    setDocs(rows as Doc[]);
+    await qc.invalidateQueries({ queryKey: ["knowledge-docs"] });
   }
-
-  useEffect(() => {
-    if (has("kb.read")) void refresh().catch((e) => setError(String(e.message || e)));
-  }, [has]);
 
   async function upload(e: FormEvent) {
     e.preventDefault();

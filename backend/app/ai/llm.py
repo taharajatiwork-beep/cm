@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from contextvars import ContextVar
 from typing import Any, Protocol
+from uuid import UUID
 
 import httpx
 
@@ -11,6 +13,18 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 
 log = get_logger(__name__)
+
+# Set only on a request that has a DB session. Absent context keeps the old path.
+_usage_ctx: ContextVar[tuple[Any, UUID, UUID] | None] = ContextVar("llm_usage", default=None)
+
+
+def bind_llm_usage(db: Any, organization_id: UUID, user_id: UUID):
+    """Record token use for this task. Returns the context token for reset()."""
+    return _usage_ctx.set((db, organization_id, user_id))
+
+
+def reset_llm_usage(token) -> None:
+    _usage_ctx.reset(token)
 
 
 class LLMClient(Protocol):
@@ -124,7 +138,24 @@ class OpenAICompatibleLLM:
                     log.warning("llm_error", status=resp.status_code, body=resp.text[:500])
                     raise RuntimeError(f"LLM error {resp.status_code}: {resp.text[:300]}")
             data = resp.json()
+            await _record_usage(data.get("usage") or {}, self.model)
             return str(data["choices"][0]["message"]["content"] or "")
+
+
+async def _record_usage(usage: dict[str, Any], model: str) -> None:
+    ctx = _usage_ctx.get()
+    if not ctx:
+        return
+    db, organization_id, user_id = ctx
+    prompt = int(usage.get("prompt_tokens") or 0)
+    completion = int(usage.get("completion_tokens") or 0)
+    if prompt + completion <= 0:
+        return
+    from app.services.enterprise_ops import EnterpriseService
+
+    await EnterpriseService(db).record_ai_usage(
+        organization_id, user_id, model, prompt, completion
+    )
 
 
 def _parse_json_content(content: str) -> dict[str, Any]:

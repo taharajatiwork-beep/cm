@@ -87,7 +87,7 @@ async def list_campaigns(
         require_permission(ctx.permissions, PermissionCode.CAMPAIGN_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    return await CampaignService(db).list(ctx.organization_id, q=q, status=status)
+    return await CampaignService(db).list(ctx.organization_id, q=q, status=status, scope=ctx.scope)
 
 
 @router.get("/{campaign_id}", response_model=CampaignOut)

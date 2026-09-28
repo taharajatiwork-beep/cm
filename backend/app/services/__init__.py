@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.permissions import AuthorizationError, PermissionCode, require_permission
-from app.core.security import hash_password, verify_password
+from app.core.scope import DataScopeContext, apply_scope
+from app.core.security import hash_password, validate_password, verify_password
 from app.core.timeutil import as_utc, utc_now
 from app.models import (
     AuditLog,
@@ -319,6 +320,9 @@ class OrgService:
         team_id: UUID | None = None,
         manager_id: UUID | None = None,
     ) -> User:
+        problem = validate_password(password)
+        if problem:
+            raise ValueError(problem)
         user = User(
             organization_id=organization_id,
             email=email,
@@ -347,6 +351,10 @@ class OrgService:
             select(User).where(User.organization_id == organization_id, User.email == email)
         )
         if not user or not verify_password(password, user.hashed_password):
+            return None
+        if not user.is_active:
+            # Deactivated accounts keep their row (and their history) but
+            # cannot sign in again.
             return None
         return user
 
@@ -426,7 +434,11 @@ class OrgService:
         return list(result.scalars().all())
 
     async def list_people(
-        self, organization_id: UUID, *, q: str | None = None
+        self,
+        organization_id: UUID,
+        *,
+        q: str | None = None,
+        scope: DataScopeContext | None = None,
     ) -> list[User]:
         stmt = (
             select(User)
@@ -434,6 +446,7 @@ class OrgService:
             .where(User.organization_id == organization_id, User.is_active.is_(True))
             .order_by(User.full_name)
         )
+        stmt = apply_scope(stmt, User, scope)
         if q:
             like = f"%{q}%"
             stmt = stmt.where((User.full_name.ilike(like)) | (User.email.ilike(like)))
@@ -566,6 +579,30 @@ class CommunicationService:
             entity_id=msg.id,
             payload={"conversation_id": str(conversation_id)},
         )
+        participants = list(
+            (
+                await self.db.execute(
+                    select(ConversationParticipant).where(
+                        ConversationParticipant.conversation_id == conversation_id
+                    )
+                )
+            ).scalars()
+        )
+        topic = await self.db.scalar(
+            select(Conversation.topic).where(Conversation.id == conversation_id)
+        )
+        for person in participants:
+            if person.user_id == sender_id:
+                continue
+            await notify(
+                self.db,
+                organization_id=organization_id,
+                user_id=person.user_id,
+                title=topic or "پیام جدید",
+                body=text[:240],
+                entity_type="conversation",
+                entity_id=conversation_id,
+            )
         return msg
 
     async def list_messages(self, conversation_id: UUID) -> list[Message]:
@@ -590,12 +627,21 @@ class CommunicationService:
         work_item_id: UUID | None = None,
         case_id: UUID | None = None,
         campaign_id: UUID | None = None,
+        scope: DataScopeContext | None = None,
+        archived: bool = False,
     ) -> list[Conversation]:
         q = (
             select(Conversation)
+            .options(selectinload(Conversation.participants))
             .where(Conversation.organization_id == organization_id)
             .order_by(Conversation.created_at.desc())
         )
+        q = apply_scope(q, Conversation, scope)
+        # گفتگوهای آرشیوشده در لیست عادی دیده نمی‌شوند، مگر اینکه صراحتاً archived خواسته شود.
+        if archived:
+            q = q.where(Conversation.archived_at.is_not(None))
+        else:
+            q = q.where(Conversation.archived_at.is_(None))
         if work_item_id:
             q = q.where(Conversation.work_item_id == work_item_id)
         if case_id:
@@ -603,6 +649,47 @@ class CommunicationService:
         if campaign_id:
             q = q.where(Conversation.campaign_id == campaign_id)
         return list((await self.db.execute(q)).scalars().all())
+
+    async def last_messages(self, conversation_ids: list[UUID]) -> dict[UUID, tuple[str, UUID | None, datetime]]:
+        if not conversation_ids:
+            return {}
+        result = await self.db.execute(
+            select(Message.conversation_id, Message.text, Message.sender_id, Message.created_at)
+            .where(Message.conversation_id.in_(conversation_ids))
+            .order_by(Message.created_at.desc())
+        )
+        found: dict[UUID, tuple[str, UUID | None, datetime]] = {}
+        for conversation_id, text, sender_id, created_at in result.all():
+            if conversation_id not in found and created_at is not None:
+                found[conversation_id] = (text, sender_id, created_at)
+        return found
+
+    async def add_participant(
+        self,
+        *,
+        organization_id: UUID,
+        conversation_id: UUID,
+        user_id: UUID,
+    ) -> ConversationParticipant:
+        conversation = await self.db.get(Conversation, conversation_id)
+        if not conversation or conversation.organization_id != organization_id:
+            raise ValueError("Conversation not found")
+        existing = await self.db.scalar(
+            select(ConversationParticipant).where(
+                ConversationParticipant.conversation_id == conversation_id,
+                ConversationParticipant.user_id == user_id,
+            )
+        )
+        if existing:
+            return existing
+        row = ConversationParticipant(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            role=ParticipantRole.MEMBER,
+        )
+        self.db.add(row)
+        await self.db.flush()
+        return row
 
 
 class WorkService:
@@ -742,6 +829,7 @@ class WorkService:
         status: CaseStatus | None = None,
         owner_id: UUID | None = None,
         limit: int = 50,
+        scope: DataScopeContext | None = None,
     ) -> list[CommunicationCase]:
         q = (
             select(CommunicationCase)
@@ -749,6 +837,7 @@ class WorkService:
             .order_by(CommunicationCase.created_at.desc())
             .limit(limit)
         )
+        q = apply_scope(q, CommunicationCase, scope)
         if case_type:
             q = q.where(CommunicationCase.type == case_type)
         if status:
@@ -1061,6 +1150,7 @@ class WorkService:
         owner_id: UUID | None = None,
         vehicle_id: UUID | None = None,
         limit: int = 100,
+        scope: DataScopeContext | None = None,
     ) -> list[WorkItem]:
         q = (
             select(WorkItem)
@@ -1068,6 +1158,7 @@ class WorkService:
             .order_by(WorkItem.created_at.desc())
             .limit(limit)
         )
+        q = apply_scope(q, WorkItem, scope)
         if status:
             q = q.where(WorkItem.status == status)
         if owner_id:
@@ -1161,6 +1252,7 @@ class WorkService:
         status: TaskStatus | None = None,
         overdue_only: bool = False,
         limit: int = 100,
+        scope: DataScopeContext | None = None,
     ) -> list[Task]:
         q = (
             select(Task)
@@ -1169,6 +1261,7 @@ class WorkService:
             .order_by(Task.created_at.desc())
             .limit(limit)
         )
+        q = apply_scope(q, Task, scope)
         if work_item_id:
             q = q.where(Task.work_item_id == work_item_id)
         if status:
@@ -1191,7 +1284,7 @@ class WorkService:
             ]
         return list((await self.db.execute(q)).scalars().unique().all())
 
-    async def user_workload(self, user_id: UUID) -> dict[str, Any]:
+    async def user_workload(self, user_id: UUID, *, organization_id: UUID | None = None) -> dict[str, Any]:
         open_statuses = [
             TaskStatus.OPEN,
             TaskStatus.ASSIGNED,
@@ -1206,6 +1299,7 @@ class WorkService:
                     .where(
                         TaskAssignee.user_id == user_id,
                         Task.status.in_(open_statuses),
+                        *([Task.organization_id == organization_id] if organization_id else []),
                     )
                     .order_by(Task.created_at.desc())
                 )
@@ -1280,8 +1374,22 @@ class SlaService:
                 created = task.created_at
                 if created.tzinfo is None:
                     created = created.replace(tzinfo=UTC)
-                deadline = deadline or (created + timedelta(minutes=policy.response_minutes))
-                warning_at = created + timedelta(minutes=policy.warning_minutes)
+                from app.core.config import get_settings
+
+                if get_settings().sla_use_business_calendar:
+                    from app.core.calendar import add_business_minutes, to_business_time
+
+                    # یا از policy ساخته می‌شود یا از deadline موجود؛ در هر دو حالت
+                    # روی تقویم کاری (شنبه تا پنجشنبه ۸ تا ۱۷، بدون تعطیلات) جابه‌جا می‌شود.
+                    deadline = deadline or add_business_minutes(created, policy.response_minutes)
+                    deadline = to_business_time(deadline)
+                    warning_at = add_business_minutes(created, policy.warning_minutes)
+                    # جابه‌جایی را ذخیره می‌کنیم تا در گزارش‌ها و UI هم دیده شود (پشت پرچم،
+                    # پیش‌فرض false است و رفتار بدون تقویم دست نمی‌خورد).
+                    task.deadline = deadline
+                else:
+                    deadline = deadline or (created + timedelta(minutes=policy.response_minutes))
+                    warning_at = created + timedelta(minutes=policy.warning_minutes)
 
         if deadline and deadline.tzinfo is None:
             deadline = deadline.replace(tzinfo=UTC)
@@ -1317,6 +1425,21 @@ class SlaService:
                         entity_type="task",
                         entity_id=task.id,
                     )
+                    from app.core.config import get_settings as _sla_settings
+
+                    if _sla_settings().sla_chain_escalation and task.owner_id:
+                        owner = await self.db.get(User, task.owner_id)
+                        if owner and owner.manager_id:
+                            await notify(
+                                self.db,
+                                organization_id=task.organization_id,
+                                user_id=owner.manager_id,
+                                title="SLA escalated to you",
+                                body=task.title,
+                                channel=NotificationChannel.SYSTEM,
+                                entity_type="task",
+                                entity_id=task.id,
+                            )
             elif prev != SlaState.BREACHED:
                 await emit_event(
                     self.db,
@@ -1416,39 +1539,38 @@ class TimelineService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def for_entity(self, entity_type: str, entity_id: UUID) -> list[Event]:
-        result = await self.db.execute(
-            select(Event)
-            .where(Event.entity_type == entity_type, Event.entity_id == entity_id)
-            .order_by(Event.created_at)
-        )
+    async def for_entity(
+        self, entity_type: str, entity_id: UUID, *, organization_id: UUID | None = None
+    ) -> list[Event]:
+        q = select(Event).where(Event.entity_type == entity_type, Event.entity_id == entity_id)
+        if organization_id:
+            q = q.where(Event.organization_id == organization_id)
+        result = await self.db.execute(q.order_by(Event.created_at))
         return list(result.scalars().all())
 
-    async def for_user_activity(self, user_id: UUID) -> list[Event]:
-        result = await self.db.execute(
-            select(Event).where(Event.actor_id == user_id).order_by(Event.created_at.desc())
-        )
+    async def for_user_activity(self, user_id: UUID, *, organization_id: UUID | None = None) -> list[Event]:
+        q = select(Event).where(Event.actor_id == user_id)
+        if organization_id:
+            q = q.where(Event.organization_id == organization_id)
+        result = await self.db.execute(q.order_by(Event.created_at.desc()))
         return list(result.scalars().all())
 
-    async def for_work_item(self, work_item_id: UUID) -> list[Event]:
+    async def for_work_item(self, work_item_id: UUID, *, organization_id: UUID | None = None) -> list[Event]:
         """Include work item events plus related task/case events."""
-        task_ids = (
-            await self.db.execute(select(Task.id).where(Task.work_item_id == work_item_id))
-        ).scalars().all()
-        case_ids = (
-            await self.db.execute(
-                select(CommunicationCase.id).where(CommunicationCase.work_item_id == work_item_id)
-            )
-        ).scalars().all()
-        result = await self.db.execute(
-            select(Event)
-            .where(
-                (
-                    (Event.entity_type == "work_item") & (Event.entity_id == work_item_id)
-                )
-                | ((Event.entity_type == "task") & (Event.entity_id.in_(list(task_ids) or [work_item_id])))
-                | ((Event.entity_type == "case") & (Event.entity_id.in_(list(case_ids) or [work_item_id])))
-            )
-            .order_by(Event.created_at)
+        task_q = select(Task.id).where(Task.work_item_id == work_item_id)
+        case_q = select(CommunicationCase.id).where(CommunicationCase.work_item_id == work_item_id)
+        if organization_id:
+            task_q = task_q.where(Task.organization_id == organization_id)
+            case_q = case_q.where(CommunicationCase.organization_id == organization_id)
+        task_ids = (await self.db.execute(task_q)).scalars().all()
+        case_ids = (await self.db.execute(case_q)).scalars().all()
+        event_filter = (
+            ((Event.entity_type == "work_item") & (Event.entity_id == work_item_id))
+            | ((Event.entity_type == "task") & (Event.entity_id.in_(list(task_ids) or [work_item_id])))
+            | ((Event.entity_type == "case") & (Event.entity_id.in_(list(case_ids) or [work_item_id])))
         )
+        q = select(Event).where(event_filter)
+        if organization_id:
+            q = q.where(Event.organization_id == organization_id)
+        result = await self.db.execute(q.order_by(Event.created_at))
         return list(result.scalars().all())

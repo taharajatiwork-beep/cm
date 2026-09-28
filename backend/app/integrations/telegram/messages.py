@@ -217,6 +217,48 @@ def btn_show(*, lang: str = "fa") -> str:
     return t("نشان بده", "Show", lang=lang)
 
 
+def btn_approve(*, lang: str = "fa") -> str:
+    return t("تأیید", "Approve", lang=lang)
+
+
+def btn_reject(*, lang: str = "fa") -> str:
+    return t("رد", "Reject", lang=lang)
+
+
+def notify_approval(title: str, *, lang: str = "fa") -> str:
+    return t(
+        f"درخواست تأیید جدید:\n{title}\nبا دکمه‌های زیر پاسخ دهید.",
+        f"New approval request:\n{title}\nRespond with the buttons below.",
+        lang=lang,
+    )
+
+
+def approval_not_approver(*, lang: str = "fa") -> str:
+    return t(
+        "شما تأییدکنندهٔ این مرحله نیستید",
+        "You are not the approver of this step.",
+        lang=lang,
+    )
+
+
+def approval_not_found(*, lang: str = "fa") -> str:
+    return t("درخواست تأیید پیدا نشد.", "Approval request not found.", lang=lang)
+
+
+def approval_already_decided(*, lang: str = "fa") -> str:
+    return t("این درخواست قبلاً تصمیم گرفته شده است.", "This request was already decided.", lang=lang)
+
+
+def approval_step_recorded(final: bool, *, lang: str = "fa") -> str:
+    if final:
+        return t("تأیید نهایی شد ✓", "Approved ✓", lang=lang)
+    return t("تأیید ثبت شد — مرحلهٔ بعدی منتظر تأیید است.", "Recorded — next step is waiting for approval.", lang=lang)
+
+
+def approval_rejected(*, lang: str = "fa") -> str:
+    return t("رد شد ✗", "Rejected ✗", lang=lang)
+
+
 def rate_limited(*, lang: str = "fa") -> str:
     return t(
         "کمی صبر کنید و دوباره بپرسید.",

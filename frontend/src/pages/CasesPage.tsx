@@ -1,127 +1,106 @@
 import { useState, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import {
   Button,
   Card,
-  CardTitle,
   EmptyState,
   ErrorMessage,
-  List,
-  ListItem,
-  Muted,
+  Field,
+  Input,
   PageHeader,
+  Select,
 } from "../components/ui";
+import { DateText } from "../components/DateText";
 import { Bi, useBi } from "../i18n";
-import { ConceptHint, StatusLabel } from "../ux";
 
 export function CasesPage() {
   const { has } = useAuth();
   const bi = useBi();
+  const qc = useQueryClient();
+  const [status, setStatus] = useState("");
   const [subject, setSubject] = useState("");
-  const [created, setCreated] = useState<Record<string, unknown> | null>(null);
-  const [timeline, setTimeline] = useState<Array<Record<string, unknown>>>([]);
-  const [error, setError] = useState("");
-
-  async function create(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    try {
-      const c = await api.cases.create({
-        subject,
-        type: "GENERAL_OPERATIONAL_REQUEST",
-        priority: "MEDIUM",
-      });
-      setCreated(c);
-      setTimeline(await api.cases.timeline(String(c.id)));
+  const [selected, setSelected] = useState<string>("");
+  const list = useQuery({
+    queryKey: ["cases", status],
+    queryFn: () => api.cases.list(status ? { status } : undefined),
+  });
+  const timeline = useQuery({
+    queryKey: ["cases", selected, "timeline"],
+    enabled: Boolean(selected),
+    queryFn: () => api.cases.timeline(selected),
+  });
+  const create = useMutation({
+    mutationFn: () =>
+      api.cases.create({ subject, type: "GENERAL_OPERATIONAL_REQUEST", priority: "MEDIUM" }),
+    onSuccess: () => {
       setSubject("");
-    } catch (err) {
-      setError(String((err as Error).message));
-    }
+      void qc.invalidateQueries({ queryKey: ["cases"] });
+    },
+  });
+  const rows = list.data ?? [];
+
+  function onCreate(e: FormEvent) {
+    e.preventDefault();
+    if (has("case.write")) create.mutate();
   }
 
   return (
     <>
-      <PageHeader
-        title={<Bi en="Follow-ups" fa="پیگیری‌ها" />}
-        description={
-          <>
-            <ConceptHint kind="followup" />
-            <p>
-              <Bi
-                en="Write a subject below to open a follow-up. For daily work, use My Work instead."
-                fa="برای باز کردن یک پیگیری، موضوعش را پایین بنویسید. برای کارهای روزمره از «کارهای من» استفاده کنید."
-              />
-            </p>
-          </>
-        }
-        actions={
-          <Button variant="secondary" to="/my-work">
-            <Bi en="My Work" fa="کارهای من" />
-          </Button>
-        }
-      />
-
-      {has("case.write") && (
-        <Card as="form" stack onSubmit={create} style={{ marginBottom: "1rem" }}>
-          <div className="field">
-            <label>
-              <Bi en="What needs follow-up?" fa="چه چیزی باید پیگیری شود؟" />
-            </label>
-            <input
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              required
-              placeholder={bi("e.g. Buyer asked about Camry #124", "مثلاً خریدار درباره کمری ۱۲۴ پرسید")}
+      <PageHeader title={<Bi en="Cases" fa="پرونده‌ها" />} />
+      <div className="toolbar">
+        <Select value={status} onChange={(e) => setStatus(e.target.value)} aria-label={bi("Status", "وضعیت")}>
+          <option value="">{bi("All", "همه")}</option>
+          <option value="OPEN">OPEN</option>
+          <option value="IN_PROGRESS">IN_PROGRESS</option>
+          <option value="COMPLETED">COMPLETED</option>
+        </Select>
+      </div>
+      <ErrorMessage error={list.isError ? String((list.error as Error).message) : ""} />
+      <div className="split">
+        <Card>
+          {rows.length === 0 ? (
+            <EmptyState
+              titleEn="No cases"
+              titleFa="پرونده‌ای نیست"
+              bodyEn="Create a follow-up when work needs a record."
+              bodyFa="وقتی کاری باید ثبت شود، یک پرونده بسازید."
             />
-          </div>
-          <Button type="submit">
-            <Bi en="New follow-up" fa="پیگیری جدید" />
-          </Button>
+          ) : (
+            rows.map((row) => (
+              <button
+                key={String(row.id)}
+                type="button"
+                className="row-item"
+                onClick={() => setSelected(String(row.id))}
+              >
+                <strong>{String(row.subject)}</strong>
+                <span className="muted">{String(row.sla_state || row.status || "")}</span>
+                <DateText value={row.created_at} />
+              </button>
+            ))
+          )}
+          {has("case.write") ? (
+            <form onSubmit={onCreate} className="form-grid">
+              <Field label={<Bi en="Subject" fa="موضوع" />}>
+                <Input value={subject} onChange={(e) => setSubject(e.target.value)} required />
+              </Field>
+              <Button type="submit">
+                <Bi en="Create" fa="ساخت" />
+              </Button>
+            </form>
+          ) : null}
         </Card>
-      )}
-
-      {!created && !has("case.write") && (
-        <EmptyState
-          titleEn="No follow-up open"
-          titleFa="پیگیری بازی نیست"
-          bodyEn="Follow-ups are usually created from a vehicle or project."
-          bodyFa="پیگیری‌ها معمولاً از خودرو یا پروژه ساخته می‌شوند."
-        />
-      )}
-      <ErrorMessage error={error} />
-
-      {created && (
-        <div className="grid grid-2">
-          <Card>
-            <CardTitle>
-              <Bi en="Follow-up" fa="پیگیری" />
-            </CardTitle>
-            <p>{String(created.subject)}</p>
-            <p className="row">
-              <StatusLabel status={String(created.status)} />
-              {created.sla_state && created.sla_state !== "NONE" && created.sla_state !== "ACTIVE" ? (
-                <StatusLabel status={String(created.sla_state)} />
-              ) : null}
-            </p>
-          </Card>
-          <Card>
-            <CardTitle>
-              <Bi en="What happened" fa="چه اتفاقاتی افتاده" />
-            </CardTitle>
-            <List variant="timeline">
-              {timeline.map((e) => (
-                <ListItem key={String(e.id)}>
-                  <strong>{String(e.event_type).split(".").pop()?.replace(/_/g, " ")}</strong>
-                  <div>
-                    <Muted>{new Date(String(e.created_at)).toLocaleString()}</Muted>
-                  </div>
-                </ListItem>
-              ))}
-            </List>
-          </Card>
-        </div>
-      )}
+        <Card>
+          {(timeline.data ?? []).map((event) => (
+            <div key={String(event.id)} className="row-item">
+              <span>{String(event.event_type)}</span>
+              <DateText value={event.created_at} withTime />
+            </div>
+          ))}
+        </Card>
+      </div>
     </>
   );
 }

@@ -17,9 +17,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Schema is managed via SQLAlchemy Base.metadata.create_all in tests.
-    # For Postgres, prefer: alembic revision --autogenerate after Docker is up.
-    # This migration creates core tables for greenfield Postgres deploys.
+    # Baseline for an empty database: the ORM metadata is the schema.
+    # Revisions 0002+ add the same objects only when this baseline predates them.
     from app.db.base import Base
     from app import models  # noqa: F401
 

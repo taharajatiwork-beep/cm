@@ -11,6 +11,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    from app.db.migration_guard import column_exists, table_exists
+
+    bind = op.get_bind()
+    if column_exists(bind, "telegram_accounts", "provider") and table_exists(bind, "telegram_processed_updates"):
+        return
     # Expand telegram_accounts
     with op.batch_alter_table("telegram_accounts") as batch:
         batch.add_column(sa.Column("provider", sa.String(20), nullable=False, server_default="telegram"))

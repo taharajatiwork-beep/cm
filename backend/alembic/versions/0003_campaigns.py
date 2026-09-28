@@ -11,6 +11,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    from app.db.migration_guard import table_exists
+
+    if table_exists(op.get_bind(), "campaigns"):
+        return
     op.create_table(
         "campaigns",
         sa.Column("id", sa.Uuid(), primary_key=True),

@@ -1,12 +1,12 @@
-const TOKEN_KEY = "cm_token";
+let memoryToken: string | null = null;
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return memoryToken;
 }
 
 export function setToken(token: string | null) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  memoryToken = token;
+  localStorage.removeItem("cm_token");
 }
 
 export class ApiError extends Error {
@@ -19,7 +19,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -27,7 +27,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`/api${path}`, { ...init, headers });
+  const res = await fetch(`/api${path}`, { ...init, headers, credentials: "include" });
+  if (res.status === 401 && retry && path !== "/auth/refresh" && path !== "/auth/login") {
+    const refreshed = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
+    if (refreshed.ok) {
+      const body = (await refreshed.json()) as { access_token: string };
+      setToken(body.access_token);
+      return request<T>(path, init, false);
+    }
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -43,11 +51,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  login: (organization_slug: string, email: string, password: string) =>
+  login: (organization_slug: string, email: string, password: string, totp?: string) =>
     request<{ access_token: string }>("/auth/login", {
       method: "POST",
+      headers: totp ? { "X-Totp-Code": totp } : undefined,
       body: JSON.stringify({ organization_slug, email, password }),
     }),
+  refresh: () =>
+    request<{ access_token: string }>("/auth/refresh", { method: "POST" }, false),
+  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }, false),
   me: () =>
     request<{
       id: string;
@@ -68,6 +80,13 @@ export const api = {
     list: (params?: { status?: string }) => {
       const q = params?.status ? `?status=${encodeURIComponent(params.status)}` : "";
       return request<Array<Record<string, unknown>>>(`/work-items${q}`);
+    },
+    page: (cursor?: string | null) => {
+      const sp = new URLSearchParams({ envelope: "1", limit: "20" });
+      if (cursor) sp.set("cursor", cursor);
+      return request<{ items: Array<Record<string, unknown>>; next_cursor: string | null }>(
+        `/work-items?${sp.toString()}`,
+      );
     },
     get: (id: string) => request<Record<string, unknown>>(`/work-items/${id}`),
     progress: (id: string) =>
@@ -100,6 +119,20 @@ export const api = {
       request<Array<Record<string, unknown>>>(
         `/inventory/vehicles${q ? `?q=${encodeURIComponent(q)}` : ""}`,
       ),
+    page: (q = "", cursor?: string | null) => {
+      const sp = new URLSearchParams({ envelope: "1", limit: "20" });
+      if (q) sp.set("q", q);
+      if (cursor) sp.set("cursor", cursor);
+      return request<{ items: Array<Record<string, unknown>>; next_cursor: string | null }>(
+        `/inventory/vehicles?${sp.toString()}`,
+      );
+    },
+    setStatus: (id: string, to_status: string, note: string) =>
+      request<Record<string, unknown>>(`/inventory/vehicles/${id}/status`, {
+        method: "POST",
+        body: JSON.stringify({ to_status, note }),
+      }),
+    divar: (id: string) => request<Array<Record<string, unknown>>>(`/inventory/vehicles/${id}/divar`),
     get: (id: string) => request<Record<string, unknown>>(`/inventory/vehicles/${id}`),
     context: (id: string) =>
       request<{
@@ -183,6 +216,8 @@ export const api = {
       }),
   },
   notifications: () => request<Array<Record<string, unknown>>>("/notifications"),
+  markNotificationRead: (id: string) =>
+    request<{ id: string; is_read: boolean }>(`/notifications/${id}/read`, { method: "POST" }),
   telegram: {
     status: (provider = "telegram") =>
       request<{
@@ -224,6 +259,37 @@ export const api = {
         body: JSON.stringify(body),
       }),
   },
+  admin: {
+    permissionCodes: () => request<string[]>("/org/permissions"),
+    rolePermissions: (roleId: string) =>
+      request<{
+        id: string;
+        code: string;
+        name: string;
+        permission_codes: string[];
+        data_scope_level: string | null;
+      }>(`/org/roles/${roleId}/permissions`),
+    updateRole: (roleId: string, body: { permission_codes: string[]; data_scope_level?: string }) =>
+      request<Record<string, unknown>>(`/org/roles/${roleId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    updateUser: (userId: string, body: { is_active?: boolean; password?: string }) =>
+      request<{ id: string; is_active: boolean }>(`/org/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    addTeam: (userId: string, body: { user_id: string; team_id: string }) =>
+      request<{ id: string; team_id: string }>(`/org/users/${userId}/teams`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    createUser: (body: Record<string, unknown>) =>
+      request<Record<string, unknown>>("/org/users", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  },
   people: {
     list: (q?: string) =>
       request<Array<Record<string, unknown>>>(
@@ -256,15 +322,25 @@ export const api = {
     list: () => request<Array<Record<string, unknown>>>("/relationships"),
   },
   conversations: {
-    list: (opts?: { workItemId?: string; campaignId?: string }) => {
+    list: (opts?: { workItemId?: string; campaignId?: string; archived?: boolean }) => {
       const params = new URLSearchParams();
       if (opts?.workItemId) params.set("work_item_id", opts.workItemId);
       if (opts?.campaignId) params.set("campaign_id", opts.campaignId);
+      if (opts?.archived) params.set("archived", "true");
       const qs = params.toString();
       return request<Array<Record<string, unknown>>>(
         `/conversations${qs ? `?${qs}` : ""}`,
       );
     },
+    page: (cursor?: string | null) => {
+      const sp = new URLSearchParams({ envelope: "1", limit: "20" });
+      if (cursor) sp.set("cursor", cursor);
+      return request<{ items: Array<Record<string, unknown>>; next_cursor: string | null }>(
+        `/conversations?${sp.toString()}`,
+      );
+    },
+    archive: (id: string) =>
+      request<{ id: string; archived: boolean }>(`/conversations/${id}/archive`, { method: "POST" }),
     create: (body: Record<string, unknown>) =>
       request<Record<string, unknown>>("/conversations", {
         method: "POST",
@@ -431,5 +507,85 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
+    update: (id: string, body: Record<string, unknown>) =>
+      request<Record<string, unknown>>(`/customers/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    page: (q = "", cursor?: string | null) => {
+      const sp = new URLSearchParams({ envelope: "1", limit: "20" });
+      if (q) sp.set("q", q);
+      if (cursor) sp.set("cursor", cursor);
+      return request<{ items: Array<Record<string, unknown>>; next_cursor: string | null }>(
+        `/customers?${sp.toString()}`,
+      );
+    },
+    exportJson: (id: string) => request<Record<string, unknown>>(`/customers/${id}/export`),
+    erase: (id: string) =>
+      request<{ id: string; erased: boolean }>(`/customers/${id}/erase`, { method: "POST" }),
+  },
+  approvals: {
+    list: () => request<Array<Record<string, unknown>>>("/approvals"),
+    decide: (id: string, decision: "approved" | "rejected", comment?: string) =>
+      request<Record<string, unknown>>(`/approvals/${id}/decision`, {
+        method: "POST",
+        body: JSON.stringify({ decision, comment }),
+      }),
+  },
+  audit: {
+    list: (action?: string) =>
+      request<Array<Record<string, unknown>>>(
+        `/audit${action ? `?entity_type=${encodeURIComponent(action)}` : ""}`,
+      ),
+  },
+  totp: {
+    setup: () =>
+      request<{ secret: string; otpauth: string; enabled: boolean }>("/auth/totp/setup", {
+        method: "POST",
+      }),
+    enable: (code: string) =>
+      request<{ enabled: boolean }>("/auth/totp/enable", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }),
+  },
+  reports: {
+    kpis: () =>
+      request<Record<string, number | string>>("/reports/kpis"),
+    history: () => request<Array<Record<string, unknown>>>("/reports/kpis/history"),
+    snapshot: () => request<Record<string, unknown>>("/reports/kpis/snapshot", { method: "POST" }),
+    schedules: () => request<Array<Record<string, unknown>>>("/reports/schedules"),
+    schedule: (body: { name: string; channel: string; hour_utc: number }) =>
+      request<Record<string, unknown>>("/reports/schedules", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    /** Authenticated blob download for CSV / XLSX / PDF exports. */
+    download: async (format: "csv" | "xlsx" | "pdf") => {
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = ["Bearer", token].join(" ");
+      const res = await fetch(`/api/reports/kpis.${format}`, {
+        headers,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const body = await res.json();
+          detail = body.detail?.message || body.detail || detail;
+        } catch {
+          /* ignore */
+        }
+        throw new ApiError(res.status, String(detail));
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `kpis.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
   },
 };

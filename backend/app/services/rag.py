@@ -21,7 +21,9 @@ from app.ai.embeddings import (
     cosine_similarity,
     get_embedding_provider,
 )
+from app.core.config import get_settings
 from app.core.permissions import PermissionCode, require_permission
+from app.core.pgvector import pgvector_semantic_search
 from app.models import CommunicationCase, Message, WorkItem
 from app.models.embeddings import Embedding
 from app.models.inventory import Vehicle
@@ -231,6 +233,36 @@ class RagService:
         request_id = str(uuid.uuid4())
 
         q_vec = (await self.provider.embed([query]))[0]
+
+        # ANN only when explicitly enabled. Default stays JSON cosine on every dialect.
+        pg_hits: list[dict] = []
+        if get_settings().embedding_backend == "pgvector":
+            pg_hits = await pgvector_semantic_search(
+            self.db,
+            organization_id=str(organization_id),
+            query_vector=q_vec,
+            entity_types=entity_types,
+            branch_id=str(branch_id) if branch_id else None,
+            vehicle_id=str(vehicle_id) if vehicle_id else None,
+            top_k=top_k,
+            min_score=min_score,
+            model_name=self.provider.model_name,
+        )
+        if pg_hits:
+            return [
+                RetrievalHit(
+                    embedding_id=h["embedding_id"],
+                    entity_type=h["entity_type"],
+                    entity_id=h["entity_id"],
+                    chunk_id=h["chunk_id"],
+                    content=h["content"],
+                    score=h["score"],
+                    metadata={**h["metadata"], "request_id": request_id},
+                )
+                for h in pg_hits
+            ]
+
+        # Fallback: Python cosine similarity on JSON column
         stmt = select(Embedding).where(
             Embedding.organization_id == organization_id,
             Embedding.embedding_model == self.provider.model_name,

@@ -91,16 +91,20 @@ class KnowledgeService:
         return doc
 
     async def index_document(
-        self, document_id: UUID, *, actor_permissions: set[str]
+        self,
+        document_id: UUID,
+        *,
+        actor_permissions: set[str],
+        organization_id: UUID | None = None,
     ) -> Document:
         require_permission(actor_permissions, PermissionCode.KB_WRITE)
-        # Also need RAG_INDEX for embedding write
         require_permission(actor_permissions, PermissionCode.RAG_INDEX)
 
+        filters = [Document.id == document_id]
+        if organization_id is not None:
+            filters.append(Document.organization_id == organization_id)
         doc = await self.db.scalar(
-            select(Document)
-            .options(selectinload(Document.chunks))
-            .where(Document.id == document_id)
+            select(Document).options(selectinload(Document.chunks)).where(*filters)
         )
         if not doc:
             raise ValueError("Document not found")
@@ -150,9 +154,12 @@ class KnowledgeService:
         *,
         actor_permissions: set[str],
         category: DocumentCategory | None = None,
+        scope=None,
     ) -> list[Document]:
+        from app.core.scope import apply_scope
+
         require_permission(actor_permissions, PermissionCode.KB_READ)
-        q = select(Document).where(Document.organization_id == organization_id)
+        q = apply_scope(select(Document).where(Document.organization_id == organization_id), Document, scope)
         if category:
             q = q.where(Document.category == category)
         q = q.order_by(Document.created_at.desc())

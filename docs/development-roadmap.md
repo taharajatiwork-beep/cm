@@ -12,7 +12,7 @@ Execute in order. Each phase must be working and tested before the next.
 | 5 | Inventory core (Vehicle, history, branch links, requests) | **Done** |
 | 6 | Telegram adapter | **Done** |
 | 7 | Search (exact + FTS + filters) | **Done** |
-| 8 | RAG / pgvector memory | **Done** (JSON vectors + hash/openai providers; pgvector-ready) |
+| 8 | RAG / pgvector memory | **Done** (JSON cosine by default; `embedding_backend=pgvector` uses ANN only on PostgreSQL) |
 | 9 | Hybrid RAG | **Done** |
 | 10 | CommunicationAgent + tools | **Done** |
 | 11 | Assignment engine | **Done** |
@@ -23,6 +23,7 @@ Execute in order. Each phase must be working and tested before the next.
 | 14c | PurchaseAgent (unmet demand / seller offers) | **Done** |
 | 14d | DivarAgent (assisted listing via existing divar pilot) | **Done** |
 | 15 | Light CRM + LLM planner (9Router) + pgvector image | **Done** |
+| 16 | Enterprise hardening (scope, audit, sessions, worker, deploy, reports, adapters) | **Done** |
 
 ## First vertical slice (target after Telegram + light entity resolution)
 

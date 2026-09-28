@@ -75,6 +75,7 @@ async def search(
             date_from=date_from,
             date_to=date_to,
             limit=limit,
+            scope=ctx.scope,
         )
     except AuthorizationError as e:
         raise handle_authz(e) from e

@@ -24,7 +24,7 @@ export type Me = {
 type AuthState = {
   user: Me | null;
   loading: boolean;
-  login: (slug: string, email: string, password: string) => Promise<void>;
+  login: (slug: string, email: string, password: string, totp?: string) => Promise<void>;
   logout: () => void;
   has: (perm: string) => boolean;
   roleHint: "admin" | "manager" | "seller" | "marketing" | "viewer";
@@ -48,9 +48,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     if (!getToken()) {
-      setUser(null);
-      setLoading(false);
-      return;
+      try {
+        const session = await api.refresh();
+        setToken(session.access_token);
+      } catch {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
     }
     try {
       const me = await api.me();
@@ -74,14 +79,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  const login = useCallback(async (slug: string, email: string, password: string) => {
-    const { access_token } = await api.login(slug, email, password);
+  const login = useCallback(async (slug: string, email: string, password: string, totp?: string) => {
+    const { access_token } = await api.login(slug, email, password, totp);
     setToken(access_token);
     setLoading(true);
     await refresh();
   }, [refresh]);
 
   const logout = useCallback(() => {
+    void api.logout().catch(() => undefined);
     setToken(null);
     setUser(null);
   }, []);

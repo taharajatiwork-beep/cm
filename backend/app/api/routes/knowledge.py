@@ -100,6 +100,7 @@ async def list_documents(
             ctx.organization_id,
             actor_permissions=ctx.permissions,
             category=category,
+            scope=ctx.scope,
         )
     except AuthorizationError as e:
         raise handle_authz(e) from e
@@ -157,7 +158,9 @@ async def reindex_document(
 ):
     try:
         doc = await KnowledgeService(db).index_document(
-            document_id, actor_permissions=ctx.permissions
+            document_id,
+            actor_permissions=ctx.permissions,
+            organization_id=ctx.organization_id,
         )
     except AuthorizationError as e:
         raise handle_authz(e) from e

@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -16,7 +17,8 @@ import {
   SectionHeader,
   StatCard,
 } from "../components/ui";
-import { Bi, useBi } from "../i18n";
+import { Bi, useBi, useLocale } from "../i18n";
+import { formatJalaliLong } from "../jalali";
 import {
   type AttentionStory,
   assigneeNames,
@@ -31,45 +33,36 @@ import { OnboardingBanner, dismissOnboarding, shouldShowOnboarding } from "../ux
 export function HomePage() {
   const { user, roleHint, has } = useAuth();
   const bi = useBi();
-  const [stories, setStories] = useState<AttentionStory[]>([]);
-  const [roleHintLine, setRoleHintLine] = useState("");
+  const { locale } = useLocale();
   const [showOnboard, setShowOnboard] = useState(shouldShowOnboarding);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   const [askText, setAskText] = useState("");
   const navigate = useNavigate();
 
-  useEffect(() => {
-    void (async () => {
-      setLoading(true);
+  const inbox = useQuery({
+    queryKey: ["home-inbox", user?.id, roleHint, locale],
+    queryFn: async () => {
       const out: AttentionStory[] = [];
-      try {
+      let roleHintLine = "";
         const people = await api.people.list().catch(() => []);
         const map = buildPersonMap(people);
 
         if (roleHint === "manager" || roleHint === "admin") {
-          setRoleHintLine(
-            bi(
-              "Who’s waiting on you — and where work is slipping.",
-              "چه کسی منتظر شماست — و کجا کار عقب افتاده.",
-            ),
+          roleHintLine = bi(
+            "Who’s waiting on you — and where work is slipping.",
+            "چه کسی منتظر شماست — و کجا کار عقب افتاده.",
           );
         } else if (roleHint === "seller") {
-          setRoleHintLine(
-            bi(
-              "What’s assigned to you — and who is waiting for your next step.",
-              "چه چیزی به شما سپرده شده — و چه کسی منتظر قدم بعدی شماست.",
-            ),
+          roleHintLine = bi(
+            "What’s assigned to you — and who is waiting for your next step.",
+            "چه چیزی به شما سپرده شده — و چه کسی منتظر قدم بعدی شماست.",
           );
         } else if (roleHint === "marketing") {
-          setRoleHintLine(
-            bi(
-              "Which listings and campaigns need you today.",
-              "کدام آگهی‌ها و کمپین‌ها امروز به شما نیاز دارند.",
-            ),
+          roleHintLine = bi(
+            "Which listings and campaigns need you today.",
+            "کدام آگهی‌ها و کمپین‌ها امروز به شما نیاز دارند.",
           );
         } else {
-          setRoleHintLine(bi("What’s happening around you.", "الان اطراف شما چه خبر است."));
+          roleHintLine = bi("What’s happening around you.", "الان اطراف شما چه خبر است.");
         }
 
         const myTasks =
@@ -115,7 +108,7 @@ export function HomePage() {
                 lines.length > 0
                   ? lines
                   : [{ text: bi("All to-dos done", "همه کارها انجام شده"), done: true }],
-              deadline: formatDeadline(nearest, bi),
+              deadline: formatDeadline(nearest, bi, locale),
               tone,
               kind: "shared",
               waitingOnMe: openTasks.some((t) =>
@@ -151,7 +144,7 @@ export function HomePage() {
                   text: `${bi("Owner", "مسئول")}: ${personName(map, c.owner_id)}`,
                 },
               ],
-              deadline: formatDeadline(c.deadline, bi),
+              deadline: formatDeadline(c.deadline, bi, locale),
               tone: c.sla_state === "BREACHED" || c.sla_state === "ESCALATED" ? "danger" : "warn",
               kind: "branch",
               waitingOnMe: true,
@@ -201,7 +194,7 @@ export function HomePage() {
             title: String(t.title),
             href: "/my-work",
             lines: [{ text: bi("Assigned to you", "به شما سپرده شده") }],
-            deadline: formatDeadline(t.deadline, bi),
+            deadline: formatDeadline(t.deadline, bi, locale),
             tone: isOverdue(t.deadline, t.status) ? "danger" : undefined,
             kind: "task",
             waitingOnMe: true,
@@ -221,14 +214,13 @@ export function HomePage() {
             seen.add(s.title);
             return true;
           });
-        setStories(ranked.slice(0, 8));
-      } catch (e) {
-        setError(String((e as Error).message));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [user?.id, has, roleHint, bi]);
+        return { stories: ranked.slice(0, 8), roleHintLine };
+    },
+  });
+  const stories = inbox.data?.stories ?? [];
+  const roleHintLine = inbox.data?.roleHintLine ?? "";
+  const loading = inbox.isLoading;
+  const error = inbox.isError ? String((inbox.error as Error).message) : "";
 
   const hour = new Date().getHours();
   const greet =
@@ -238,11 +230,14 @@ export function HomePage() {
         ? bi("Good afternoon", "ظهر بخیر")
         : bi("Good evening", "عصر بخیر");
 
-  const todayLabel = new Date().toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+  const todayLabel =
+    locale === "fa"
+      ? formatJalaliLong(new Date())
+      : new Date().toLocaleDateString(undefined, {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+        });
 
   const waiting = stories.filter((s) => s.waitingOnMe).length;
   const atRisk = stories.filter((s) => s.tone === "danger").length;
@@ -289,6 +284,11 @@ export function HomePage() {
         />
       )}
 
+      <p>
+        <Link to="/approvals">
+          <Bi en="Open approvals" fa="تأییدهای منتظر" />
+        </Link>
+      </p>
       <ErrorMessage error={error} />
 
       {!loading && (

@@ -19,6 +19,15 @@ settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 
+def include_object(obj, name, type_, reflected, compare_to):
+    # Added by the pgvector listener, not by the ORM model.
+    if type_ == "column" and name == "embedding_vec":
+        return False
+    if type_ == "index" and name == "idx_embeddings_embedding_vec":
+        return False
+    return True
+
+
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -26,13 +35,20 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
+        compare_server_default=False,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+        compare_server_default=False,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

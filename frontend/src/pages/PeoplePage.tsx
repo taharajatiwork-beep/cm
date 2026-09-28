@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import {
   Avatar,
@@ -13,52 +13,54 @@ import {
   PageHeader,
   SectionHeader,
 } from "../components/ui";
+import { DateText } from "../components/DateText";
 import { Bi, useBi } from "../i18n";
+import { queryKeys } from "../lib/queryKeys";
 import { StatusLabel } from "../ux";
+import { Link } from "react-router-dom";
 
 type Person = Record<string, unknown>;
 
 export function PeoplePage() {
   const bi = useBi();
-  const [rows, setRows] = useState<Person[]>([]);
-  const [selected, setSelected] = useState<Person | null>(null);
-  const [workload, setWorkload] = useState<Awaited<ReturnType<typeof api.people.workload>> | null>(
-    null,
-  );
-  const [reports, setReports] = useState<Person[]>([]);
   const [q, setQ] = useState("");
-  const [error, setError] = useState("");
-  const [loadingPerson, setLoadingPerson] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const listQuery = useQuery({
+    queryKey: queryKeys.people(q),
+    queryFn: () => api.people.list(q || undefined),
+  });
+  const rows = listQuery.data ?? [];
+  const error = listQuery.isError ? String((listQuery.error as Error).message) : "";
+
+  const selected = rows.find((p) => String(p.id) === selectedId) ?? null;
+
+  // Open the first colleague automatically so the pane is never empty.
   useEffect(() => {
-    void api.people
-      .list()
-      .then((list) => {
-        setRows(list);
-        if (list[0]) void openPerson(list[0]);
-      })
-      .catch((e) => setError(String((e as Error).message)));
-  }, []);
+    if (!selectedId && rows[0]) setSelectedId(String(rows[0].id));
+  }, [rows, selectedId]);
 
-  async function openPerson(p: Person) {
-    setSelected(p);
-    setLoadingPerson(true);
-    const id = String(p.id);
-    try {
-      setWorkload(await api.people.workload(id));
+  const detailQuery = useQuery({
+    queryKey: queryKeys.personDetail(selectedId ?? ""),
+    enabled: Boolean(selectedId),
+    queryFn: async () => {
+      const id = String(selectedId);
+      const workload = await api.people.workload(id);
+      let reports: Person[] = [];
       try {
-        setReports(await api.people.reports(id));
+        reports = await api.people.reports(id);
       } catch {
-        setReports([]);
+        reports = [];
       }
-    } finally {
-      setLoadingPerson(false);
-    }
-  }
+      return { workload, reports };
+    },
+  });
+  const workload = detailQuery.data?.workload ?? null;
+  const reports = detailQuery.data?.reports ?? [];
 
-  async function search(e: FormEvent) {
+  function search(e: FormEvent) {
     e.preventDefault();
-    setRows(await api.people.list(q || undefined));
+    void listQuery.refetch();
   }
 
   return (
@@ -73,6 +75,7 @@ export function PeoplePage() {
         }
       />
       <ErrorMessage error={error} />
+      <ErrorMessage error={detailQuery.isError ? String((detailQuery.error as Error).message) : ""} />
 
       <div className="split split--left">
         <Card padded={false} className="side-stack" style={{ gap: 0 }}>
@@ -86,7 +89,9 @@ export function PeoplePage() {
               />
             </div>
           </form>
-          {rows.length === 0 ? (
+          {listQuery.isLoading ? (
+            <LoadingState />
+          ) : rows.length === 0 ? (
             <div className="pane-empty">
               <Bi en="No people found." fa="فردی یافت نشد." />
             </div>
@@ -96,8 +101,8 @@ export function PeoplePage() {
                 <li key={String(p.id)}>
                   <button
                     type="button"
-                    className={`row-item row-button${selected?.id === p.id ? " is-active" : ""}`}
-                    onClick={() => void openPerson(p)}
+                    className={`row-item row-button${selectedId === String(p.id) ? " is-active" : ""}`}
+                    onClick={() => setSelectedId(String(p.id))}
                   >
                     <Avatar name={String(p.full_name)} size={30} />
                     <span className="row-main">
@@ -123,6 +128,7 @@ export function PeoplePage() {
                 <div style={{ flex: 1 }}>
                   <h2>{String(selected.full_name)}</h2>
                   <Muted className="mono">{String(selected.email)}</Muted>
+                  <DateText value={selected.created_at} />
                 </div>
                 <Button variant="secondary" to="/communication">
                   <Icon name="message" size={14} />
@@ -130,7 +136,7 @@ export function PeoplePage() {
                 </Button>
               </div>
 
-              {loadingPerson && !workload ? (
+              {detailQuery.isLoading && !workload ? (
                 <LoadingState />
               ) : (
                 <>

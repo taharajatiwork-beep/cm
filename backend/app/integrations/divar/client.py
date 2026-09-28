@@ -120,6 +120,7 @@ class HttpDivarClient:
         settings = get_settings()
         self.base_url = (base_url or settings.divar_api_base).rstrip("/")
         self.token = token if token is not None else settings.divar_api_token
+        self.last_error: str | None = None
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -127,56 +128,53 @@ class HttpDivarClient:
             "Content-Type": "application/json",
         }
 
+    async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Up to 3 attempts. Last failure text is kept on last_error."""
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.request(
+                        method, f"{self.base_url}{path}", headers=self._headers(), **kwargs
+                    )
+                if response.status_code >= 500 and attempt < 2:
+                    self.last_error = response.text[:300]
+                    continue
+                self.last_error = None if response.status_code < 400 else response.text[:300]
+                return response
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                self.last_error = str(exc)[:300]
+        raise last_exc or RuntimeError(self.last_error or "divar request failed")
+
     async def health(self) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            r = await client.get(f"{self.base_url}/api/health")
-            r.raise_for_status()
-            return r.json()
+        r = await self._request("GET", "/api/health")
+        r.raise_for_status()
+        return r.json()
 
     async def create_product(self, product: dict[str, Any]) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(
-                f"{self.base_url}/api/products",
-                headers=self._headers(),
-                json=product,
-            )
-            if r.status_code >= 400:
-                raise ValueError(r.json().get("error") if r.headers.get("content-type", "").startswith("application/json") else r.text)
-            return r.json()
+        r = await self._request("POST", "/api/products", json=product)
+        if r.status_code >= 400:
+            raise ValueError(self.last_error or r.text)
+        return r.json()
 
     async def create_task(self, product_id: str) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(
-                f"{self.base_url}/api/tasks",
-                headers=self._headers(),
-                json={"productId": product_id},
-            )
-            if r.status_code >= 400:
-                body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-                raise ValueError(body.get("error") or r.text)
-            return r.json()
+        r = await self._request("POST", "/api/tasks", json={"productId": product_id})
+        if r.status_code >= 400:
+            raise ValueError(self.last_error or r.text)
+        return r.json()
 
     async def get_prefill(self, task_id: str) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            r = await client.get(
-                f"{self.base_url}/api/tasks/{task_id}/prefill",
-                headers=self._headers(),
-            )
-            if r.status_code >= 400:
-                body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-                raise ValueError(body.get("error") or r.text)
-            return r.json()
+        r = await self._request("GET", f"/api/tasks/{task_id}/prefill")
+        if r.status_code >= 400:
+            raise ValueError(self.last_error or r.text)
+        return r.json()
 
     async def list_tasks(self, status: str | None = None) -> list[dict[str, Any]]:
         params = {"status": status} if status else {}
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            r = await client.get(
-                f"{self.base_url}/api/tasks",
-                headers=self._headers(),
-                params=params,
-            )
-            r.raise_for_status()
-            return r.json().get("tasks") or []
+        r = await self._request("GET", "/api/tasks", params=params)
+        r.raise_for_status()
+        return r.json().get("tasks") or []
 
 
 _fake_singleton: FakeDivarClient | None = None

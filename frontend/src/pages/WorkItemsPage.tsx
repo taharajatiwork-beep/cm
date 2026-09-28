@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -20,6 +21,9 @@ import {
   Select,
 } from "../components/ui";
 import { Bi, useBi } from "../i18n";
+import { nextCursor } from "../lib/pagination";
+import { queryKeys } from "../lib/queryKeys";
+import { DateText } from "../components/DateText";
 import { StatusLabel } from "../ux";
 
 const EVENT_LABELS: Record<string, [string, string]> = {
@@ -43,22 +47,19 @@ const EVENT_LABELS: Record<string, [string, string]> = {
 
 export function WorkItemsPage() {
   const { has } = useAuth();
-  const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const canRead = has("work_item.read");
   const navigate = useNavigate();
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        if (has("work_item.read")) setRows(await api.workItems.list());
-      } catch (e) {
-        setError(String((e as Error).message));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [has]);
+  const listQuery = useInfiniteQuery({
+    queryKey: queryKeys.workItems(canRead),
+    enabled: canRead,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => api.workItems.page(pageParam),
+    getNextPageParam: (last) => nextCursor(last),
+  });
+  const rows = listQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const loading = listQuery.isLoading;
+  const error = listQuery.isError ? String((listQuery.error as Error).message) : "";
 
   return (
     <>
@@ -77,6 +78,11 @@ export function WorkItemsPage() {
         }
       />
       <ErrorMessage error={error} />
+      {listQuery.hasNextPage ? (
+        <Button variant="secondary" onClick={() => void listQuery.fetchNextPage()}>
+          <Bi en="Load more" fa="بیشتر" />
+        </Button>
+      ) : null}
       <Card padded={false}>
         {loading ? (
           <LoadingState />
@@ -123,56 +129,64 @@ export function WorkItemDetailPage() {
   const { id = "" } = useParams();
   const { has } = useAuth();
   const bi = useBi();
-  const [progress, setProgress] = useState<Awaited<ReturnType<typeof api.workItems.progress>> | null>(
-    null,
-  );
-  const [wi, setWi] = useState<Record<string, unknown> | null>(null);
-  const [timeline, setTimeline] = useState<Array<Record<string, unknown>>>([]);
-  const [conversations, setConversations] = useState<Array<Record<string, unknown>>>([]);
-  const [people, setPeople] = useState<Array<Record<string, unknown>>>([]);
   const [taskTitle, setTaskTitle] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState("");
+  const qc = useQueryClient();
 
-  async function reload() {
-    setProgress(await api.workItems.progress(id));
-    setWi(await api.workItems.get(id));
-    setTimeline(await api.workItems.timeline(id));
-    setConversations(await api.conversations.list({ workItemId: id }));
+  const detailQuery = useQuery({
+    queryKey: queryKeys.workItemDetail(id),
+    enabled: Boolean(id),
+    queryFn: async () => {
+      const [progress, wi, timeline, conversations, people] = await Promise.all([
+        api.workItems.progress(id),
+        api.workItems.get(id),
+        api.workItems.timeline(id),
+        api.conversations.list({ workItemId: id }),
+        api.people.list().catch(() => [] as Array<Record<string, unknown>>),
+      ]);
+      return { progress, wi, timeline, conversations, people };
+    },
+  });
+  const progress = detailQuery.data?.progress ?? null;
+  const wi = detailQuery.data?.wi ?? null;
+  const timeline = detailQuery.data?.timeline ?? [];
+  const conversations = detailQuery.data?.conversations ?? [];
+  const people = detailQuery.data?.people ?? [];
+  const queryError = detailQuery.isError ? String((detailQuery.error as Error).message) : "";
+
+  const invalidateDetail = () =>
+    qc.invalidateQueries({ queryKey: queryKeys.workItemsRoot });
+
+  const completeMutation = useMutation({
+    mutationFn: (taskId: string) => api.tasks.complete(taskId),
+    onSuccess: () => invalidateDetail(),
+    onError: (e) => setError(String((e as Error).message)),
+  });
+
+  function complete(taskId: string) {
+    completeMutation.mutate(taskId);
   }
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        await reload();
-        try {
-          setPeople(await api.people.list());
-        } catch {
-          setPeople([]);
-        }
-      } catch (e) {
-        setError(String((e as Error).message));
-      }
-    })();
-  }, [id]);
+  const addTaskMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.tasks.create(body),
+    onSuccess: () => {
+      setTaskTitle("");
+      setShowAdd(false);
+      invalidateDetail();
+    },
+    onError: (e) => setError(String((e as Error).message)),
+  });
 
-  async function complete(taskId: string) {
-    await api.tasks.complete(taskId);
-    await reload();
-  }
-
-  async function addTask(e: FormEvent) {
+  function addTask(e: FormEvent) {
     e.preventDefault();
-    await api.tasks.create({
+    addTaskMutation.mutate({
       title: taskTitle,
       work_item_id: id,
       assignee_ids: assigneeId ? [assigneeId] : [],
       priority: "HIGH",
     });
-    setTaskTitle("");
-    setShowAdd(false);
-    await reload();
   }
 
   function personName(uid: unknown) {
@@ -180,7 +194,7 @@ export function WorkItemDetailPage() {
     return p ? String(p.full_name) : String(uid).slice(0, 8);
   }
 
-  if (error) return <ErrorMessage error={error} />;
+  if (error || queryError) return <ErrorMessage error={error || queryError} />;
   if (!progress || !wi) return <LoadingState />;
 
   const nextTask = progress.tasks.find((t) => t.status !== "COMPLETED");
@@ -423,7 +437,7 @@ export function WorkItemDetailPage() {
                       <ListItem key={String(e.id)}>
                         <span>{label ? bi(label[0], label[1]) : bi("Updated", "به‌روزرسانی شد")}</span>
                         <div className="muted" style={{ fontSize: "0.72rem" }}>
-                          {new Date(String(e.created_at)).toLocaleString()}
+                          <DateText value={e.created_at} withTime />
                         </div>
                       </ListItem>
                     );

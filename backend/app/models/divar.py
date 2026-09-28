@@ -29,6 +29,7 @@ class DivarListing(Base):
     divar_product_id: Mapped[str] = mapped_column(String(64), nullable=False)
     divar_task_id: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(40), default="synced")  # synced | task_created | cancelled
+    last_error: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     prefill_json: Mapped[str | None] = mapped_column(Text)
 

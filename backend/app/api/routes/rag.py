@@ -187,6 +187,7 @@ async def hybrid_query(
             branch_id=body.branch_id,
             top_k=body.top_k,
             context_char_limit=body.context_char_limit,
+            scope=ctx.scope,
         )
     except AuthorizationError as e:
         raise handle_authz(e) from e

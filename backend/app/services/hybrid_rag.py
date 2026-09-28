@@ -255,6 +255,7 @@ class HybridRagService:
         branch_id: UUID | None = None,
         top_k: int = 8,
         context_char_limit: int = 4000,
+        scope=None,
     ) -> HybridResult:
         require_permission(actor_permissions, PermissionCode.RAG_READ)
         request_id = str(uuid.uuid4())
@@ -284,6 +285,7 @@ class HybridRagService:
                 brand=analyzed.brand,
                 model=analyzed.model,
                 limit=20,
+                scope=scope,
             )
 
         # Direct inventory fallback when brand/model known but SQL channel empty/unavailable

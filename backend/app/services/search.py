@@ -17,6 +17,7 @@ from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import PermissionCode, require_permission
+from app.core.scope import scope_clause
 from app.models import CommunicationCase, User, WorkItem
 from app.models.enums import CaseStatus, VehicleStatus, WorkItemStatus
 from app.models.inventory import Vehicle
@@ -45,6 +46,15 @@ class SearchService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    def _text_contains(self, column, token: str):
+        """ilike on SQLite; PostgreSQL tsvector when the engine is Postgres."""
+        bind = self.db.bind
+        if bind is not None and bind.dialect.name == "postgresql":
+            return func.to_tsvector("simple", func.coalesce(column, "")).bool_op("@@")(
+                func.plainto_tsquery("simple", token)
+            )
+        return column.ilike(f"%{token}%")
+
     async def search(
         self,
         *,
@@ -63,8 +73,10 @@ class SearchService:
         date_from: datetime | None = None,
         date_to: datetime | None = None,
         limit: int = 50,
+        scope=None,
     ) -> list[SearchHit]:
         require_permission(actor_permissions, PermissionCode.SEARCH)
+        self._scope = scope
         types = types or list(SearchEntityType)
         hits: list[SearchHit] = []
         q_norm = (q or "").strip()
@@ -154,6 +166,9 @@ class SearchService:
         date_to: datetime | None,
     ) -> list[SearchHit]:
         filters = [Vehicle.organization_id == organization_id]
+        scoped = scope_clause(Vehicle, getattr(self, "_scope", None))
+        if scoped is not None:
+            filters.append(scoped)
         match_kind = "filter"
         score = 1.0
 
@@ -196,17 +211,16 @@ class SearchService:
                 tokens = [q]
 
             def _token_match(tok: str):
-                like = f"%{tok}%"
                 return or_(
-                    Vehicle.vin.ilike(like),
-                    Vehicle.stock_number.ilike(like),
-                    Vehicle.brand.ilike(like),
-                    Vehicle.model.ilike(like),
-                    Vehicle.color.ilike(like),
-                    Vehicle.trim.ilike(like),
-                    Vehicle.plate_number.ilike(like),
-                    Vehicle.description.ilike(like),
-                    Vehicle.options.ilike(like),
+                    self._text_contains(Vehicle.vin, tok),
+                    self._text_contains(Vehicle.stock_number, tok),
+                    self._text_contains(Vehicle.brand, tok),
+                    self._text_contains(Vehicle.model, tok),
+                    self._text_contains(Vehicle.color, tok),
+                    self._text_contains(Vehicle.trim, tok),
+                    self._text_contains(Vehicle.plate_number, tok),
+                    self._text_contains(Vehicle.description, tok),
+                    self._text_contains(Vehicle.options, tok),
                 )
 
             if len(tokens) == 1:
@@ -265,6 +279,9 @@ class SearchService:
         date_to: datetime | None,
     ) -> list[SearchHit]:
         filters = [CommunicationCase.organization_id == organization_id]
+        _scoped = scope_clause(CommunicationCase, getattr(self, "_scope", None))
+        if _scoped is not None:
+            filters.append(_scoped)
         match_kind = "filter"
         score = 1.0
 
@@ -338,6 +355,9 @@ class SearchService:
         branch_id: UUID | None,
     ) -> list[SearchHit]:
         filters = [User.organization_id == organization_id, User.is_active.is_(True)]
+        _scoped = scope_clause(User, getattr(self, "_scope", None))
+        if _scoped is not None:
+            filters.append(_scoped)
         if branch_id:
             filters.append(User.branch_id == branch_id)
 
@@ -419,6 +439,9 @@ class SearchService:
         date_to: datetime | None,
     ) -> list[SearchHit]:
         filters = [WorkItem.organization_id == organization_id]
+        _scoped = scope_clause(WorkItem, getattr(self, "_scope", None))
+        if _scoped is not None:
+            filters.append(_scoped)
         if status:
             try:
                 filters.append(WorkItem.status == WorkItemStatus(status))

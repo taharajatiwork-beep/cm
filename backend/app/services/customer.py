@@ -49,8 +49,13 @@ class CustomerService:
         *,
         q: str | None = None,
         limit: int = 50,
+        scope=None,
     ) -> list[Customer]:
-        query = select(Customer).where(Customer.organization_id == organization_id)
+        from app.core.scope import apply_scope
+
+        query = apply_scope(
+            select(Customer).where(Customer.organization_id == organization_id), Customer, scope
+        )
         if q:
             like = f"%{q}%"
             query = query.where(
@@ -72,6 +77,7 @@ class CustomerService:
         phone: str | None = None,
         email: str | None = None,
         notes: str | None = None,
+        stage: str | None = None,
     ) -> Customer:
         require_permission(actor_permissions, PermissionCode.CUSTOMER_WRITE)
         customer = await self.get(customer_id)
@@ -85,6 +91,8 @@ class CustomerService:
             customer.email = email.strip().lower() or None
         if notes is not None:
             customer.notes = notes
+        if stage is not None:
+            customer.stage = stage.strip() or "lead"
         await self.db.flush()
         return customer
 

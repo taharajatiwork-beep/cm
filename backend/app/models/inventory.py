@@ -129,3 +129,15 @@ class InventoryRequest(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class VehiclePhoto(Base):
+    __tablename__ = "vehicle_photos"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    vehicle_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("vehicles.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

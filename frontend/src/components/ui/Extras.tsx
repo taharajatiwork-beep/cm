@@ -96,7 +96,7 @@ export function Sheet({
       <aside className="sheet">
         <header className="sheet-head">
           <h2>{title}</h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="close">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="بستن">
             <Icon name="x" />
           </button>
         </header>

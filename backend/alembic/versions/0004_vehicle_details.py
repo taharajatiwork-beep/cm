@@ -27,7 +27,12 @@ _COLS = [
 
 
 def upgrade() -> None:
+    from app.db.migration_guard import column_exists
+
+    bind = op.get_bind()
     for name, col_type in _COLS:
+        if column_exists(bind, "vehicles", name):
+            continue
         op.add_column("vehicles", sa.Column(name, col_type, nullable=True))
 
 

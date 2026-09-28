@@ -1,5 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { useAuth } from "../auth";
+import { DateText } from "../components/DateText";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 import {
   Avatar,
   Button,
@@ -17,12 +21,15 @@ import {
   TextArea,
 } from "../components/ui";
 import { Bi, useBi } from "../i18n";
+import { nextCursor } from "../lib/pagination";
+import { queryKeys } from "../lib/queryKeys";
 
 type Customer = Record<string, unknown>;
 
 export function CustomersPage() {
   const bi = useBi();
-  const [rows, setRows] = useState<Customer[]>([]);
+  const { has } = useAuth();
+  const confirm = useConfirm();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -31,38 +38,45 @@ export function CustomersPage() {
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
 
-  async function load(q?: string) {
-    setRows(await api.customers.list(q));
-  }
+  const listQuery = useInfiniteQuery({
+    queryKey: queryKeys.customers(query),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => api.customers.page(query, pageParam),
+    getNextPageParam: (last) => nextCursor(last),
+  });
+  const rows = listQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const listError = listQuery.isError ? String((listQuery.error as Error).message) : "";
 
-  useEffect(() => {
-    void load().catch((e) => setError(String((e as Error).message)));
-  }, []);
-
-  async function create(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await api.customers.create({
-        full_name: fullName,
-        phone: phone || null,
-        email: email || null,
-        notes: notes || null,
-      });
+  const createMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.customers.create(body),
+    onSuccess: () => {
       setFullName("");
       setPhone("");
       setEmail("");
       setNotes("");
       setShowAdd(false);
-      await load(query || undefined);
-    } catch (err) {
-      setError(String((err as Error).message));
-    } finally {
-      setBusy(false);
-    }
+      void qc.invalidateQueries({ queryKey: queryKeys.customersRoot });
+    },
+    onError: (err) => setError(String((err as Error).message)),
+  });
+  const busy = createMutation.isPending;
+
+  function load(q?: string) {
+    if (q !== undefined && q !== query) setQuery(q);
+    return listQuery.refetch();
+  }
+
+  function create(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    createMutation.mutate({
+      full_name: fullName,
+      phone: phone || null,
+      email: email || null,
+      notes: notes || null,
+    });
   }
 
   return (
@@ -82,7 +96,7 @@ export function CustomersPage() {
           </Button>
         }
       />
-      <ErrorMessage error={error} />
+      <ErrorMessage error={error || listError} />
 
       <div className="split">
         <Card padded={false}>
@@ -178,6 +192,57 @@ export function CustomersPage() {
                   <div>
                     <dt>{bi("Email", "ایمیل")}</dt>
                     <dd>{String(selected.email || "—")}</dd>
+                  </div>
+                  <div>
+                    <dt>{bi("Added", "ثبت")}</dt>
+                    <dd>
+                      <DateText value={selected.created_at} />
+                    </dd>
+                  </div>
+                  <div className="row">
+                    {has("org.admin") ? (
+                      <>
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            void api.customers.exportJson(String(selected.id)).then((body) => {
+                              const blob = new Blob([JSON.stringify(body)], { type: "application/json" });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = "customer.json";
+                              a.click();
+                            });
+                          }}
+                        >
+                          <Bi en="Export" fa="خروجی" />
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            void (async () => {
+                              const first = await confirm(
+                                "ناشناس کردن مشتری",
+                                "نام، تلفن و ایمیل این مشتری پاک می‌شود.",
+                                "ادامه",
+                              );
+                              if (!first) return;
+                              const second = await confirm(
+                                "تأیید نهایی",
+                                "این کار برگشت‌پذیر نیست. دوباره تأیید کنید.",
+                                "ناشناس کن",
+                              );
+                              if (!second || !selected) return;
+                              await api.customers.erase(String(selected.id));
+                              setSelected(null);
+                              void qc.invalidateQueries({ queryKey: queryKeys.customersRoot });
+                            })();
+                          }}
+                        >
+                          <Bi en="Erase" fa="ناشناس" />
+                        </Button>
+                      </>
+                    ) : null}
                   </div>
                   {selected.notes ? (
                     <div>

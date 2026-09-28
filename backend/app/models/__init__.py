@@ -51,6 +51,18 @@ from app.models.knowledge import Document, DocumentChunk  # noqa: F401
 from app.models.divar import DivarListing  # noqa: F401
 from app.models.customer import Customer  # noqa: F401
 from app.models.campaign import Campaign  # noqa: F401
+from app.models.enterprise import (  # noqa: F401
+    AiUsage,
+    ApprovalRequest,
+    ApprovalStep,
+    IdempotencyRecord,
+    JobLock,
+    RefreshToken,
+    KpiSnapshot,
+    ReportSchedule,
+    StoredFile,
+    UserTeam,
+)
 
 
 def _uuid() -> uuid.UUID:
@@ -169,6 +181,10 @@ class User(Base):
     team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teams.id"))
     role_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("roles.id"))
     manager_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    failed_login_count: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    totp_secret: Mapped[str | None] = mapped_column(String(64))
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     organization: Mapped[Organization] = relationship(back_populates="users")
@@ -227,6 +243,8 @@ class Conversation(Base):
     customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customers.id"))  # CRM
     campaign_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("campaigns.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # آرشیو: پر شدن این فلد یعنی آرشیو؛ topic دست نمی‌خورد (Consistency / مرحله ۶)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     participants: Mapped[list[ConversationParticipant]] = relationship(back_populates="conversation")
     messages: Mapped[list[Message]] = relationship(back_populates="conversation")

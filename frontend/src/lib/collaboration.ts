@@ -1,4 +1,5 @@
 /** Client-side helpers for collaboration-first UX (no jargon). */
+import { formatJalali } from "../jalali";
 
 export type PersonMap = Map<string, string>;
 
@@ -13,7 +14,11 @@ export function personName(map: PersonMap, id: unknown, fallback = "—"): strin
   return map.get(String(id)) || String(id).slice(0, 8);
 }
 
-export function formatDeadline(value: unknown, bi: (en: string, fa: string) => string): string | null {
+export function formatDeadline(
+  value: unknown,
+  bi: (en: string, fa: string) => string,
+  locale: "en" | "fa" = "en",
+): string | null {
   if (!value) return null;
   const d = new Date(String(value));
   if (Number.isNaN(d.getTime())) return null;
@@ -21,7 +26,12 @@ export function formatDeadline(value: unknown, bi: (en: string, fa: string) => s
   const sameDay = d.toDateString() === now.toDateString();
   const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   if (sameDay) return `${bi("Due", "مهلت")}: ${time}`;
-  return `${bi("Due", "مهلت")}: ${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${time}`;
+  // Persian UI shows the Jalali date; English UI keeps the Gregorian one.
+  const date =
+    locale === "fa"
+      ? formatJalali(d)
+      : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return `${bi("Due", "مهلت")}: ${date ?? ""} ${time}`.trim();
 }
 
 export function isOverdue(value: unknown, status?: unknown): boolean {

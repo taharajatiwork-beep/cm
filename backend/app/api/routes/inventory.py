@@ -1,10 +1,11 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_current_user, handle_authz
+from app.api.pagination import page
 from app.core.permissions import AuthorizationError, PermissionCode, require_permission
 from app.db.session import get_db
 from app.models.enums import VehicleStatus
@@ -108,6 +109,12 @@ async def import_vehicles(
     data = await file.read()
     if not data:
         raise HTTPException(400, "Empty file")
+    from app.core.files import UploadRejected, save_upload
+
+    try:
+        save_upload(file.filename or "vehicles.csv", file.content_type, data)
+    except UploadRejected as e:
+        raise HTTPException(400, str(e)) from e
     try:
         payloads, parse_errors = parse_vehicle_file_with_errors(file.filename or "upload.csv", data)
     except ValueError as e:
@@ -152,6 +159,9 @@ async def search_vehicles(
     vin: str | None = None,
     stock_number: str | None = None,
     q: str | None = Query(None, description="Free-text brand/model/vin/stock"),
+    envelope: bool = False,
+    cursor: str | None = None,
+    limit: int = 20,
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -159,7 +169,7 @@ async def search_vehicles(
         require_permission(ctx.permissions, PermissionCode.INVENTORY_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    return await InventoryService(db).search_vehicles(
+    rows = await InventoryService(db).search_vehicles(
         ctx.organization_id,
         brand=brand,
         model=model,
@@ -168,7 +178,12 @@ async def search_vehicles(
         vin=vin,
         stock_number=stock_number,
         q=q,
+        scope=ctx.scope,
     )
+    if envelope:
+        dumped = [VehicleOut.model_validate(row).model_dump(mode="json") for row in rows]
+        return JSONResponse(page(dumped, cursor=cursor, limit=limit))
+    return rows
 
 
 @router.get("/vehicles/{vehicle_id}", response_model=VehicleOut)
@@ -289,3 +304,35 @@ async def create_inventory_request(
         )
     except AuthorizationError as e:
         raise handle_authz(e) from e
+
+
+@router.get("/vehicles/{vehicle_id}/divar")
+async def vehicle_divar(
+    vehicle_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import select
+
+    from app.models.divar import DivarListing
+
+    rows = list(
+        (
+            await db.execute(
+                select(DivarListing).where(
+                    DivarListing.vehicle_id == vehicle_id,
+                    DivarListing.organization_id == ctx.organization_id,
+                )
+            )
+        ).scalars()
+    )
+    return [
+        {
+            "id": str(row.id),
+            "status": row.status,
+            "divar_task_id": row.divar_task_id,
+            "last_error": row.last_error,
+            "title": row.title,
+        }
+        for row in rows
+    ]

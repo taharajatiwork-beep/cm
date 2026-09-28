@@ -22,11 +22,12 @@ from app.core.logging import get_logger
 from app.core.permissions import PermissionCode
 from app.core.timeutil import as_utc, utc_now
 from app.integrations.telegram import messages as msg
-from app.integrations.telegram.callbacks import encode_callback, match_uuid_prefix, verify_callback
+from app.integrations.telegram.callbacks import encode_callback, is_approval_callback, match_uuid_prefix, verify_callback
 from app.integrations.telegram.client import FakeTelegramClient, TelegramClient
 from app.integrations.telegram.outbox import inline_keyboard
 from app.integrations.telegram.resolver import EntityResolver
 from app.models import Conversation, Message, Task, TaskAssignee, User
+from app.models.enterprise import ApprovalRequest
 from app.models.enums import Channel, MessageType, Priority, TaskStatus
 from app.models.inventory import Vehicle
 from app.models.telegram import (
@@ -351,6 +352,19 @@ class TelegramAdapter:
 
         action, et_prefix, short_id = parsed
 
+        if is_approval_callback(action, et_prefix):
+            return await self._handle_approval_decision(
+                user,
+                account,
+                action,
+                short_id,
+                cq_id,
+                chat_id,
+                message_id,
+                lang,
+                original_text=str(message.get("text") or ""),
+            )
+
         if action == "done" and et_prefix == "task":
             task = await self._find_task_by_prefix(user.organization_id, short_id)
             if not task:
@@ -410,6 +424,82 @@ class TelegramAdapter:
                 return t
         return None
 
+    async def _find_approval_by_prefix(
+        self, organization_id: UUID, short_id: str
+    ) -> ApprovalRequest | None:
+        rows = (
+            await self.db.execute(
+                select(ApprovalRequest)
+                .where(ApprovalRequest.organization_id == organization_id)
+                .order_by(ApprovalRequest.created_at.desc())
+                .limit(200)
+            )
+        ).scalars().all()
+        for row in rows:
+            if match_uuid_prefix(short_id, row.id):
+                return row
+        return None
+
+    async def _handle_approval_decision(
+        self,
+        user: User,
+        account: TelegramAccount,
+        action: str,
+        short_id: str,
+        cq_id: str,
+        chat_id: int,
+        message_id: Any,
+        lang: str,
+        original_text: str = "",
+    ) -> AdapterResult:
+        """Approve / reject from an inline button. Telegram is not the source of truth."""
+        from app.services.enterprise_ops import EnterpriseService
+
+        organization_id = account.organization_id
+        row = await self._find_approval_by_prefix(organization_id, short_id)
+        if not row:
+            text = msg.approval_not_found(lang=lang)
+            await self.client.answer_callback_query(cq_id, text=text, show_alert=True)
+            return AdapterResult(ok=False, reply_text=text)
+
+        decision = "approved" if action == "approve" else "rejected"
+        try:
+            decided = await EnterpriseService(self.db).decide(
+                organization_id=organization_id,
+                request_id=row.id,
+                actor_id=user.id,
+                decision=decision,
+            )
+        except ValueError as exc:
+            reason = str(exc)
+            if "approver" in reason.lower():
+                text = msg.approval_not_approver(lang=lang)
+            elif "already" in reason.lower():
+                text = msg.approval_already_decided(lang=lang)
+            else:
+                text = msg.approval_not_found(lang=lang)
+            await self.client.answer_callback_query(cq_id, text=text, show_alert=True)
+            return AdapterResult(ok=False, reply_text=text)
+
+        final = decided.status != "pending"
+        if decision == "rejected":
+            reply = msg.approval_rejected(lang=lang)
+        else:
+            reply = msg.approval_step_recorded(final, lang=lang)
+            if not final:
+                from app.services.enterprise_ops import notify_current_approver
+
+                await notify_current_approver(self.db, decided)
+        await self.client.answer_callback_query(cq_id, text=reply)
+        if message_id and chat_id and final:
+            # Drop the buttons once the request is decided.
+            await self.client.edit_message_text(
+                chat_id,
+                int(message_id),
+                f"{original_text}\n\n{reply}".strip(),
+                reply_markup={"inline_keyboard": []},
+            )
+        return AdapterResult(ok=True, reply_text=reply)
     async def _find_confirm_by_prefix(self, user_id: UUID, short_id: str) -> TelegramPendingConfirm | None:
         rows = (
             await self.db.execute(

@@ -1,10 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_current_user, get_org_by_slug
 from app.core.permissions import PermissionCode, require_any_permission, require_permission
 from app.core.security import create_access_token
+from app.services.sessions import (
+    issue_session,
+    login_allowed,
+    record_login_failure,
+    record_login_success,
+    revoke_all,
+    rotate_refresh,
+)
 from app.db.session import get_db
 from app.schemas import (
     BootstrapIn,
@@ -135,13 +144,103 @@ async def bootstrap(body: BootstrapIn, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/auth/login", response_model=TokenOut)
-async def login(body: LoginIn, db: AsyncSession = Depends(get_db)):
+async def login(body: LoginIn, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    if not login_allowed(request.client.host if request.client else "unknown", body.email):
+        raise HTTPException(429, "Too many login attempts")
     org = await get_org_by_slug(db, body.organization_slug)
     svc = OrgService(db)
     user = await svc.authenticate(org.id, body.email, body.password)
     if not user:
+        await record_login_failure(db, org.id, body.email)
         raise HTTPException(401, "Invalid credentials")
-    return TokenOut(access_token=create_access_token(user.id, extra={"org_id": str(org.id)}))
+    if user.locked_until is not None:
+        from datetime import UTC, datetime
+
+        locked = user.locked_until if user.locked_until.tzinfo else user.locked_until.replace(tzinfo=UTC)
+        if locked > datetime.now(UTC):
+            raise HTTPException(423, "Account locked")
+    if user.totp_enabled:
+        from app.core.security import verify_totp
+
+        code = request.headers.get("x-totp-code", "")
+        if not verify_totp(user.totp_secret or "", code):
+            raise HTTPException(401, "Invalid authenticator code")
+    await record_login_success(db, user)
+    access, refresh = await issue_session(db, user)
+    _set_refresh_cookie(response, refresh)
+    return TokenOut(access_token=access)
+
+
+class TotpEnableIn(BaseModel):
+    code: str
+
+
+@router.post("/auth/totp/setup")
+async def totp_setup(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.core.security import new_totp_secret
+
+    secret = new_totp_secret()
+    ctx.user.totp_secret = secret
+    ctx.user.totp_enabled = False
+    otpauth = f"otpauth://totp/CM:{ctx.user.email}?secret={secret}&issuer=CM"
+    return {"secret": secret, "otpauth": otpauth, "enabled": False}
+
+
+@router.post("/auth/totp/enable")
+async def totp_enable(
+    body: TotpEnableIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.security import verify_totp
+
+    if not ctx.user.totp_secret or not verify_totp(ctx.user.totp_secret, body.code):
+        raise HTTPException(400, "Invalid authenticator code")
+    ctx.user.totp_enabled = True
+    return {"enabled": True}
+
+
+def _set_refresh_cookie(response: Response, refresh: str) -> None:
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    response.set_cookie(
+        "cm_refresh",
+        refresh,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        max_age=settings.refresh_token_expire_days * 86400,
+        path="/",
+    )
+
+
+@router.post("/auth/refresh", response_model=TokenOut)
+async def refresh_session(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    raw = request.cookies.get("cm_refresh")
+    if not raw:
+        raise HTTPException(401, "No refresh cookie")
+    pair = await rotate_refresh(db, raw)
+    if not pair:
+        raise HTTPException(401, "Refresh token revoked")
+    access, refresh = pair
+    _set_refresh_cookie(response, refresh)
+    return TokenOut(access_token=access)
+
+
+@router.post("/auth/logout")
+async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    raw = request.cookies.get("cm_refresh")
+    if raw:
+        await rotate_refresh(db, raw, revoke_only=True)
+    response.delete_cookie("cm_refresh", path="/")
+    return {"ok": True}
+
+
+@router.post("/auth/logout-all")
+async def logout_all(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await revoke_all(db, ctx.user.id)
+    return {"ok": True}
 
 
 @router.get("/auth/me", response_model=MeOut)
@@ -197,17 +296,27 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
 ):
     require_permission(ctx.permissions, PermissionCode.USER_WRITE)
-    return await OrgService(db).create_user(
-        organization_id=ctx.organization_id,
-        email=body.email,
-        full_name=body.full_name,
-        password=body.password,
-        role_id=body.role_id,
-        branch_id=body.branch_id,
-        department_id=body.department_id,
-        team_id=body.team_id,
-        manager_id=body.manager_id,
-    )
+    try:
+        return await OrgService(db).create_user(
+            organization_id=ctx.organization_id,
+            email=body.email,
+            full_name=body.full_name,
+            password=body.password,
+            role_id=body.role_id,
+            branch_id=body.branch_id,
+            department_id=body.department_id,
+            team_id=body.team_id,
+            manager_id=body.manager_id,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.get("/org/permissions")
+async def list_permission_codes(ctx: AuthContext = Depends(get_current_user)):
+    """Every permission code the system knows, for the role editor UI."""
+    require_permission(ctx.permissions, PermissionCode.ORG_ADMIN)
+    return sorted(p.value for p in PermissionCode)
 
 
 @router.get("/org/roles")
@@ -295,7 +404,7 @@ async def list_people(
     require_any_permission(
         ctx.permissions, PermissionCode.USER_READ, PermissionCode.WORK_ITEM_READ
     )
-    return await OrgService(db).list_people(ctx.organization_id, q=q)
+    return await OrgService(db).list_people(ctx.organization_id, q=q, scope=ctx.scope)
 
 
 @router.get("/people/{user_id}", response_model=UserOut)

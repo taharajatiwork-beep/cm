@@ -1,0 +1,97 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cm
+          POSTGRES_PASSWORD: cm
+          POSTGRES_DB: cm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cm -d cm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: backend
+        run: pip install -e ".[dev]"
+      - name: Ruff lint
+        working-directory: backend
+        run: pip install ruff && ruff check app --select E9,F63,F821,F401
+      - name: Mypy (scope, sessions, enterprise ops)
+        working-directory: backend
+        run: pip install mypy && mypy app/core/scope.py app/services/sessions.py app/services/enterprise_ops.py
+      - name: Dependency audit
+        working-directory: backend
+        continue-on-error: true
+        run: pip install pip-audit && pip-audit
+      - name: Pytest
+        working-directory: backend
+        env:
+          APP_ENV: development
+          LLM_PROVIDER: rules
+          POSTGRES_TEST_URL: postgresql+asyncpg://cm:cm@localhost:5432/cm
+        run: pytest -q --tb=short
+      - name: Alembic upgrade and schema check
+        working-directory: backend
+        env:
+          APP_ENV: development
+          DATABASE_URL: postgresql+asyncpg://cm:cm@localhost:5432/cm
+          SECRET_KEY: ci-secret-not-a-placeholder-value
+          TELEGRAM_MODE: "off"
+          TELEGRAM_BOT_TOKEN: ""
+        run: alembic upgrade head && alembic check
+      - name: Postgres smoke
+        working-directory: backend
+        env:
+          POSTGRES_TEST_URL: postgresql://cm:cm@localhost:5432/cm
+        run: python scripts/postgres_smoke.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - working-directory: frontend
+        run: npm ci
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc -b --pretty false
+      - name: Test
+        working-directory: frontend
+        run: npm test
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Backend for e2e
+        working-directory: backend
+        run: pip install -e ".[dev]"
+      - name: Playwright
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium && npm run e2e
+      - name: npm audit
+        working-directory: frontend
+        continue-on-error: true
+        run: npm audit --audit-level=high

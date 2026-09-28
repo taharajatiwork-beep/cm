@@ -131,12 +131,16 @@ class DivarService:
         task_id: str | None = None
         validation_errors: list[Any] = []
         task_status: str | None = None
+        last_error: str | None = None
         if create_task:
-            task_resp = await self.client.create_task(product_id)
-            task = task_resp.get("task") or task_resp
-            task_id = task.get("id")
-            validation_errors = task.get("validationErrors") or []
-            task_status = task.get("status")
+            try:
+                task_resp = await self.client.create_task(product_id)
+                task = task_resp.get("task") or task_resp
+                task_id = task.get("id")
+                validation_errors = task.get("validationErrors") or []
+                task_status = task.get("status")
+            except Exception as exc:
+                last_error = (getattr(self.client, "last_error", None) or str(exc))[:500]
 
         work_item_id = None
         case_id = None
@@ -189,6 +193,7 @@ class DivarService:
             divar_task_id=task_id,
             status="task_created" if task_id else "synced",
             title=product_payload["title"],
+            last_error=last_error,
             prefill_json=json.dumps(product_payload, ensure_ascii=False),
             work_item_id=work_item_id,
             case_id=case_id,

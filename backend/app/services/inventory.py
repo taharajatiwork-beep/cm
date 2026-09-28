@@ -167,8 +167,12 @@ class InventoryService:
         vin: str | None = None,
         stock_number: str | None = None,
         q: str | None = None,
+        scope=None,
     ) -> list[Vehicle]:
+        from app.core.scope import apply_scope
+
         query = select(Vehicle).where(Vehicle.organization_id == organization_id)
+        query = apply_scope(query, Vehicle, scope)
         if brand:
             query = query.where(Vehicle.brand.ilike(f"%{brand}%"))
         if model:

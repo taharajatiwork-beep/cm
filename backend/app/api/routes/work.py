@@ -1,10 +1,13 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_current_user, handle_authz
+from app.api.pagination import page
 from app.core.permissions import AuthorizationError, PermissionCode, require_permission
 from app.db.session import get_db
 from app.models import Notification
@@ -162,7 +165,7 @@ async def work_item_timeline(
         require_permission(ctx.permissions, PermissionCode.EVENT_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    return await TimelineService(db).for_work_item(work_item_id)
+    return await TimelineService(db).for_work_item(work_item_id, organization_id=ctx.organization_id)
 
 
 @router.get("/work-items")
@@ -170,6 +173,9 @@ async def list_work_items(
     status: str | None = None,
     owner_id: UUID | None = None,
     vehicle_id: UUID | None = None,
+    envelope: bool = False,
+    cursor: str | None = None,
+    limit: int = 20,
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -184,7 +190,14 @@ async def list_work_items(
         status=WorkItemStatus(status) if status else None,
         owner_id=owner_id,
         vehicle_id=vehicle_id,
+        scope=ctx.scope,
     )
+    if envelope:
+        dumped = [
+            {"id": str(item.id), "title": item.title, "status": getattr(item.status, "value", item.status)}
+            for item in items
+        ]
+        return JSONResponse(page(dumped, cursor=cursor, limit=limit))
     return items
 
 
@@ -218,6 +231,10 @@ async def list_conversations(
     work_item_id: UUID | None = None,
     case_id: UUID | None = None,
     campaign_id: UUID | None = None,
+    archived: bool = False,
+    envelope: bool = False,
+    cursor: str | None = None,
+    limit: int = 20,
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -225,12 +242,34 @@ async def list_conversations(
         require_permission(ctx.permissions, PermissionCode.CONVERSATION_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    return await CommunicationService(db).list_conversations(
+    service = CommunicationService(db)
+    rows = await service.list_conversations(
         ctx.organization_id,
         work_item_id=work_item_id,
         case_id=case_id,
         campaign_id=campaign_id,
+        scope=ctx.scope,
+        archived=archived,
     )
+    latest = await service.last_messages([row.id for row in rows])
+    listed = []
+    for row in rows:
+        text, sender_id, sent_at = latest.get(row.id, (None, None, None))
+        listed.append(
+            ConversationOut.model_validate(row).model_copy(
+                update={
+                    "participant_ids": [p.user_id for p in row.participants],
+                    "last_message_text": text,
+                    "last_sender_id": sender_id,
+                    "last_message_at": sent_at,
+                    "needs_reply": sender_id is not None and sender_id != ctx.user.id,
+                }
+            )
+        )
+    if envelope:
+        dumped = [row.model_dump(mode="json") for row in listed]
+        return JSONResponse(page(dumped, cursor=cursor, limit=limit))
+    return listed
 
 
 @router.get("/tasks")
@@ -254,6 +293,7 @@ async def list_tasks(
         assignee_id=assignee_id,
         status=TaskStatus(status) if status else None,
         overdue_only=overdue_only,
+        scope=ctx.scope,
     )
     return tasks
 
@@ -316,7 +356,7 @@ async def task_timeline(
         require_permission(ctx.permissions, PermissionCode.EVENT_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    return await TimelineService(db).for_entity("task", task_id)
+    return await TimelineService(db).for_entity("task", task_id, organization_id=ctx.organization_id)
 
 
 @router.get("/cases/{case_id}/timeline", response_model=list[EventOut])
@@ -329,7 +369,7 @@ async def case_timeline(
         require_permission(ctx.permissions, PermissionCode.EVENT_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    return await TimelineService(db).for_entity("case", case_id)
+    return await TimelineService(db).for_entity("case", case_id, organization_id=ctx.organization_id)
 
 
 @router.get("/users/{user_id}/workload")
@@ -342,7 +382,12 @@ async def user_workload(
         require_permission(ctx.permissions, PermissionCode.TASK_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    return await WorkService(db).user_workload(user_id)
+    from app.models import User
+
+    target = await db.get(User, user_id)
+    if not target or target.organization_id != ctx.organization_id:
+        raise HTTPException(404, "User not found")
+    return await WorkService(db).user_workload(user_id, organization_id=ctx.organization_id)
 
 
 @router.get("/cases", response_model=list[CaseOut])
@@ -362,6 +407,7 @@ async def list_cases(
         case_type=type,
         status=status,
         owner_id=owner_id,
+        scope=ctx.scope,
     )
 
 
@@ -534,6 +580,78 @@ async def list_notifications(
     return list(result.scalars().all())
 
 
+@router.post("/notifications/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(Notification, notification_id)
+    if not row or row.user_id != ctx.user.id:
+        raise HTTPException(404, "Notification not found")
+    row.is_read = True
+    return {"id": str(row.id), "is_read": True}
+
+
+@router.post("/conversations/{conversation_id}/archive")
+async def archive_conversation(
+    conversation_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models import Conversation
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.CONVERSATION_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    row = await db.get(Conversation, conversation_id)
+    if not row or row.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Conversation not found")
+    row.archived_at = datetime.now(UTC)
+    return {"id": str(row.id), "archived": True}
+
+
+@router.post("/conversations/{conversation_id}/unarchive")
+async def unarchive_conversation(
+    conversation_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models import Conversation
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.CONVERSATION_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    row = await db.get(Conversation, conversation_id)
+    if not row or row.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Conversation not found")
+    row.archived_at = None
+    return {"id": str(row.id), "archived": False}
+
+
+@router.post("/conversations/{conversation_id}/participants")
+async def add_conversation_participant(
+    conversation_id: UUID,
+    body: dict,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.CONVERSATION_WRITE)
+        row = await CommunicationService(db).add_participant(
+            organization_id=ctx.organization_id,
+            conversation_id=conversation_id,
+            user_id=UUID(body["user_id"]),
+        )
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    except (ValueError, KeyError) as e:
+        raise HTTPException(404, str(e)) from e
+    return {"id": str(row.id), "user_id": str(row.user_id)}
+
+
 @router.get("/timeline/{entity_type}/{entity_id}", response_model=list[EventOut])
 async def entity_timeline(
     entity_type: str,
@@ -545,7 +663,9 @@ async def entity_timeline(
         require_permission(ctx.permissions, PermissionCode.EVENT_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    return await TimelineService(db).for_entity(entity_type, entity_id)
+    return await TimelineService(db).for_entity(
+        entity_type, entity_id, organization_id=ctx.organization_id
+    )
 
 
 @router.get("/timeline/users/{user_id}", response_model=list[EventOut])
@@ -558,4 +678,4 @@ async def user_timeline(
         require_permission(ctx.permissions, PermissionCode.EVENT_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    return await TimelineService(db).for_user_activity(user_id)
+    return await TimelineService(db).for_user_activity(user_id, organization_id=ctx.organization_id)

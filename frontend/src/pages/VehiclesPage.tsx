@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
+import { DateText } from "../components/DateText";
 import { useAuth } from "../auth";
 import {
   Button,
@@ -21,6 +23,8 @@ import {
   TextArea,
 } from "../components/ui";
 import { Bi, useBi } from "../i18n";
+import { nextCursor } from "../lib/pagination";
+import { queryKeys } from "../lib/queryKeys";
 import { StatusLabel } from "../ux";
 
 type VehicleForm = {
@@ -89,79 +93,76 @@ export function VehiclesPage() {
   const { has } = useAuth();
   const bi = useBi();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
   const [q, setQ] = useState("");
   const [error, setError] = useState("");
   const [importMsg, setImportMsg] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [form, setForm] = useState<VehicleForm>(emptyForm);
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const canRead = has("inventory.read");
 
-  async function load(query = q) {
-    setLoading(true);
-    setError("");
-    try {
-      setRows(await api.vehicles.list(query));
-    } catch (e) {
-      setError(String((e as Error).message));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (has("inventory.read")) void load("");
-  }, [has]);
+  // Filter text is part of the key: every search is its own cache entry.
+  const listQuery = useInfiniteQuery({
+    queryKey: queryKeys.vehicles(q, canRead),
+    enabled: canRead,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => api.vehicles.page(q, pageParam),
+    getNextPageParam: (last) => nextCursor(last),
+  });
+  const rows = listQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const loading = listQuery.isLoading;
+  const listError = listQuery.isError ? String((listQuery.error as Error).message) : "";
+  const invalidateVehicles = () => qc.invalidateQueries({ queryKey: queryKeys.vehiclesRoot });
 
   function setField<K extends keyof VehicleForm>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  async function create(e: FormEvent) {
+  const createMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.vehicles.create(body),
+    onSuccess: (v) => {
+      setShowAdd(false);
+      void invalidateVehicles();
+      navigate(`/vehicles/${v.id}`);
+    },
+    onError: (err) => setError(String((err as Error).message)),
+  });
+
+  function create(e: FormEvent) {
     e.preventDefault();
     setError("");
-    try {
-      const v = await api.vehicles.create({
-        vin: form.vin,
-        brand: form.brand,
-        model: form.model,
-        year: Number(form.year),
-        stock_number: strOrNull(form.stock_number),
-        color: strOrNull(form.color),
-        trim: strOrNull(form.trim),
-        mileage: numOrNull(form.mileage),
-        sale_price: numOrNull(form.sale_price),
-        purchase_price: numOrNull(form.purchase_price),
-        body_type: strOrNull(form.body_type),
-        transmission: strOrNull(form.transmission),
-        fuel_type: strOrNull(form.fuel_type),
-        engine: strOrNull(form.engine),
-        plate_number: strOrNull(form.plate_number),
-        doors: numOrNull(form.doors),
-        seats: numOrNull(form.seats),
-        options: strOrNull(form.options),
-        exterior_condition: strOrNull(form.exterior_condition),
-        interior_condition: strOrNull(form.interior_condition),
-        description: strOrNull(form.description),
-        notes: strOrNull(form.notes),
-      });
-      navigate(`/vehicles/${v.id}`);
-    } catch (err) {
-      setError(String((err as Error).message));
-    }
+    createMutation.mutate({
+      vin: form.vin,
+      brand: form.brand,
+      model: form.model,
+      year: Number(form.year),
+      stock_number: strOrNull(form.stock_number),
+      color: strOrNull(form.color),
+      trim: strOrNull(form.trim),
+      mileage: numOrNull(form.mileage),
+      sale_price: numOrNull(form.sale_price),
+      purchase_price: numOrNull(form.purchase_price),
+      body_type: strOrNull(form.body_type),
+      transmission: strOrNull(form.transmission),
+      fuel_type: strOrNull(form.fuel_type),
+      engine: strOrNull(form.engine),
+      plate_number: strOrNull(form.plate_number),
+      doors: numOrNull(form.doors),
+      seats: numOrNull(form.seats),
+      options: strOrNull(form.options),
+      exterior_condition: strOrNull(form.exterior_condition),
+      interior_condition: strOrNull(form.interior_condition),
+      description: strOrNull(form.description),
+      notes: strOrNull(form.notes),
+    });
   }
 
-  async function onImportFile(file: File | null) {
-    if (!file) return;
-    setImporting(true);
-    setImportMsg("");
-    setError("");
-    try {
-      const result = await api.vehicles.importFile(file);
+  const importMutation = useMutation({
+    mutationFn: (file: File) => api.vehicles.importFile(file),
+    onSuccess: (result) => {
       setImportMsg(
         bi(
           `Imported ${result.created} vehicle(s), skipped ${result.skipped}.`,
@@ -171,13 +172,20 @@ export function VehiclesPage() {
             ? ` ${bi("First issues:", "اولین خطاها:")} ${result.errors.slice(0, 3).join(" · ")}`
             : ""),
       );
-      await load();
-    } catch (e) {
-      setError(String((e as Error).message));
-    } finally {
-      setImporting(false);
+      void invalidateVehicles();
+    },
+    onError: (e) => setError(String((e as Error).message)),
+    onSettled: () => {
       if (fileRef.current) fileRef.current.value = "";
-    }
+    },
+  });
+  const importing = importMutation.isPending;
+
+  function onImportFile(file: File | null) {
+    if (!file) return;
+    setImportMsg("");
+    setError("");
+    importMutation.mutate(file);
   }
 
   const statusCounts = useMemo(() => {
@@ -243,7 +251,7 @@ export function VehiclesPage() {
         }
       />
 
-      <ErrorMessage error={error} />
+      <ErrorMessage error={error || listError} />
       {importMsg && !showImport ? (
         <div className="notice">
           <Icon name="circleCheck" />
@@ -272,7 +280,7 @@ export function VehiclesPage() {
             className="search-field"
             onSubmit={(e) => {
               e.preventDefault();
-              void load();
+              void listQuery.refetch();
             }}
           >
             <Icon name="search" size={14} />
@@ -362,6 +370,11 @@ export function VehiclesPage() {
                 key: "status",
                 header: <Bi en="Status" fa="وضعیت" />,
                 render: (v) => <StatusLabel status={String(v.status)} />,
+              },
+              {
+                key: "created",
+                header: <Bi en="Added" fa="ثبت" />,
+                render: (v) => <DateText value={v.created_at} />,
               },
             ]}
           />
@@ -490,6 +503,29 @@ export function VehiclesPage() {
   );
 }
 
+function VehicleOps({ id }: { id: string }) {
+  const divar = useQuery({ queryKey: ["vehicle-divar", id], queryFn: () => api.vehicles.divar(id) });
+  return (
+    <Card>
+      <div className="row">
+        <Button variant="secondary" onClick={() => void api.vehicles.setStatus(id, "RESERVED", "reserved from the vehicle page")}>
+          <Bi en="Reserve" fa="رزرو" />
+        </Button>
+        <Button variant="secondary" onClick={() => void api.vehicles.setStatus(id, "SOLD", "sold from the vehicle page")}>
+          <Bi en="Sold" fa="فروخته شد" />
+        </Button>
+      </div>
+      <div className="muted">
+        {(divar.data ?? []).map((row) => (
+          <div key={String(row.id)}>
+            {String(row.status)} {String(row.last_error || "")}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function Spec({ label, value }: { label: ReactNode; value: unknown }) {
   if (value == null || value === "") return null;
   return (
@@ -505,39 +541,45 @@ export function VehicleDetailPage() {
   const { has } = useAuth();
   const bi = useBi();
   const navigate = useNavigate();
-  const [ctx, setCtx] = useState<Awaited<ReturnType<typeof api.vehicles.context>> | null>(null);
+  const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    void api.vehicles
-      .context(id)
-      .then(setCtx)
-      .catch((e) => setError(String((e as Error).message)));
-  }, [id]);
+  const ctxQuery = useQuery({
+    queryKey: queryKeys.vehicleContext(id),
+    enabled: Boolean(id),
+    queryFn: () => api.vehicles.context(id),
+  });
+  const ctx = ctxQuery.data ?? null;
+  const ctxError = ctxQuery.isError ? String((ctxQuery.error as Error).message) : "";
 
-  async function startSharedWork() {
+  const createWorkMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.workItems.create(body),
+    onSuccess: (wi) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.workItemsRoot });
+      navigate(`/work-items/${wi.id}`);
+    },
+    onError: (e) => setError(String((e as Error).message)),
+    onSettled: () => setBusy(false),
+  });
+
+  function startSharedWork() {
     if (!ctx) return;
     setBusy(true);
-    try {
-      const v = ctx.vehicle;
-      const wi = await api.workItems.create({
-        title: bi(
-          `Sell ${v.brand} ${v.model} #${v.stock_number || ""}`.trim(),
-          `فروش ${v.brand} ${v.model} #${v.stock_number || ""}`.trim(),
-        ),
-        vehicle_id: id,
-        priority: "HIGH",
-      });
-      navigate(`/work-items/${wi.id}`);
-    } catch (e) {
-      setError(String((e as Error).message));
-    } finally {
-      setBusy(false);
-    }
+    const v = ctx.vehicle;
+    createWorkMutation.mutate({
+      title: bi(
+        `Sell ${v.brand} ${v.model} #${v.stock_number || ""}`.trim(),
+        `فروش ${v.brand} ${v.model} #${v.stock_number || ""}`.trim(),
+      ),
+      vehicle_id: id,
+      priority: "HIGH",
+    });
   }
 
-  if (error && !ctx) return <ErrorMessage error={error} />;
+  if (error || ctxError) {
+    if (!ctx) return <ErrorMessage error={error || ctxError} />;
+  }
   if (!ctx) return <LoadingState />;
 
   const v = ctx.vehicle;
@@ -602,7 +644,8 @@ export function VehicleDetailPage() {
         }
       />
 
-      <ErrorMessage error={error} />
+      <ErrorMessage error={error || ctxError} />
+      <VehicleOps id={id} />
 
       <div className="split split--wide-side">
         <div className="stack" style={{ gap: "var(--space-4)" }}>

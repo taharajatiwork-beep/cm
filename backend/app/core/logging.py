@@ -1,9 +1,19 @@
 import logging
+import re
 import sys
 
 import structlog
 
 from app.core.config import get_settings
+
+_SECRET = re.compile(r"(?i)(token|secret|password|api_key)(=|:)\s*\S+")
+
+
+def _mask_secrets(_logger, _method, event_dict):
+    for key, value in list(event_dict.items()):
+        if isinstance(value, str):
+            event_dict[key] = _SECRET.sub(r"\1\2 ***", value)
+    return event_dict
 
 
 def setup_logging() -> None:
@@ -17,6 +27,7 @@ def setup_logging() -> None:
 
     structlog.configure(
         processors=[
+            _mask_secrets,
             structlog.contextvars.merge_contextvars,
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso"),

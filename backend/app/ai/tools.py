@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.governance import is_ai_governance_enabled, is_sensitive_tool, request_ai_approval
 from app.core.permissions import AuthorizationError, PermissionCode, require_permission
 from app.models import Branch, CommunicationCase, Event, Task, Team, User
 from app.models.ai_audit import AiActionLog
@@ -210,6 +211,29 @@ class ToolExecutor:
                 tool_name, "denied", input_data=args, result={"error": e.message}, approval="denied"
             )
             return _err(e.message)
+
+        # AI Governance: check if sensitive tool needs human approval
+        if is_ai_governance_enabled() and is_sensitive_tool(tool_name):
+            # Request approval instead of executing
+            approver_ids = [self.ctx.user.manager_id] if self.ctx.user.manager_id else [self.ctx.user.id]
+            row = await request_ai_approval(
+                self.ctx.db,
+                organization_id=self.ctx.organization_id,
+                requester_id=self.ctx.user.id,
+                tool_name=tool_name,
+                title=args.get("title") or args.get("subject") or tool_name,
+                payload=args,
+                approver_ids=approver_ids,
+            )
+            await self.ctx.audit(
+                tool_name,
+                "approval_requested",
+                target_entity="",
+                input_data=args,
+                result={"approval_id": str(row.id)},
+                approval="pending",
+            )
+            return _ok({"approval_id": str(row.id), "status": "pending_approval"})
 
         handler: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]] = getattr(self, f"_tool_{tool_name}")
         result = await handler(args)
@@ -433,6 +457,7 @@ class ToolExecutor:
                     .join(TaskAssignee, TaskAssignee.task_id == Task.id)
                     .where(
                         TaskAssignee.user_id == user_id,
+                        Task.organization_id == self.ctx.organization_id,
                         Task.status.in_(
                             [TaskStatus.OPEN, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED]
                         ),
@@ -454,6 +479,7 @@ class ToolExecutor:
             .join(TaskAssignee, TaskAssignee.task_id == Task.id)
             .where(
                 TaskAssignee.user_id == user_id,
+                Task.organization_id == self.ctx.organization_id,
                 Task.status.in_(
                     [TaskStatus.OPEN, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED]
                 ),

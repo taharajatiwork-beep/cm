@@ -1,10 +1,14 @@
-import type {
-  HTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  SelectHTMLAttributes,
-  TextareaHTMLAttributes,
+import {
+  useId,
+  type HTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from "react";
+import { createContext, useContext } from "react";
+
+const FieldIdContext = createContext<string | undefined>(undefined);
 
 function cx(...parts: Array<string | false | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -12,12 +16,34 @@ function cx(...parts: Array<string | false | undefined>) {
 
 type Grow = { grow?: boolean; className?: string };
 
+function persianValidity<T extends HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+  event: { currentTarget: T },
+) {
+  const el = event.currentTarget;
+  el.setCustomValidity(el.validity.valueMissing ? "این فیلد را پر کنید" : "");
+}
+
 export function Input({
   grow,
   className = "",
   ...rest
 }: InputHTMLAttributes<HTMLInputElement> & Grow) {
-  return <input className={cx("control", grow && "control--grow", className)} {...rest} />;
+  const fieldId = useContext(FieldIdContext);
+  return (
+    <input
+      className={cx("control", grow && "control--grow", className)}
+      {...rest}
+      id={rest.id ?? fieldId}
+      onInvalid={(event) => {
+        persianValidity(event);
+        rest.onInvalid?.(event);
+      }}
+      onInput={(event) => {
+        event.currentTarget.setCustomValidity("");
+        rest.onInput?.(event);
+      }}
+    />
+  );
 }
 
 export function TextArea({
@@ -25,7 +51,22 @@ export function TextArea({
   className = "",
   ...rest
 }: TextareaHTMLAttributes<HTMLTextAreaElement> & Grow) {
-  return <textarea className={cx("control", grow && "control--grow", className)} {...rest} />;
+  const fieldId = useContext(FieldIdContext);
+  return (
+    <textarea
+      className={cx("control", grow && "control--grow", className)}
+      {...rest}
+      id={rest.id ?? fieldId}
+      onInvalid={(event) => {
+        persianValidity(event);
+        rest.onInvalid?.(event);
+      }}
+      onInput={(event) => {
+        event.currentTarget.setCustomValidity("");
+        rest.onInput?.(event);
+      }}
+    />
+  );
 }
 
 export function Select({
@@ -34,8 +75,21 @@ export function Select({
   children,
   ...rest
 }: SelectHTMLAttributes<HTMLSelectElement> & Grow) {
+  const fieldId = useContext(FieldIdContext);
   return (
-    <select className={cx("control", grow && "control--grow", className)} {...rest}>
+    <select
+      className={cx("control", grow && "control--grow", className)}
+      {...rest}
+      id={rest.id ?? fieldId}
+      onInvalid={(event) => {
+        persianValidity(event);
+        rest.onInvalid?.(event);
+      }}
+      onChange={(event) => {
+        event.currentTarget.setCustomValidity("");
+        rest.onChange?.(event);
+      }}
+    >
       {children}
     </select>
   );
@@ -50,10 +104,11 @@ export function Field({
   children: ReactNode;
   className?: string;
 }) {
+  const id = useId();
   return (
     <div className={cx("field", className)}>
-      {label ? <label>{label}</label> : null}
-      {children}
+      {label ? <label htmlFor={id}>{label}</label> : null}
+      <FieldIdContext.Provider value={id}>{children}</FieldIdContext.Provider>
     </div>
   );
 }

@@ -1,0 +1,17 @@
+groups:
+  - name: cm
+    rules:
+      - alert: CmApiDown
+        expr: up{job="cm-api"} == 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: CM API is down
+      - alert: CmHttpErrors
+        expr: sum(rate(cm_http_requests_total{status=~"5.."}[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: CM API 5xx rate is high

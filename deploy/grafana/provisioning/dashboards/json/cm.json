@@ -1,0 +1,14 @@
+{
+  "title": "CM",
+  "uid": "cm-http",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP requests",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "cm_http_requests_total", "refId": "A" }],
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 }
+    }
+  ]
+}

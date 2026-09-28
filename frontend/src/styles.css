@@ -1428,6 +1428,21 @@ a.row-title:hover {
   font-size: 0.7rem;
 }
 
+.compose-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.compose-people .chip {
+  position: relative;
+  cursor: pointer;
+}
+.compose-people .chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
 .chip.active .chip-count {
   color: var(--accent);
 }
@@ -2917,12 +2932,59 @@ html[dir="rtl"] .tag-list li {
   }
 }
 
+.toast-stack {
+  position: fixed;
+  inset-inline-end: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 80;
+}
+
+.toast {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.6rem;
+}
+
+.nav-toggle {
+  display: none;
+}
+
+.confirm-sheet {
+  max-width: 28rem;
+  margin: 10vh auto;
+}
+
+@media (max-width: 860px) {
+  .nav-toggle {
+    display: inline-flex;
+    margin: 0.5rem;
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .nav-open .nav {
+    display: flex;
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(18rem, 86vw);
+    z-index: 40;
+    background: var(--surface);
+  }
+}
+
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .nav {
+    display: none;
     position: sticky;
     z-index: 30;
     height: auto;

@@ -164,6 +164,11 @@ class ConversationOut(BaseModel):
     case_id: UUID | None
     vehicle_id: UUID | None
     campaign_id: UUID | None
+    participant_ids: list[UUID] = []
+    last_message_text: str | None = None
+    last_sender_id: UUID | None = None
+    last_message_at: datetime | None = None
+    needs_reply: bool = False
 
     model_config = {"from_attributes": True}
 

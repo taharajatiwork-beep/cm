@@ -60,8 +60,13 @@ class CampaignService:
         q: str | None = None,
         status: CampaignStatus | None = None,
         limit: int = 50,
+        scope=None,
     ) -> list[Campaign]:
-        query = select(Campaign).where(Campaign.organization_id == organization_id)
+        from app.core.scope import apply_scope
+
+        query = apply_scope(
+            select(Campaign).where(Campaign.organization_id == organization_id), Campaign, scope
+        )
         if status:
             query = query.where(Campaign.status == status)
         if q:

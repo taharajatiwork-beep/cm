@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import {
   Badge,
@@ -12,6 +13,7 @@ import {
   PageHeader,
 } from "../components/ui";
 import { Bi, LangSwitch, useBi } from "../i18n";
+import { queryKeys } from "../lib/queryKeys";
 
 type Section = "org" | "knowledge" | "language" | "telegram";
 
@@ -39,61 +41,59 @@ const DEFAULT_PREFS: Record<string, boolean> = {
 export function SettingsPage() {
   const bi = useBi();
   const [section, setSection] = useState<Section>("telegram");
-  const [branches, setBranches] = useState<Array<Record<string, unknown>>>([]);
-  const [teams, setTeams] = useState<Array<Record<string, unknown>>>([]);
-  const [depts, setDepts] = useState<Array<Record<string, unknown>>>([]);
-  const [docs, setDocs] = useState<Array<Record<string, unknown>>>([]);
-  const [members, setMembers] = useState<Array<Record<string, unknown>>>([]);
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
 
-  const [tg, setTg] = useState<TgStatus | null>(null);
+  const branchesQuery = useQuery({ queryKey: queryKeys.branches, queryFn: () => api.branches.list() });
+  const teamsQuery = useQuery({ queryKey: queryKeys.teams, queryFn: () => api.teams.list() });
+  const deptsQuery = useQuery({ queryKey: queryKeys.departments, queryFn: () => api.departments.list() });
+  const docsQuery = useQuery({ queryKey: queryKeys.knowledge, queryFn: () => api.knowledge.list() });
+  const membersQuery = useQuery({
+    queryKey: queryKeys.teamMembers(String(selectedTeam ?? "")),
+    enabled: Boolean(selectedTeam),
+    queryFn: () => api.teams.members(String(selectedTeam)),
+  });
+  const branches = branchesQuery.data ?? [];
+  const teams = teamsQuery.data ?? [];
+  const depts = deptsQuery.data ?? [];
+  const docs = docsQuery.data ?? [];
+  const members = membersQuery.data ?? [];
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [tgBusy, setTgBusy] = useState(false);
-  const [tgError, setTgError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const tgQuery = useQuery({
+    queryKey: queryKeys.telegramStatus,
+    queryFn: () => api.telegram.status(),
+  });
+  const tg: TgStatus | null = tgQuery.data ?? null;
+  const tgError = actionError || (tgQuery.isError ? String((tgQuery.error as Error).message) : "");
   const [prefs, setPrefs] = useState(DEFAULT_PREFS);
   const [digest, setDigest] = useState(true);
   const [quietStart, setQuietStart] = useState("");
   const [quietEnd, setQuietEnd] = useState("");
 
   useEffect(() => {
-    void (async () => {
-      try {
-        setBranches(await api.branches.list());
-        setTeams(await api.teams.list());
-        setDepts(await api.departments.list());
-        setDocs(await api.knowledge.list());
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, []);
+    const st = tgQuery.data;
+    if (!st) return;
+    // Mirror the server state into the form, without clobbering typing.
+    setPrefs({ ...DEFAULT_PREFS, ...(st.notify_prefs || {}) });
+    setDigest(st.digest_enabled);
+    setQuietStart(st.quiet_start_hour != null ? String(st.quiet_start_hour) : "");
+    setQuietEnd(st.quiet_end_hour != null ? String(st.quiet_end_hour) : "");
+  }, [tgQuery.data]);
 
-  useEffect(() => {
-    void refreshTg();
-  }, []);
-
-  async function refreshTg() {
-    try {
-      const st = await api.telegram.status();
-      setTg(st);
-      setPrefs({ ...DEFAULT_PREFS, ...(st.notify_prefs || {}) });
-      setDigest(st.digest_enabled);
-      setQuietStart(st.quiet_start_hour != null ? String(st.quiet_start_hour) : "");
-      setQuietEnd(st.quiet_end_hour != null ? String(st.quiet_end_hour) : "");
-    } catch (e) {
-      setTgError(String((e as Error).message));
-    }
+  function refreshTg() {
+    setActionError("");
+    return tgQuery.refetch();
   }
 
-  async function openTeam(id: string) {
+  function openTeam(id: string) {
     setSelectedTeam(id);
-    setMembers(await api.teams.members(id));
   }
 
   async function connectTelegram() {
     setTgBusy(true);
-    setTgError("");
+    setActionError("");
     try {
       const res = await api.telegram.linkCode();
       setLinkCode(res.link_code);
@@ -105,15 +105,15 @@ export function SettingsPage() {
       for (let i = 0; i < 8; i++) {
         await new Promise((r) => setTimeout(r, 1500));
         const st = await api.telegram.status();
-        setTg(st);
         if (st.linked) {
           setDeepLink(null);
           setLinkCode(null);
+          await tgQuery.refetch();
           break;
         }
       }
     } catch (e) {
-      setTgError(String((e as Error).message));
+      setActionError(String((e as Error).message));
     } finally {
       setTgBusy(false);
     }
@@ -121,14 +121,14 @@ export function SettingsPage() {
 
   async function disconnectTelegram() {
     setTgBusy(true);
-    setTgError("");
+    setActionError("");
     try {
       await api.telegram.unlink();
       setDeepLink(null);
       setLinkCode(null);
       await refreshTg();
     } catch (e) {
-      setTgError(String((e as Error).message));
+      setActionError(String((e as Error).message));
     } finally {
       setTgBusy(false);
     }
@@ -136,7 +136,7 @@ export function SettingsPage() {
 
   async function saveTgPrefs() {
     setTgBusy(true);
-    setTgError("");
+    setActionError("");
     try {
       const qs = quietStart === "" ? null : Number(quietStart);
       const qe = quietEnd === "" ? null : Number(quietEnd);
@@ -149,7 +149,7 @@ export function SettingsPage() {
       });
       await refreshTg();
     } catch (e) {
-      setTgError(String((e as Error).message));
+      setActionError(String((e as Error).message));
     } finally {
       setTgBusy(false);
     }
@@ -171,6 +171,7 @@ export function SettingsPage() {
           />
         }
       />
+      <TotpCard />
 
       <div className="tab-row">
         {(
@@ -466,5 +467,40 @@ export function SettingsPage() {
         </div>
       </details>
     </>
+  );
+}
+
+function TotpCard() {
+  const [secret, setSecret] = useState("");
+  const [code, setCode] = useState("");
+  const [otpauth, setOtpauth] = useState("");
+  return (
+    <Card>
+      <h2>
+        <Bi en="Two-factor login" fa="ورود دو مرحله‌ای" />
+      </h2>
+      <Button
+        variant="secondary"
+        onClick={() => {
+          void api.totp.setup().then((row) => {
+            setSecret(row.secret);
+            setOtpauth(row.otpauth);
+          });
+        }}
+      >
+        <Bi en="Show QR secret" fa="نمایش رمز" />
+      </Button>
+      {otpauth ? (
+        <img
+          alt="totp"
+          src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(otpauth)}`}
+        />
+      ) : null}
+      {secret ? <p className="mono">{secret}</p> : null}
+      <input className="control" value={code} onChange={(e) => setCode(e.target.value)} />
+      <Button onClick={() => void api.totp.enable(code)}>
+        <Bi en="Enable" fa="فعال‌سازی" />
+      </Button>
+    </Card>
   );
 }

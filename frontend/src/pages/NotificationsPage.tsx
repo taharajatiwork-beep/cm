@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { api } from "../api";
 import {
   Card,
@@ -11,19 +12,23 @@ import {
   PageHeader,
 } from "../components/ui";
 import { Bi } from "../i18n";
+import { DateText } from "../components/DateText";
+import { queryKeys } from "../lib/queryKeys";
 
 export function NotificationsPage() {
-  const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    void api
-      .notifications()
-      .then(setRows)
-      .catch((e) => setError(String((e as Error).message)))
-      .finally(() => setLoading(false));
-  }, []);
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: queryKeys.notifications,
+    queryFn: () => api.notifications(),
+    refetchInterval: 30_000,
+  });
+  const mark = useMutation({
+    mutationFn: (id: string) => api.markNotificationRead(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.notifications }),
+  });
+  const rows = q.data ?? [];
+  const loading = q.isLoading;
+  const error = q.isError ? String((q.error as Error).message) : "";
 
   return (
     <>
@@ -54,7 +59,17 @@ export function NotificationsPage() {
                 <strong>{String(n.title)}</strong>
                 <div>{String(n.body)}</div>
                 <div>
-                  <Muted>{n.created_at ? new Date(String(n.created_at)).toLocaleString() : ""}</Muted>
+                  <Muted>
+                    <DateText value={n.created_at} withTime />
+                  </Muted>
+                  {n.entity_type === "work_item" && n.entity_id ? (
+                    <Link to={`/work-items/${String(n.entity_id)}`}>باز کردن</Link>
+                  ) : null}
+                  {!n.is_read ? (
+                    <button type="button" onClick={() => mark.mutate(String(n.id))}>
+                      خواندم
+                    </button>
+                  ) : null}
                 </div>
               </ListItem>
             ))}

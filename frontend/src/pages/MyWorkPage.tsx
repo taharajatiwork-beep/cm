@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -13,7 +14,7 @@ import {
   SectionHeader,
   Segmented,
 } from "../components/ui";
-import { Bi, useBi } from "../i18n";
+import { Bi, useBi, useLocale } from "../i18n";
 import { formatDeadline, isOverdue } from "../lib/collaboration";
 import { StatusLabel } from "../ux";
 
@@ -25,35 +26,29 @@ export function MyWorkPage() {
   const bi = useBi();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("tasks");
-  const [tasks, setTasks] = useState<Row[]>([]);
-  const [overdue, setOverdue] = useState<Row[]>([]);
-  const [shared, setShared] = useState<Row[]>([]);
   const [newTitle, setNewTitle] = useState("");
-  const [error, setError] = useState("");
-
-  async function load() {
-    if (!user?.id) return;
-    if (has("task.read")) {
-      const mine = await api.tasks.list({ assignee_id: user.id });
-      setTasks(mine);
-      if (roleHint === "manager" || roleHint === "admin") {
-        setOverdue(await api.tasks.list({ overdue_only: true }));
-      } else {
-        setOverdue(mine.filter((t) => isOverdue(t.deadline, t.status)));
-      }
-    }
-    if (has("work_item.read")) {
-      setShared(await api.workItems.list());
-    }
-  }
-
-  useEffect(() => {
-    void load().catch((e) => setError(String((e as Error).message)));
-  }, [user?.id, has, roleHint]);
+  const qc = useQueryClient();
+  const workQuery = useQuery({
+    queryKey: ["my-work", user?.id, roleHint],
+    enabled: Boolean(user?.id),
+    queryFn: async () => {
+      const tasks = has("task.read") && user?.id ? await api.tasks.list({ assignee_id: user.id }) : [];
+      const overdue =
+        has("task.read") && (roleHint === "manager" || roleHint === "admin")
+          ? await api.tasks.list({ overdue_only: true })
+          : tasks.filter((t) => isOverdue(t.deadline, t.status));
+      const shared = has("work_item.read") ? await api.workItems.list() : [];
+      return { tasks, overdue, shared };
+    },
+  });
+  const tasks = workQuery.data?.tasks ?? [];
+  const overdue = workQuery.data?.overdue ?? [];
+  const shared = workQuery.data?.shared ?? [];
+  const error = workQuery.isError ? String((workQuery.error as Error).message) : "";
 
   async function complete(id: string) {
     await api.tasks.complete(id);
-    await load();
+    await qc.invalidateQueries({ queryKey: ["my-work"] });
   }
 
   async function createShared(e: FormEvent) {
@@ -73,7 +68,8 @@ export function MyWorkPage() {
   );
 
   function TaskRow({ t, late }: { t: Row; late?: boolean }) {
-    const deadline = formatDeadline(t.deadline, bi);
+    const { locale } = useLocale();
+    const deadline = formatDeadline(t.deadline, bi, locale);
     return (
       <li className={`row-item${late ? " is-danger" : ""}`}>
         <button

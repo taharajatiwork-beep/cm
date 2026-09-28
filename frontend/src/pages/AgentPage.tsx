@@ -88,16 +88,21 @@ export function AgentPage() {
   const [autoCreate, setAutoCreate] = useState(true);
   const [minDays, setMinDays] = useState(30);
   const [staleDays, setStaleDays] = useState(3);
-  const [chat, setChat] = useState<ChatMsg[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      text: bi(
-        "Hi! Ask me anything about your cars, projects, colleagues or company rules. I only answer from your own records and show where each answer came from.",
-        "سلام! هر سؤالی درباره خودروها، پروژه‌ها، همکاران یا قوانین شرکت دارید بپرسید. فقط از روی اطلاعات خود شما جواب می‌دهم و نشان می‌دهم جواب از کجا آمده.",
-      ),
-    },
-  ]);
+  const [chat, setChat] = useState<ChatMsg[]>(() => {
+    try {
+      const raw = localStorage.getItem("cm_agent_chat");
+      if (raw) return JSON.parse(raw) as ChatMsg[];
+    } catch {
+      /* ignore */
+    }
+    return [
+      {
+        id: "welcome",
+        role: "assistant",
+        text: "سلام! سؤال را بپرسید. منابع پاسخ کنار هر جواب نشان داده می‌شود.",
+      },
+    ];
+  });
   const [commResult, setCommResult] = useState<Awaited<ReturnType<typeof api.agent>> | null>(null);
   const [invResult, setInvResult] = useState<Awaited<
     ReturnType<typeof api.inventoryAgent>
@@ -119,6 +124,7 @@ export function AgentPage() {
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    localStorage.setItem("cm_agent_chat", JSON.stringify(chat.slice(-40)));
   }, [chat, busy]);
 
   useEffect(() => {

@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import {
   Button,
@@ -17,26 +18,18 @@ import { Bi, useBi } from "../i18n";
 export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
   const bi = useBi();
   const [q, setQ] = useState(initialQuery);
-  const [hits, setHits] = useState<Array<Record<string, unknown>>>([]);
-  const [error, setError] = useState("");
-  const [ran, setRan] = useState(false);
+  const [submitted, setSubmitted] = useState(initialQuery);
+  const searchQuery = useQuery({
+    queryKey: ["search", submitted],
+    enabled: submitted.trim().length > 0,
+    queryFn: () => api.search(submitted),
+  });
+  const hits = searchQuery.data?.hits ?? [];
+  const error = searchQuery.isError ? String((searchQuery.error as Error).message) : "";
+  const ran = submitted.trim().length > 0;
 
-  useEffect(() => {
-    setQ(initialQuery);
-    if (initialQuery.trim()) {
-      void runQuery(initialQuery);
-    }
-  }, [initialQuery]);
-
-  async function runQuery(query: string) {
-    setError("");
-    setRan(true);
-    try {
-      const res = await api.search(query);
-      setHits(res.hits);
-    } catch (err) {
-      setError(String((err as Error).message));
-    }
+  function runQuery(query: string) {
+    setSubmitted(query);
   }
 
   async function run(e?: FormEvent) {
