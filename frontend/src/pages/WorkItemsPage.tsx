@@ -240,7 +240,7 @@ export function WorkItemDetailPage() {
       />
 
       <div className="split">
-        <div className="stack" style={{ gap: "var(--space-4)" }}>
+        <div className="stack stack--roomy">
           <div className="grid grid-2">
             <Card className="progress-card">
               <div className="progress-nums">
@@ -265,7 +265,7 @@ export function WorkItemDetailPage() {
                   <Bi en="Next step" fa="قدم بعدی" />
                 </span>
                 {nextTask ? (
-                  <span className="row-title" style={{ whiteSpace: "normal" }}>
+                  <span className="row-title row-title--wrap">
                     {nextAssignees ? <strong>{nextAssignees}: </strong> : null}
                     {String(nextTask.title)}
                   </span>
@@ -335,7 +335,7 @@ export function WorkItemDetailPage() {
                   return (
                     <li key={String(t.id)} className="row-item">
                       {done ? (
-                        <span className="check-mark" style={{ borderColor: "var(--ok)", background: "var(--ok-soft)" }}>
+                        <span className="check-mark check-mark--ok">
                           ✓
                         </span>
                       ) : (
@@ -436,7 +436,7 @@ export function WorkItemDetailPage() {
                     return (
                       <ListItem key={String(e.id)}>
                         <span>{label ? bi(label[0], label[1]) : bi("Updated", "به‌روزرسانی شد")}</span>
-                        <div className="muted" style={{ fontSize: "0.72rem" }}>
+                        <div className="muted fine">
                           <DateText value={e.created_at} withTime />
                         </div>
                       </ListItem>

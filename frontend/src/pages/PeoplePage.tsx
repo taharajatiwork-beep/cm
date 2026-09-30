@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import {
@@ -33,18 +33,15 @@ export function PeoplePage() {
   const rows = listQuery.data ?? [];
   const error = listQuery.isError ? String((listQuery.error as Error).message) : "";
 
-  const selected = rows.find((p) => String(p.id) === selectedId) ?? null;
-
-  // Open the first colleague automatically so the pane is never empty.
-  useEffect(() => {
-    if (!selectedId && rows[0]) setSelectedId(String(rows[0].id));
-  }, [rows, selectedId]);
+  // انتخاب اولین همکار به‌صورت مشتق‌شده — پنل هیچ‌وقت خالی نمی‌ماند و effect نمی‌خواهد
+  const activeId = selectedId ?? (rows[0] ? String(rows[0].id) : "");
+  const selected = rows.find((p) => String(p.id) === activeId) ?? null;
 
   const detailQuery = useQuery({
-    queryKey: queryKeys.personDetail(selectedId ?? ""),
-    enabled: Boolean(selectedId),
+    queryKey: queryKeys.personDetail(activeId),
+    enabled: Boolean(activeId),
     queryFn: async () => {
-      const id = String(selectedId);
+      const id = String(activeId);
       const workload = await api.people.workload(id);
       let reports: Person[] = [];
       try {
@@ -78,9 +75,9 @@ export function PeoplePage() {
       <ErrorMessage error={detailQuery.isError ? String((detailQuery.error as Error).message) : ""} />
 
       <div className="split split--left">
-        <Card padded={false} className="side-stack" style={{ gap: 0 }}>
+        <Card padded={false} className="side-stack side-stack--flush">
           <form className="card-bar" onSubmit={search}>
-            <div className="search-field" style={{ maxWidth: "none" }}>
+            <div className="search-field">
               <Icon name="search" size={14} />
               <Input
                 value={q}
@@ -96,18 +93,18 @@ export function PeoplePage() {
               <Bi en="No people found." fa="فردی یافت نشد." />
             </div>
           ) : (
-            <ul className="rows" style={{ maxHeight: "calc(100vh - 14rem)", overflowY: "auto" }}>
+            <ul className="rows rows--scroll">
               {rows.map((p) => (
                 <li key={String(p.id)}>
                   <button
                     type="button"
-                    className={`row-item row-button${selectedId === String(p.id) ? " is-active" : ""}`}
+                    className={`row-item row-button${activeId === String(p.id) ? " is-active" : ""}`}
                     onClick={() => setSelectedId(String(p.id))}
                   >
                     <Avatar name={String(p.full_name)} size={30} />
                     <span className="row-main">
                       <span className="row-title">{String(p.full_name)}</span>
-                      <span className="row-meta">{String(p.email)}</span>
+                      <span className="row-meta ltr-value">{String(p.email)}</span>
                     </span>
                   </button>
                 </li>
@@ -125,9 +122,9 @@ export function PeoplePage() {
             <>
               <div className="person-head">
                 <Avatar name={String(selected.full_name)} size={46} />
-                <div style={{ flex: 1 }}>
+                <div className="grow">
                   <h2>{String(selected.full_name)}</h2>
-                  <Muted className="mono">{String(selected.email)}</Muted>
+                  <Muted className="mono ltr-value">{String(selected.email)}</Muted>
                   <DateText value={selected.created_at} />
                 </div>
                 <Button variant="secondary" to="/communication">
@@ -171,7 +168,7 @@ export function PeoplePage() {
                         count={workload?.tasks.length ?? 0}
                       />
                       {workload && workload.tasks.length > 0 ? (
-                        <ul className="rows" style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-sm)" }}>
+                        <ul className="rows rows--boxed">
                           {workload.tasks.map((t) => (
                             <li key={String(t.id)} className="row-item">
                               <div className="row-main">

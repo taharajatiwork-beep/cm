@@ -53,7 +53,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="topbar ui-page-header">
+    <div className="ui-page-header">
       <div>
         <h1>{title}</h1>
         {description ? <div className="ui-page-desc">{description}</div> : null}

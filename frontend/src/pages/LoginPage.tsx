@@ -57,7 +57,7 @@ export function LoginPage() {
             fa="دمو: ali@autoco.example / password (مدیر)"
           />
         </Muted>
-        <div className="field" style={{ marginTop: "1rem" }}>
+        <div className="field mt-4">
           <label htmlFor="login-slug">
             <Bi en="Company code" fa="کد شرکت" />
           </label>

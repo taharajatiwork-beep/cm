@@ -1,3 +1,5 @@
+/* Provider file intentionally exports hooks and helpers beside its components. */
+/* eslint-disable react/only-export-components */
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Bi, useBi } from "./i18n";
@@ -62,6 +64,18 @@ export function StatusLabel({ status }: { status: string }) {
     BLOCKED: ["Waiting on others", "منتظر دیگران", "warn"],
     COMPLETED: ["Done", "انجام شد", "ok"],
     CANCELLED: ["Cancelled", "لغو شده", ""],
+    // مقادیر CaseStatus که map قبلی نداشت و خام نمایش داده می‌شد
+    WAITING_FOR_RESPONSE: ["Waiting for reply", "در انتظار پاسخ", "warn"],
+    WAITING_FOR_USER: ["Waiting on user", "در انتظار کاربر", "danger"],
+    PENDING: ["Pending", "در انتظار تأیید", "warn"],
+    REJECTED: ["Rejected", "رد شده", "danger"],
+    EXPIRED: ["Expired", "منقضی شده", "danger"],
+    PENDING_APPROVAL: ["Awaiting approval", "در انتظار تأیید", "warn"],
+    FAILED: ["Failed", "ناموفق", "danger"],
+    SENT: ["Sent", "ارسال شد", "ok"],
+    DRAFT: ["Draft", "پیش‌نویس", ""],
+    PUBLISHED: ["Published", "منتشر شد", "ok"],
+    SCHEDULED: ["Scheduled", "زمان‌بندی‌شده", "warn"],
     ACTIVE: ["Active", "فعال", ""],
     WARNING: ["Deadline close", "مهلت نزدیک", "warn"],
     NONE: ["No deadline", "بدون مهلت", ""],

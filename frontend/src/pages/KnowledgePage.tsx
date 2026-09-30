@@ -123,25 +123,8 @@ export function KnowledgePage() {
 
       <ErrorMessage error={error} />
 
-      <Card className="block-gap">
-        <form className="search-field search-field--wide" onSubmit={search}>
-          <Icon name="search" size={14} />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={bi(
-              "What do you want to know? e.g. discount limit for sellers",
-              "دنبال چه هستید؟ مثلاً سقف تخفیف فروشنده",
-            )}
-          />
-          <Button type="submit" className="btn-sm" disabled={!query.trim()}>
-            <Bi en="Search" fa="جستجو" />
-          </Button>
-        </form>
-      </Card>
-
       {hits !== null && (
-        <Card className="block-gap">
+        <Card>
           <SectionHeader icon="search" title={<Bi en="Found" fa="نتایج" />} count={hits.length} />
           {hits.length === 0 ? (
             <EmptyState
@@ -168,6 +151,17 @@ export function KnowledgePage() {
       <Card padded={false}>
         <div className="card-bar">
           <SectionHeader icon="book" title={<Bi en="All guides" fa="همه راهنماها" />} count={docs.length} />
+          <form className="search-field" onSubmit={search}>
+            <Icon name="search" size={14} />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={bi(
+                "What do you want to know? e.g. discount limit for sellers",
+                "دنبال چه هستید؟ مثلاً سقف تخفیف فروشنده",
+              )}
+            />
+          </form>
         </div>
         <Table
           columns={[
@@ -223,7 +217,7 @@ export function KnowledgePage() {
         }
       >
         <form id="kb-form" className="stack" onSubmit={upload}>
-          <p className="help-text" style={{ margin: 0 }}>
+          <p className="help-text">
             <Bi
               en="Paste the text of a rule or guide. After saving, colleagues can search it and the assistant can use it in answers."
               fa="متن یک قانون یا راهنما را اینجا بگذارید. بعد از ذخیره، همکاران می‌توانند جستجویش کنند و دستیار هم در جواب‌ها از آن استفاده می‌کند."

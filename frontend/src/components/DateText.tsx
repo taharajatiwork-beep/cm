@@ -19,9 +19,14 @@ export function DateText({
   if (locale !== "fa") {
     const d = new Date(String(value));
     if (Number.isNaN(d.getTime())) return null;
+    // قالب ثابت و ۲۴ساعته — `toLocaleString` خروجی‌اش بسته به مرورگر
+    // و منطقهٔ زمانیِ دستگاه کاربر تغییر می‌کند (و گاهی AM/PM می‌آورد).
+    const date = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+    if (!withTime) return <span className={className}>{date}</span>;
+    const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
     return (
       <span className={className}>
-        {withTime ? d.toLocaleString() : d.toLocaleDateString()}
+        {date} {time}
       </span>
     );
   }

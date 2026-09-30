@@ -34,7 +34,7 @@ export function ErrorMessage({
 
   return (
     <div className={`ui-error ${className}`.trim()} role="alert">
-      <p className="error" style={{ margin: 0 }}>
+      <p className="error">
         {text}
       </p>
       {action}

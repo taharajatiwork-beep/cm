@@ -23,6 +23,7 @@ import {
   TextArea,
 } from "../components/ui";
 import { Bi, useBi } from "../i18n";
+import { useToast } from "../components/ui/Toast";
 import { nextCursor } from "../lib/pagination";
 import { queryKeys } from "../lib/queryKeys";
 import { StatusLabel } from "../ux";
@@ -92,10 +93,10 @@ function strOrNull(v: string): string | null {
 export function VehiclesPage() {
   const { has } = useAuth();
   const bi = useBi();
+  const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [error, setError] = useState("");
-  const [importMsg, setImportMsg] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -112,7 +113,10 @@ export function VehiclesPage() {
     queryFn: ({ pageParam }) => api.vehicles.page(q, pageParam),
     getNextPageParam: (last) => nextCursor(last),
   });
-  const rows = listQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const rows = useMemo(
+    () => listQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [listQuery.data],
+  );
   const loading = listQuery.isLoading;
   const listError = listQuery.isError ? String((listQuery.error as Error).message) : "";
   const invalidateVehicles = () => qc.invalidateQueries({ queryKey: queryKeys.vehiclesRoot });
@@ -163,7 +167,7 @@ export function VehiclesPage() {
   const importMutation = useMutation({
     mutationFn: (file: File) => api.vehicles.importFile(file),
     onSuccess: (result) => {
-      setImportMsg(
+      toast(
         bi(
           `Imported ${result.created} vehicle(s), skipped ${result.skipped}.`,
           `${result.created} خودرو ثبت شد، ${result.skipped} رد شد.`,
@@ -172,6 +176,7 @@ export function VehiclesPage() {
             ? ` ${bi("First issues:", "اولین خطاها:")} ${result.errors.slice(0, 3).join(" · ")}`
             : ""),
       );
+      setShowImport(false);
       void invalidateVehicles();
     },
     onError: (e) => setError(String((e as Error).message)),
@@ -183,7 +188,6 @@ export function VehiclesPage() {
 
   function onImportFile(file: File | null) {
     if (!file) return;
-    setImportMsg("");
     setError("");
     importMutation.mutate(file);
   }
@@ -252,12 +256,6 @@ export function VehiclesPage() {
       />
 
       <ErrorMessage error={error || listError} />
-      {importMsg && !showImport ? (
-        <div className="notice">
-          <Icon name="circleCheck" />
-          {importMsg}
-        </div>
-      ) : null}
 
       <Card padded={false}>
         <div className="card-bar">
@@ -359,7 +357,7 @@ export function VehiclesPage() {
                 header: <Bi en="Price" fa="قیمت" />,
                 render: (v) =>
                   v.sale_price != null ? (
-                    <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    <span className="num">
                       {Number(v.sale_price).toLocaleString()}
                     </span>
                   ) : (
@@ -397,7 +395,7 @@ export function VehiclesPage() {
         }
       >
         <form id="vehicle-form" className="form-grid" onSubmit={create}>
-          <p className="help-text span-all" style={{ margin: 0 }}>
+          <p className="help-text span-all">
             <Bi
               en="Only the starred fields are required. You can add the rest later."
               fa="فقط فیلدهای ستاره‌دار لازم است. بقیه را بعداً هم می‌توانید اضافه کنید."
@@ -475,12 +473,6 @@ export function VehiclesPage() {
             hidden
             onChange={(e) => void onImportFile(e.target.files?.[0] ?? null)}
           />
-          {importMsg ? (
-            <div className="notice">
-              <Icon name="circleCheck" />
-              {importMsg}
-            </div>
-          ) : null}
           <Muted>
             <Bi
               en="1. Download the template below.  2. Fill one car per row.  3. Choose the file above. Cars already registered are skipped automatically."
@@ -518,7 +510,10 @@ function VehicleOps({ id }: { id: string }) {
       <div className="muted">
         {(divar.data ?? []).map((row) => (
           <div key={String(row.id)}>
-            {String(row.status)} {String(row.last_error || "")}
+            <StatusLabel status={String(row.status)} />
+            {row.last_error ? (
+              <span className="muted"> — {String(row.last_error)}</span>
+            ) : null}
           </div>
         ))}
       </div>
@@ -648,7 +643,7 @@ export function VehicleDetailPage() {
       <VehicleOps id={id} />
 
       <div className="split split--wide-side">
-        <div className="stack" style={{ gap: "var(--space-4)" }}>
+        <div className="stack stack--roomy">
           <Card>
             <SectionHeader icon="layers" title={<Bi en="Specifications" fa="مشخصات" />} />
             <dl className="spec-grid">
@@ -733,14 +728,26 @@ export function VehicleDetailPage() {
 
         <aside className="side-stack">
           <Card>
+            <Button
+              variant="secondary"
+              to={`/communication?new=1&vehicle=${id}&topic=${encodeURIComponent(
+                bi(`Vehicle: ${v.stock_number || v.plate_number || ""}`, `خودرو: ${v.stock_number || v.plate_number || ""}`),
+              )}`}
+            >
+              <Icon name="message" size={14} />
+              <Bi en="Message about this vehicle" fa="گفتگو درباره این خودرو" />
+            </Button>
+          </Card>
+
+          <Card>
             <SectionHeader title={<Bi en="Price" fa="قیمت" />} />
             <div className="price-tag">{money(v.sale_price) || "—"}</div>
-            <div className="mini-stats" style={{ gridTemplateColumns: "1fr 1fr", marginTop: "var(--space-3)", marginBottom: 0 }}>
+            <div className="mini-stats mini-stats--half mt-3">
               <div className="mini-stat">
                 <span>
                   <Bi en="Purchase" fa="خرید" />
                 </span>
-                <strong style={{ fontSize: "0.9rem" }}>
+                <strong className="stat-num">
                   {v.purchase_price != null ? Number(v.purchase_price).toLocaleString() : "—"}
                 </strong>
               </div>
@@ -748,7 +755,7 @@ export function VehicleDetailPage() {
                 <span>
                   <Bi en="Margin" fa="حاشیه سود" />
                 </span>
-                <strong style={{ fontSize: "0.9rem" }}>
+                <strong className="stat-num">
                   {margin != null ? margin.toLocaleString() : "—"}
                 </strong>
               </div>
@@ -756,7 +763,7 @@ export function VehicleDetailPage() {
           </Card>
 
           <Card padded={false}>
-            <div style={{ padding: "var(--space-3) var(--space-4) 0" }}>
+            <div className="flush-head">
               <SectionHeader
                 icon="layers"
                 title={<Bi en="Work on this car" fa="کارهای این خودرو" />}
@@ -764,7 +771,7 @@ export function VehicleDetailPage() {
               />
             </div>
             {ctx.work_items.length === 0 ? (
-              <div style={{ padding: "0 var(--space-4) var(--space-4)" }}>
+              <div className="flush-foot">
                 <Muted>
                   <Bi
                     en="No one is working on this car yet. Press “Start selling this car” to involve your team."

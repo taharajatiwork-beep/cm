@@ -38,8 +38,7 @@ const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
       { to: "/knowledge", icon: "book", labelEn: "Rules & guides", labelFa: "قوانین و راهنماها", hintEn: "Company rules and how-tos", hintFa: "قوانین شرکت و روش انجام کارها" },
       { to: "/cases", icon: "briefcase", labelEn: "Cases", labelFa: "پرونده‌ها", hintEn: "Follow-ups", hintFa: "پیگیری‌ها", perm: "case.read" },
       { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "KPIs", hintFa: "شاخص‌ها", perm: "event.read" },
-      { to: "/admin", icon: "settings", labelEn: "Admin", labelFa: "مدیریت", hintEn: "Users and roles", hintFa: "کاربران و نقش‌ها", perm: "org.admin" },
-      { to: "/audit", icon: "filter", labelEn: "Audit", labelFa: "ممیزی", hintEn: "Who did what", hintFa: "چه کسی چه کرد", perm: "org.admin" },
+      { to: "/admin", icon: "settings", labelEn: "Admin", labelFa: "مدیریت", hintEn: "Overview, users, audit", hintFa: "نمای کلی، کاربران، ممیزی", perm: "org.admin" },
     ],
   },
 ];

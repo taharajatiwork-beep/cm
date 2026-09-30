@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatDateForLocale,
   formatJalali,
+  formatJalaliDateTime,
   formatJalaliLong,
   formatJalaliShort,
   gregorianToJalali,
@@ -35,5 +36,20 @@ describe("jalali", () => {
     expect(formatDateForLocale("2026-03-21", "fa")).toBe("1405/01/01");
     expect(formatDateForLocale("2026-03-21", "en", "—")).toContain("2026");
     expect(formatDateForLocale("bad", "fa", "—")).toBe("—");
+  });
+
+  // AM/PM در متن RTL جابه‌جا رندر می‌شد و ارقام فارسی با تاریخ لاتین نمی‌خواند
+  it("renders 24-hour time with Latin digits and no AM/PM", () => {
+    const local = new Date(2026, 2, 21, 14, 30);
+    const text = formatJalaliDateTime(local);
+    expect(text).toBe("1405/01/01 14:30");
+    expect(text).not.toMatch(/[۰-۹]/);
+    expect(text).not.toMatch(/AM|PM/i);
+  });
+
+  it("pads the hour and returns null for empty input", () => {
+    expect(formatJalaliDateTime(new Date(2026, 2, 21, 9, 5))).toBe("1405/01/01 09:05");
+    expect(formatJalaliDateTime("")).toBeNull();
+    expect(formatJalaliDateTime("not a date")).toBeNull();
   });
 });

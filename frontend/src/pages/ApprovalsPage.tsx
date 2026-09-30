@@ -5,6 +5,7 @@ import { Button, Card, EmptyState, ErrorMessage, PageHeader } from "../component
 import { DateText } from "../components/DateText";
 import { useToast } from "../components/ui/Toast";
 import { Bi, useBi } from "../i18n";
+import { StatusLabel } from "../ux";
 
 type Step = { step_no: number; approver_id: string; decision: string | null; comment: string | null };
 type Row = {
@@ -79,7 +80,7 @@ export function ApprovalsPage() {
           mine.map((row) => (
             <div key={row.id} className="row-item">
               <span>{row.title}</span>
-              <span className="muted">{row.status}</span>
+              <StatusLabel status={String(row.status)} />
             </div>
           ))
         )}

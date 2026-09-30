@@ -1,3 +1,5 @@
+/* Provider file intentionally exports hooks beside its component. */
+/* eslint-disable react/only-export-components */
 import {
   createContext,
   useCallback,

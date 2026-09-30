@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import {
@@ -13,19 +14,19 @@ import {
   LoadingState,
   PageHeader,
   Select,
+  TextArea,
 } from "../components/ui";
+import { useConfirm } from "../components/ui/ConfirmDialog";
+import { useToast } from "../components/ui/Toast";
 import { Bi, useBi, useLocale } from "../i18n";
 import { formatJalaliShort } from "../jalali";
 import { buildPersonMap, personName } from "../lib/collaboration";
+import { queryKeys } from "../lib/queryKeys";
 import { StatusLabel } from "../ux";
 
 type CommSection = "needs_me" | "threads" | "branch" | "campaigns";
 
-type ConvRow = Record<string, unknown> & {
-  _lastSender?: string | null;
-  _lastText?: string;
-  _lastAt?: string;
-};
+type ConvRow = Record<string, unknown>;
 
 const emptyRows: ConvRow[] = [];
 const emptyRecords: Array<Record<string, unknown>> = [];
@@ -42,12 +43,12 @@ function shortTime(v: unknown, locale: "en" | "fa" = "en"): string {
   const d = new Date(String(v));
   if (Number.isNaN(d.getTime())) return "";
   const today = d.toDateString() === new Date().toDateString();
-  if (today)
-    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-  if (locale === "fa") {
-    return formatJalaliShort(d) ?? "";
+  if (today) {
+    // ساعت ۲۴ساعته و قطعی — نه `toLocaleTimeString` که AM/PM می‌دهد
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   }
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (locale === "fa") return formatJalaliShort(d) ?? "";
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
 export function CommunicationPage() {
@@ -56,9 +57,13 @@ export function CommunicationPage() {
   const { locale } = useLocale();
   const streamEnd = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [params, setParams] = useSearchParams();
+
   const [section, setSection] = useState<CommSection>("needs_me");
-  const [selected, setSelected] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Array<Record<string, unknown>>>([]);
+  const selected = params.get("c");
+  const [showArchived, setShowArchived] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
   const [topic, setTopic] = useState("");
   const [withIds, setWithIds] = useState<string[]>([]);
@@ -66,33 +71,32 @@ export function CommunicationPage() {
   const [linkWorkId, setLinkWorkId] = useState("");
   const [text, setText] = useState("");
   const [error, setError] = useState("");
+  const [sendError, setSendError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [addingTo, setAddingTo] = useState<string | null>(null);
+  const [addUserId, setAddUserId] = useState("");
+  // پیش‌پر کردن compose از URL — «گفتگو دربارهٔ ...» از صفحهٔ خودرو/مشتری/پرونده
+  const [prefill, setPrefill] = useState({ vehicle: "", case: "", customer: "" });
 
-  async function enrichConversations(list: Array<Record<string, unknown>>): Promise<ConvRow[]> {
-    const enriched: ConvRow[] = [];
-    for (const c of list.slice(0, 40)) {
-      try {
-        const msgs = await api.conversations.messages(String(c.id));
-        const last = msgs[msgs.length - 1];
-        enriched.push({
-          ...c,
-          _lastSender: last ? String(last.sender_id || "") : null,
-          _lastText: last ? String(last.text) : "",
-          _lastAt: last ? String(last.created_at) : "",
-        });
-      } catch {
-        enriched.push({ ...c });
-      }
-    }
-    return enriched;
-  }
+  /** Keep the URL shareable: /communication?c=<id> reopens the same thread. */
+  const openConv = useCallback(
+    (id: string) => {
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("c", id);
+        return next;
+      });
+      setSendError("");
+    },
+    [setParams, setSendError],
+  );
 
   const board = useQuery({
-    queryKey: ["communication-board", user?.id],
+    queryKey: queryKeys.communication(user?.id, showArchived),
+    refetchInterval: 30_000,
     queryFn: async () => {
       const people = await api.people.list().catch(() => []);
-      const peopleMap = buildPersonMap(people);
-      const convs = await api.conversations.list();
-      const rows = await enrichConversations(convs);
+      const convs = await api.conversations.list({ archived: showArchived || undefined });
       const campaigns = has("campaign.read") ? await api.campaigns.list() : [];
       const branchCases = has("case.read")
         ? (await api.cases.list({ type: "BRANCH_REQUEST" })).filter(
@@ -104,9 +108,17 @@ export function CommunicationPage() {
             (w) => w.status !== "COMPLETED" && w.status !== "CANCELLED",
           )
         : [];
-      return { people, peopleMap, rows, campaigns, branchCases, sharedWork };
+      return {
+        people,
+        peopleMap: buildPersonMap(people),
+        rows: convs,
+        campaigns,
+        branchCases,
+        sharedWork,
+      };
     },
   });
+
   const rows = board.data?.rows ?? emptyRows;
   const campaigns = board.data?.campaigns ?? emptyRecords;
   const branchCases = board.data?.branchCases ?? emptyRecords;
@@ -115,16 +127,46 @@ export function CommunicationPage() {
   const sharedWork = board.data?.sharedWork ?? emptyRecords;
   const loading = board.isLoading;
 
-  async function refresh() {
-    await qc.invalidateQueries({ queryKey: ["communication-board"] });
-  }
+  /** Open thread messages poll every 10s; the list itself every 30s. */
+  const thread = useQuery({
+    queryKey: queryKeys.conversationMessages(selected ?? ""),
+    enabled: Boolean(selected),
+    refetchInterval: 10_000,
+    queryFn: () => api.conversations.messages(selected ?? ""),
+  });
+  const messages = thread.data ?? emptyRecords;
+
+  const refreshBoard = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: queryKeys.communicationRoot });
+  }, [qc]);
 
   useEffect(() => {
     streamEnd.current?.scrollIntoView({ block: "end" });
   }, [messages]);
 
-  const needsMe = (c: ConvRow) =>
-    Boolean(c._lastSender && user?.id && String(c._lastSender) !== String(user.id));
+  // ?new=1&topic=...&vehicle=...&case=...&customer=... → compose باز و پیش‌پر می‌شود
+  useEffect(() => {
+    if (params.get("new") !== "1") return;
+    setShowCompose(true);
+    setTopic(params.get("topic") ?? "");
+    setPrefill({
+      vehicle: params.get("vehicle") ?? "",
+      case: params.get("case") ?? "",
+      customer: params.get("customer") ?? "",
+    });
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const key of ["new", "topic", "vehicle", "case", "customer"]) next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+    // فقط در اولین ورود به صفحه اجرا شود
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const needsMe = useCallback((c: ConvRow) => Boolean(c.needs_reply), []);
 
   const counts = useMemo(
     () => ({
@@ -133,19 +175,46 @@ export function CommunicationPage() {
       branch: branchCases.length,
       campaigns: campaigns.length,
     }),
-    [rows, branchCases, campaigns, user?.id],
+    [rows, branchCases, campaigns, needsMe],
   );
 
   const visibleRows = useMemo(() => {
     const sorted = [...rows].sort((a, b) =>
-      String(b._lastAt || "").localeCompare(String(a._lastAt || "")),
+      String(b.last_message_at || b.created_at || "").localeCompare(
+        String(a.last_message_at || a.created_at || ""),
+      ),
     );
     return section === "needs_me" ? sorted.filter(needsMe) : sorted;
-  }, [section, rows, user?.id]);
+  }, [section, rows, needsMe]);
 
-  async function openConv(id: string) {
-    setSelected(id);
-    setMessages(await api.conversations.messages(id));
+  const send = useMutation({
+    mutationFn: (body: { id: string; text: string }) =>
+      api.conversations.postMessage(body.id, body.text),
+    onSuccess: () => {
+      setText("");
+      setSendError("");
+      void qc.invalidateQueries({ queryKey: queryKeys.conversationMessages(selected ?? "") });
+      refreshBoard();
+    },
+    onError: (err) => setSendError(String((err as Error).message)),
+  });
+
+  async function onSend(e: FormEvent) {
+    e.preventDefault();
+    if (!selected || !text.trim() || send.isPending) return;
+    setSending(true);
+    try {
+      await send.mutateAsync({ id: selected, text: text.trim() });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function onReplyKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    e.preventDefault();
+    const form = e.currentTarget.form;
+    if (form) form.requestSubmit();
   }
 
   async function create(e: FormEvent) {
@@ -163,27 +232,22 @@ export function CommunicationPage() {
         channel: "WEB",
         campaign_id: linkCampaignId || undefined,
         work_item_id: linkWorkId || undefined,
+        vehicle_id: prefill.vehicle || undefined,
+        case_id: prefill.case || undefined,
+        customer_id: prefill.customer || undefined,
       });
       setTopic("");
       setWithIds([]);
       setLinkCampaignId("");
       setLinkWorkId("");
+      setPrefill({ vehicle: "", case: "", customer: "" });
       setShowCompose(false);
       setSection("threads");
-      await refresh();
-      await openConv(String(c.id));
+      refreshBoard();
+      openConv(String(c.id));
     } catch (err) {
       setError(String((err as Error).message));
     }
-  }
-
-  async function send(e: FormEvent) {
-    e.preventDefault();
-    if (!selected || !text.trim()) return;
-    await api.conversations.postMessage(selected, text.trim());
-    setText("");
-    setMessages(await api.conversations.messages(selected));
-    await refresh();
   }
 
   function campaignTitle(id: unknown) {
@@ -194,6 +258,51 @@ export function CommunicationPage() {
   function workTitle(id: unknown) {
     const w = sharedWork.find((x) => String(x.id) === String(id));
     return w ? String(w.title) : null;
+  }
+
+  async function archiveCurrent() {
+    if (!selected) return;
+    const ok = await confirm(
+      bi("Archive this conversation?", "این گفتگو بایگانی شود؟"),
+      bi("It moves out of the list; you can restore it later.", "از فهرست خارج می‌شود؛ بعداً می‌توانید برگردانید."),
+      bi("Archive", "بایگانی"),
+    );
+    if (!ok) return;
+    try {
+      await api.conversations.archive(selected);
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("c");
+        return next;
+      });
+      toast(bi("Archived", "بایگانی شد"));
+      refreshBoard();
+    } catch (err) {
+      setError(String((err as Error).message));
+    }
+  }
+
+  async function unarchive(row: ConvRow) {
+    try {
+      await api.conversations.unarchive(String(row.id));
+      toast(bi("Restored from archive", "از بایگانی برگردانده شد"));
+      refreshBoard();
+    } catch (err) {
+      setError(String((err as Error).message));
+    }
+  }
+
+  async function addParticipant() {
+    if (!selected || !addUserId) return;
+    try {
+      await api.conversations.addParticipant(selected, addUserId);
+      setAddUserId("");
+      setAddingTo(null);
+      toast(bi("Added to the conversation", "به گفتگو اضافه شد"));
+      refreshBoard();
+    } catch (err) {
+      setError(String((err as Error).message));
+    }
   }
 
   const roleLine = bi(
@@ -208,7 +317,7 @@ export function CommunicationPage() {
     return true;
   });
 
-  const current = rows.find((r) => String(r.id) === selected);
+  const current = rows.find((r) => String(r.id) === selected) ?? null;
   const currentSection = sections.find((s) => s.key === section)!;
 
   function withWhom(row: ConvRow): string {
@@ -272,7 +381,7 @@ export function CommunicationPage() {
             onClick={() => {
               setLinkCampaignId(String(camp.id));
               const first = threads[0];
-              if (first) void openConv(String(first.id));
+              if (first) openConv(String(first.id));
               else setShowCompose(true);
             }}
           >
@@ -299,7 +408,9 @@ export function CommunicationPage() {
           <div>
             <Icon name="message" size={22} />
             <div>
-              {section === "needs_me" ? (
+              {showArchived ? (
+                <Bi en="Nothing in the archive." fa="چیزی در بایگانی نیست." />
+              ) : section === "needs_me" ? (
                 <Bi en="No one is waiting on you." fa="کسی منتظر پاسخ شما نیست." />
               ) : (
                 <Bi en="No conversations here yet." fa="هنوز گفتگویی اینجا نیست." />
@@ -312,26 +423,27 @@ export function CommunicationPage() {
 
     return visibleRows.map((c) => {
       const waiting = needsMe(c);
-      const sender = c._lastSender ? personName(peopleMap, c._lastSender) : "";
+      const sender = c.last_sender_id ? personName(peopleMap, c.last_sender_id) : "";
+      const lastAt = c.last_message_at || c.created_at;
       return (
         <button
           key={String(c.id)}
           type="button"
           className={`thread-row${selected === String(c.id) ? " active" : ""}${waiting ? " needs" : ""}`}
-          onClick={() => void openConv(String(c.id))}
+          onClick={() => openConv(String(c.id))}
         >
           <Avatar name={sender || String(c.topic || "?")} size={30} />
           <div className="thread-row-body">
             <div className="thread-row-top">
               <span className="thread-row-title">{String(c.topic || withWhom(c) || c.id)}</span>
-              <span className="muted" style={{ fontSize: "0.7rem" }}>
-                {shortTime(c._lastAt, locale)}
+              <span className="muted fine">
+                {shortTime(lastAt, locale)}
               </span>
             </div>
-            {c._lastText ? (
+            {c.last_message_text ? (
               <span className="thread-row-preview">
                 {sender ? `${sender}: ` : ""}
-                {String(c._lastText)}
+                {String(c.last_message_text)}
               </span>
             ) : null}
             {Boolean(waiting || c.work_item_id || c.campaign_id) && (
@@ -356,15 +468,45 @@ export function CommunicationPage() {
               </div>
             )}
           </div>
+          {showArchived ? (
+            <span
+              className="row-lead"
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                void unarchive(c);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.stopPropagation();
+                  void unarchive(c);
+                }
+              }}
+            >
+              <Icon name="arrow" size={14} />
+            </span>
+          ) : null}
         </button>
       );
     });
   }
 
+  const candidates = people.filter((p) => {
+    const id = String(p.id);
+    if (id === String(user?.id)) return false;
+    const ids = Array.isArray(current?.participant_ids)
+      ? (current.participant_ids as Array<unknown>).map(String)
+      : [];
+    return !ids.includes(id);
+  });
+
   return (
     <>
       <PageHeader title={<Bi en="Messages" fa="پیام‌ها" />} description={roleLine} />
-      <ErrorMessage error={error || (board.isError ? String((board.error as Error).message) : "")} />
+      <ErrorMessage
+        error={error || sendError || (board.isError ? String((board.error as Error).message) : "")}
+      />
 
       <div className="inbox">
         <nav className="inbox-nav">
@@ -377,8 +519,7 @@ export function CommunicationPage() {
               }`}
               onClick={() => {
                 setSection(s.key);
-                setSelected(null);
-                setMessages([]);
+                setShowArchived(false);
               }}
             >
               <Icon name={s.icon} />
@@ -395,14 +536,26 @@ export function CommunicationPage() {
             <h2>
               <Bi en={currentSection.en} fa={currentSection.fa} />
             </h2>
-            <Button
-              variant={showCompose ? "secondary" : "primary"}
-              className="btn-sm"
-              onClick={() => setShowCompose((v) => !v)}
-            >
-              <Icon name={showCompose ? "x" : "plus"} size={13} />
-              <Bi en="New message" fa="پیام جدید" />
-            </Button>
+            <span className="row">
+              <Button
+                variant={showArchived ? "primary" : "ghost"}
+                className="btn-sm"
+                onClick={() => {
+                  setShowArchived((v) => !v);
+                  setSection("threads");
+                }}
+              >
+                <Bi en="Archive" fa="بایگانی" />
+              </Button>
+              <Button
+                variant={showCompose ? "secondary" : "primary"}
+                className="btn-sm"
+                onClick={() => setShowCompose((v) => !v)}
+              >
+                <Icon name={showCompose ? "x" : "plus"} size={13} />
+                <Bi en="New message" fa="پیام جدید" />
+              </Button>
+            </span>
           </div>
           {showCompose && (
             <form className="compose-pop" onSubmit={create}>
@@ -452,7 +605,10 @@ export function CommunicationPage() {
                       </Select>
                     )}
                     {has("campaign.read") && campaigns.length > 0 && (
-                      <Select value={linkCampaignId} onChange={(e) => setLinkCampaignId(e.target.value)}>
+                      <Select
+                        value={linkCampaignId}
+                        onChange={(e) => setLinkCampaignId(e.target.value)}
+                      >
                         <option value="">{bi("No campaign", "بدون کمپین")}</option>
                         {campaigns.map((camp) => (
                           <option key={String(camp.id)} value={String(camp.id)}>
@@ -475,7 +631,7 @@ export function CommunicationPage() {
         </section>
 
         <section className="inbox-thread">
-          {!selected || !current ? (
+          {!selected || (!current && !messages.length) ? (
             <div className="pane-empty">
               <div>
                 <Icon name="message" size={26} />
@@ -496,30 +652,38 @@ export function CommunicationPage() {
             <>
               <header className="inbox-thread-head">
                 <div>
-                  <h2>{String(current.topic || bi("Conversation", "گفتگو"))}</h2>
-                  <span className="muted">{withWhom(current)}</span>
+                  <h2>{String(current?.topic || bi("Conversation", "گفتگو"))}</h2>
+                  <span className="muted">{current ? withWhom(current) : ""}</span>
                 </div>
                 <div className="row">
+                  {showArchived && current ? (
+                    <Button
+                      variant="ghost"
+                      className="btn-sm"
+                      onClick={() => void unarchive(current)}
+                    >
+                      <Bi en="Restore" fa="برگرداندن" />
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" className="btn-sm" onClick={() => void archiveCurrent()}>
+                      <Bi en="Archive" fa="بایگانی" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     className="btn-sm"
-                    onClick={() => {
-                      void api.conversations.archive(selected).then(() => {
-                        setSelected(null);
-                        setMessages([]);
-                        return refresh();
-                      });
-                    }}
+                    onClick={() => setAddingTo(addingTo ? null : selected)}
                   >
-                    <Bi en="Archive" fa="بایگانی" />
+                    <Icon name="plus" size={13} />
+                    <Bi en="Add person" fa="افزودن نفر" />
                   </Button>
-                  {current.campaign_id ? (
+                  {current?.campaign_id ? (
                     <Badge>
                       <Icon name="megaphone" size={10} />
                       {campaignTitle(current.campaign_id)}
                     </Badge>
                   ) : null}
-                  {current.work_item_id ? (
+                  {current?.work_item_id ? (
                     <Button
                       variant="secondary"
                       className="btn-sm"
@@ -531,8 +695,36 @@ export function CommunicationPage() {
                   ) : null}
                 </div>
               </header>
+
+              {addingTo === selected ? (
+                <div className="compose-pop">
+                  <div className="compose-people">
+                    <span className="muted">
+                      <Bi en="Add to this conversation" fa="افزودن به این گفتگو" />
+                    </span>
+                    <Select value={addUserId} onChange={(e) => setAddUserId(e.target.value)}>
+                      <option value="">{bi("Choose a person", "یک نفر را انتخاب کنید")}</option>
+                      {candidates.map((p) => (
+                        <option key={String(p.id)} value={String(p.id)}>
+                          {String(p.full_name)}
+                        </option>
+                      ))}
+                    </Select>
+                    <Button
+                      className="btn-sm"
+                      disabled={!addUserId}
+                      onClick={() => void addParticipant()}
+                    >
+                      <Bi en="Add" fa="افزودن" />
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="msg-stream">
-                {messages.length === 0 ? (
+                {thread.isLoading ? (
+                  <LoadingState />
+                ) : messages.length === 0 ? (
                   <div className="pane-empty">
                     <Bi en="No messages yet — say hello." fa="هنوز پیامی نیست — شروع کنید." />
                   </div>
@@ -556,13 +748,19 @@ export function CommunicationPage() {
                 )}
                 <div ref={streamEnd} />
               </div>
-              <form className="reply-bar" onSubmit={send}>
-                <Input
+
+              <form className="reply-bar" onSubmit={onSend}>
+                <TextArea
+                  rows={1}
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder={bi("Write a reply…", "پاسخ بنویسید…")}
+                  onKeyDown={onReplyKeyDown}
+                  placeholder={bi(
+                    "Write a reply… (Enter to send, Shift+Enter for a new line)",
+                    "پاسخ بنویسید… (Enter برای ارسال، Shift+Enter برای خط جدید)",
+                  )}
                 />
-                <Button type="submit" disabled={!text.trim()}>
+                <Button type="submit" disabled={!text.trim() || sending}>
                   <Icon name="send" size={14} />
                   <Bi en="Send" fa="ارسال" />
                 </Button>

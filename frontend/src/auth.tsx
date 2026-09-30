@@ -1,3 +1,6 @@
+/* Provider files intentionally export hooks beside their component — fast-refresh
+   cannot hot-swap them, which is acceptable for session-wide providers. */
+/* eslint-disable react/only-export-components */
 import {
   createContext,
   useCallback,
@@ -76,6 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // sync session restore with the auth backend — external system, not derived state
+    // eslint-disable-next-line react/set-state-in-effect
     void refresh();
   }, [refresh]);
 

@@ -23,6 +23,10 @@ export const queryKeys = {
   workItemDetail: (id: string) => ["work-items", id, "detail"] as const,
 
   notifications: ["notifications"] as const,
+  communicationRoot: ["communication-board"] as const,
+  communication: (userId: string | undefined, archived: boolean) =>
+    ["communication-board", userId, archived] as const,
+  conversationMessages: (id: string) => ["communication-messages", id] as const,
 
   branches: ["branches"] as const,
   teams: ["teams"] as const,

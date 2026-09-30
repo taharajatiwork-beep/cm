@@ -63,10 +63,13 @@ export function NotificationsPage() {
                     <DateText value={n.created_at} withTime />
                   </Muted>
                   {n.entity_type === "work_item" && n.entity_id ? (
-                    <Link to={`/work-items/${String(n.entity_id)}`}>باز کردن</Link>
+                    <Link className="btn btn-ghost" to={`/work-items/${String(n.entity_id)}`}>باز کردن</Link>
+                  ) : null}
+                  {n.entity_type === "conversation" && n.entity_id ? (
+                    <Link className="btn btn-ghost" to={`/communication?c=${String(n.entity_id)}`}>باز کردن</Link>
                   ) : null}
                   {!n.is_read ? (
-                    <button type="button" onClick={() => mark.mutate(String(n.id))}>
+                    <button type="button" className="btn btn-ghost" onClick={() => mark.mutate(String(n.id))}>
                       خواندم
                     </button>
                   ) : null}

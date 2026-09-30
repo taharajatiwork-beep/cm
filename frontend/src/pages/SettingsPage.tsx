@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import {
   Badge,
@@ -7,11 +7,15 @@ import {
   Card,
   CardTitle,
   EmptyState,
+  ErrorMessage,
+  Field,
+  Input,
   List,
   ListItem,
   Muted,
   PageHeader,
 } from "../components/ui";
+import { useToast } from "../components/ui/Toast";
 import { Bi, LangSwitch, useBi } from "../i18n";
 import { queryKeys } from "../lib/queryKeys";
 
@@ -76,10 +80,12 @@ export function SettingsPage() {
     const st = tgQuery.data;
     if (!st) return;
     // Mirror the server state into the form, without clobbering typing.
+    /* eslint-disable react/set-state-in-effect -- server → form hydration */
     setPrefs({ ...DEFAULT_PREFS, ...(st.notify_prefs || {}) });
     setDigest(st.digest_enabled);
     setQuietStart(st.quiet_start_hour != null ? String(st.quiet_start_hour) : "");
     setQuietEnd(st.quiet_end_hour != null ? String(st.quiet_end_hour) : "");
+    /* eslint-enable react/set-state-in-effect */
   }, [tgQuery.data]);
 
   function refreshTg() {
@@ -155,11 +161,6 @@ export function SettingsPage() {
     }
   }
 
-  const qrUrl =
-    deepLink != null
-      ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(deepLink)}`
-      : null;
-
   return (
     <>
       <PageHeader
@@ -194,12 +195,12 @@ export function SettingsPage() {
       </div>
 
       {section === "telegram" && (
-        <div className="stack" style={{ gap: "var(--space-4)", maxWidth: "36rem" }}>
+        <div className="stack stack--roomy" style={{ maxWidth: "36rem" }}>
           <Card stack>
             <CardTitle>
               <Bi en="Connect Telegram" fa="اتصال تلگرام" />
             </CardTitle>
-            <p className="help-text" style={{ margin: 0 }}>
+            <p className="help-text">
               <Bi
                 en="Get work alerts on your phone, mark to-dos done, and reply — without opening the website."
                 fa="اعلان کارها را روی گوشی بگیرید، کار را انجام‌شده بزنید و جواب بدهید — بدون باز کردن سایت."
@@ -213,7 +214,7 @@ export function SettingsPage() {
                     <Bi en="Connected" fa="متصل" />
                   </Badge>{" "}
                   {tg.username ? (
-                    <Muted>@{tg.username}</Muted>
+                    <Muted className="ltr-value">@{tg.username}</Muted>
                   ) : (
                     <Muted>
                       <Bi en="linked" fa="وصل شده" />
@@ -232,19 +233,18 @@ export function SettingsPage() {
                     : bi("Open in Telegram", "باز کردن در تلگرام")}
                 </Button>
                 {deepLink && (
-                  <div className="stack" style={{ gap: "var(--space-2)" }}>
+                  <div className="stack stack--tight">
                     <Muted>
                       <Bi
                         en="If the app did not open, scan this code with your phone:"
                         fa="اگر برنامه باز نشد، این کد را با گوشی اسکن کنید:"
                       />
                     </Muted>
-                    {qrUrl ? (
-                      <img src={qrUrl} alt="QR" width={160} height={160} style={{ borderRadius: 8 }} />
+                    {deepLink ? (
+                      <a className="ltr-value" href={deepLink} target="_blank" rel="noreferrer">
+                        {deepLink}
+                      </a>
                     ) : null}
-                    <a href={deepLink} target="_blank" rel="noreferrer">
-                      {deepLink}
-                    </a>
                     {linkCode ? (
                       <Muted>
                         <Bi en="Or send in the bot:" fa="یا در بات بفرستید:" />{" "}
@@ -297,37 +297,27 @@ export function SettingsPage() {
                     <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} />
                     <Bi en="Morning summary" fa="خلاصه صبحگاهی" />
                   </label>
-                  <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-                    <label>
-                      <Muted>
-                        <Bi en="Quiet from (hour UTC)" fa="سکوت از ساعت (UTC)" />
-                      </Muted>
-                      <input
-                        className="control"
+                  <div className="form-grid">
+                    <Field label={<Bi en="Quiet from (hour UTC)" fa="سکوت از ساعت (UTC)" />}>
+                      <Input
                         type="number"
                         min={0}
                         max={23}
                         value={quietStart}
                         onChange={(e) => setQuietStart(e.target.value)}
                         placeholder="22"
-                        style={{ width: "4.5rem" }}
                       />
-                    </label>
-                    <label>
-                      <Muted>
-                        <Bi en="until" fa="تا" />
-                      </Muted>
-                      <input
-                        className="control"
+                    </Field>
+                    <Field label={<Bi en="until" fa="تا" />}>
+                      <Input
                         type="number"
                         min={0}
                         max={23}
                         value={quietEnd}
                         onChange={(e) => setQuietEnd(e.target.value)}
                         placeholder="8"
-                        style={{ width: "4.5rem" }}
                       />
-                    </label>
+                    </Field>
                   </div>
                   <Button className="btn-sm" disabled={tgBusy} onClick={() => void saveTgPrefs()}>
                     <Bi en="Save" fa="ذخیره" />
@@ -390,7 +380,7 @@ export function SettingsPage() {
               ))}
             </List>
             {selectedTeam && (
-              <div style={{ marginTop: "1rem" }}>
+              <div className="mt-4">
                 <strong>
                   <Bi en="Members" fa="اعضا" />
                 </strong>
@@ -450,18 +440,18 @@ export function SettingsPage() {
         </Card>
       )}
 
-      <details className="advanced" style={{ marginTop: "1rem" }}>
+      <details className="advanced">
         <summary>
           <Bi en="Test accounts (for trying the system)" fa="حساب‌های آزمایشی (برای امتحان سیستم)" />
         </summary>
         <div className="advanced-body">
-          <ul className="muted" style={{ margin: 0, paddingInlineStart: "1.2rem" }}>
+          <ul className="muted muted-list">
             <li>ali@autoco.example — {bi("Manager", "مدیر")}</li>
             <li>reza@autoco.example — {bi("Seller", "فروشنده")}</li>
             <li>sara@autoco.example — {bi("Marketing", "بازاریابی")}</li>
             <li>maryam@autoco.example — {bi("Mashhad branch", "شعبه مشهد")}</li>
           </ul>
-          <p className="muted" style={{ margin: 0 }}>
+          <p className="muted help-text">
             {bi("Password for all:", "رمز همه:")} <code>password</code>
           </p>
         </div>
@@ -471,36 +461,92 @@ export function SettingsPage() {
 }
 
 function TotpCard() {
+  const toast = useToast();
+  const bi = useBi();
+  const qc = useQueryClient();
   const [secret, setSecret] = useState("");
-  const [code, setCode] = useState("");
   const [otpauth, setOtpauth] = useState("");
+  const [code, setCode] = useState("");
+
+  const reveal = useMutation({
+    mutationFn: () => api.totp.setup(),
+    onSuccess: (row) => {
+      setSecret(row.secret);
+      setOtpauth(row.otpauth);
+    },
+    onError: () => {
+      toast(bi("Could not load the secret", "دریافت رمز ناموفق بود"));
+    },
+  });
+
+  const enable = useMutation({
+    mutationFn: () => api.totp.enable(code),
+    onSuccess: () => {
+      setCode("");
+      setSecret("");
+      setOtpauth("");
+      void qc.invalidateQueries({ queryKey: queryKeys.telegramStatus });
+      toast(bi("Two-factor login enabled", "ورود دو مرحله‌ای فعال شد"));
+    },
+    onError: () => {
+      toast(bi("Invalid code", "کد نامعتبر است"));
+    },
+  });
+
   return (
     <Card>
       <h2>
         <Bi en="Two-factor login" fa="ورود دو مرحله‌ای" />
       </h2>
-      <Button
-        variant="secondary"
-        onClick={() => {
-          void api.totp.setup().then((row) => {
-            setSecret(row.secret);
-            setOtpauth(row.otpauth);
-          });
-        }}
-      >
-        <Bi en="Show QR secret" fa="نمایش رمز" />
-      </Button>
-      {otpauth ? (
-        <img
-          alt="totp"
-          src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(otpauth)}`}
-        />
-      ) : null}
-      {secret ? <p className="mono">{secret}</p> : null}
-      <input className="control" value={code} onChange={(e) => setCode(e.target.value)} />
-      <Button onClick={() => void api.totp.enable(code)}>
-        <Bi en="Enable" fa="فعال‌سازی" />
-      </Button>
+      {!otpauth ? (
+        <Button
+          variant="secondary"
+          disabled={reveal.isPending}
+          onClick={() => reveal.mutate()}
+        >
+          <Bi en="Show secret" fa="نمایش رمز" />
+        </Button>
+      ) : (
+        <>
+          <p>
+            <Bi
+              en="Add this key to your authenticator app, then enter the 6-digit code it shows."
+              fa="این کلید را در اپ احراز هویت خود ثبت کنید، سپس کد ۶ رقمی آن را وارد کنید."
+            />
+          </p>
+          {/* کلید و URI لاتین‌اند؛ بدون جهت LTR کاراکترها جابه‌جا می‌شوند */}
+          <p className="mono ltr-value">{secret}</p>
+          <details>
+            <summary>
+              <Bi en="Show setup URI" fa="نمایش URI راه‌اندازی" />
+            </summary>
+            <p className="mono ltr-value">{otpauth}</p>
+          </details>
+          <Field label={<Bi en="6-digit code" fa="کد ۶ رقمی" />}>
+            <Input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              pattern="[0-9]{6}"
+              placeholder="000000"
+              disabled={enable.isPending}
+            />
+          </Field>
+          <ErrorMessage error={enable.isError ? String((enable.error as Error).message) : ""} />
+          <Button
+            onClick={() => enable.mutate()}
+            disabled={enable.isPending || !/^[0-9]{6}$/.test(code)}
+          >
+            {enable.isPending ? (
+              <Bi en="Enabling…" fa="در حال فعال‌سازی…" />
+            ) : (
+              <Bi en="Enable" fa="فعال‌سازی" />
+            )}
+          </Button>
+        </>
+      )}
     </Card>
   );
 }

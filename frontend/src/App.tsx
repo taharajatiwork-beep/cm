@@ -4,7 +4,6 @@ import { Shell } from "./Shell";
 import { LoadingState } from "./components/ui";
 import { AdminPage } from "./pages/AdminPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
-import { AuditPage } from "./pages/AuditPage";
 import { AgentPage } from "./pages/AgentPage";
 import { CasesPage } from "./pages/CasesPage";
 import { CommunicationPage } from "./pages/CommunicationPage";
@@ -64,7 +63,6 @@ export default function App() {
           <Route path="knowledge" element={<KnowledgePage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="admin" element={<AdminPage />} />
-          <Route path="audit" element={<AuditPage />} />
           <Route path="approvals" element={<ApprovalsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="agent" element={<AgentPage />} />

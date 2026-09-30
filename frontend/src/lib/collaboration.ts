@@ -3,6 +3,10 @@ import { formatJalali } from "../jalali";
 
 export type PersonMap = Map<string, string>;
 
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
 export function buildPersonMap(people: Array<Record<string, unknown>>): PersonMap {
   const m = new Map<string, string>();
   for (const p of people) m.set(String(p.id), String(p.full_name));
@@ -24,13 +28,16 @@ export function formatDeadline(
   if (Number.isNaN(d.getTime())) return null;
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
-  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  // ساعت عمداً دستی ساخته می‌شود: `toLocaleTimeString(undefined, …)` هم
+  // به locale مرورگر وابسته است و هم در en-US خروجی «03:00 PM» می‌دهد،
+  // در حالی که تاریخِ کنارش لاتین است.
+  const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   if (sameDay) return `${bi("Due", "مهلت")}: ${time}`;
   // Persian UI shows the Jalali date; English UI keeps the Gregorian one.
   const date =
     locale === "fa"
       ? formatJalali(d)
-      : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      : `${d.getMonth() + 1}/${d.getDate()}`;
   return `${bi("Due", "مهلت")}: ${date ?? ""} ${time}`.trim();
 }
 

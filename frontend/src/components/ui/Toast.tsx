@@ -1,3 +1,5 @@
+/* Provider file intentionally exports its hook beside the Toast component. */
+/* eslint-disable react/only-export-components */
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
 type Toast = { id: number; text: string };

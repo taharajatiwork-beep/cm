@@ -1,3 +1,5 @@
+/* Provider file intentionally exports its hook beside the ConfirmDialog component. */
+/* eslint-disable react/only-export-components */
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { Button } from "./Button";
 

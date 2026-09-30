@@ -12,7 +12,9 @@ import {
   Muted,
   PageHeader,
   SectionHeader,
+  Segmented,
   Select,
+  StatCard,
   Table,
 } from "../components/ui";
 import { Bi, useBi } from "../i18n";
@@ -20,6 +22,7 @@ import { useAuth } from "../auth";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 import { queryKeys } from "../lib/queryKeys";
+import { DateText } from "../components/DateText";
 
 const SCOPES: Array<[string, string, string]> = [
   ["organization", "Organization", "کل سازمان"],
@@ -29,11 +32,60 @@ const SCOPES: Array<[string, string, string]> = [
   ["self", "Self only", "فقط خودم"],
 ];
 
+type AdminTab = "overview" | "people" | "audit";
+
 export function AdminPage() {
-  const bi = useBi();
   const { has } = useAuth();
+  const [tab, setTab] = useState<AdminTab>("overview");
+
+  if (!has("org.admin")) {
+    return (
+      <>
+        <PageHeader title={<Bi en="Organization admin" fa="مدیریت سازمان" />} />
+        <Card>
+          <Muted>
+            <Bi
+              en="You need the org.admin permission to manage users, roles and teams."
+              fa="برای مدیریت کاربران، نقش‌ها و تیم‌ها به مجوز org.admin نیاز دارید."
+            />
+          </Muted>
+        </Card>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        title={<Bi en="Organization admin" fa="مدیریت سازمان" />}
+        description={
+          <Bi
+            en="Organization overview, people and roles, and the audit trail."
+            fa="نمای کلی سازمان، کاربران و نقش‌ها، و گزارش ممیزی."
+          />
+        }
+        actions={
+          <Segmented<AdminTab>
+            value={tab}
+            onChange={setTab}
+            items={[
+              { key: "overview", label: <Bi en="Overview" fa="نمای کلی" />, icon: "layers" },
+              { key: "people", label: <Bi en="People & roles" fa="کاربران و نقش‌ها" />, icon: "users" },
+              { key: "audit", label: <Bi en="Audit" fa="ممیزی" />, icon: "check" },
+            ]}
+          />
+        }
+      />
+      {tab === "overview" ? <OverviewTab /> : null}
+      {tab === "people" ? <PeopleTab /> : null}
+      {tab === "audit" ? <AuditTab /> : null}
+    </>
+  );
+}
+
+function PeopleTab() {
+  const bi = useBi();
   const qc = useQueryClient();
-  const isAdmin = has("org.admin");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -72,28 +124,21 @@ export function AdminPage() {
 
   const peopleQuery = useQuery({
     queryKey: ["admin", "people"],
-    enabled: isAdmin,
     queryFn: () => api.people.list(),
   });
   const rolesQuery = useQuery({
     queryKey: ["admin", "roles"],
-    enabled: isAdmin,
     queryFn: () => api.roles(),
   });
-  const teamsQuery = useQuery({
-    queryKey: queryKeys.teams,
-    enabled: isAdmin,
-    queryFn: () => api.teams.list(),
-  });
+  const teamsQuery = useQuery({ queryKey: queryKeys.teams, queryFn: () => api.teams.list() });
   const codesQuery = useQuery({
     queryKey: ["admin", "permission-codes"],
-    enabled: isAdmin,
     queryFn: () => api.admin.permissionCodes(),
   });
   const roleId = selectedRole || rolesQuery.data?.[0]?.id || "";
   const roleQuery = useQuery({
     queryKey: ["admin", "role", roleId],
-    enabled: isAdmin && Boolean(roleId),
+    enabled: Boolean(roleId),
     queryFn: () => api.admin.rolePermissions(roleId),
   });
 
@@ -150,33 +195,8 @@ export function AdminPage() {
     onError: (e) => setFormError(String((e as Error).message)),
   });
 
-  if (!isAdmin) {
-    return (
-      <>
-        <PageHeader title={<Bi en="Organization admin" fa="مدیریت سازمان" />} />
-        <Card>
-          <Muted>
-            <Bi
-              en="You need the org.admin permission to manage users, roles and teams."
-              fa="برای مدیریت کاربران، نقش‌ها و تیم‌ها به مجوز org.admin نیاز دارید."
-            />
-          </Muted>
-        </Card>
-      </>
-    );
-  }
-
   return (
     <>
-      <PageHeader
-        title={<Bi en="Organization admin" fa="مدیریت سازمان" />}
-        description={
-          <Bi
-            en="Create users, deactivate accounts, reset a password, edit role permissions and add people to teams."
-            fa="ساخت کاربر، غیرفعال‌سازی حساب، بازنشانی رمز، ویرایش مجوزهای نقش و افزودن اعضا به تیم."
-          />
-        }
-      />
       <ErrorMessage error={formError || loadError} />
 
       <Card>
@@ -230,7 +250,7 @@ export function AdminPage() {
                 render: (u) => (
                   <span className="cell-main">
                     <strong>{String(u.full_name)}</strong>
-                    <Muted className="mono">{String(u.email)}</Muted>
+                    <Muted className="mono ltr-value">{String(u.email)}</Muted>
                   </span>
                 ),
               },
@@ -248,7 +268,7 @@ export function AdminPage() {
                 key: "actions",
                 header: <Bi en="Actions" fa="عملیات" />,
                 render: (u) => (
-                  <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <span className="chip-row">
                     <Button
                       variant="secondary"
                       disabled={updateUser.isPending}
@@ -383,6 +403,319 @@ export function AdminPage() {
   );
 }
 
+/** تب «نمای کلی» — فقط خواندنی، پشت org.admin در بک‌اند. */
+function OverviewTab() {
+  const bi = useBi();
+  const query = useQuery({
+    queryKey: ["admin", "overview"],
+    queryFn: () => api.admin.overview(),
+  });
+
+  if (query.isLoading) return <LoadingState />;
+  if (query.isError || !query.data) {
+    return <ErrorMessage error={String((query.error as Error)?.message ?? "")} />;
+  }
+  const d = query.data;
+  const maxTasks = Math.max(...d.trend.map((t) => Number(t.kpis?.open_tasks ?? 0)), 1);
+
+  return (
+    <>
+      <div className="kpi-row kpi-row--4 kpi-row--even">
+        <StatCard
+          icon="users"
+          tone={d.users.inactive + d.users.locked > 0 ? "warn" : "ok"}
+          label={<Bi en="Active users" fa="کاربران فعال" />}
+          value={`${d.users.active}`}
+          hint={
+            <Bi
+              en={`${d.users.total} total · ${d.users.inactive} inactive · ${d.users.locked} locked`}
+              fa={`${d.users.total} کل · ${d.users.inactive} غیرفعال · ${d.users.locked} قفل‌شده`}
+            />
+          }
+        />
+        <StatCard
+          icon="message"
+          tone="accent"
+          label={<Bi en="Messages · 7 days" fa="پیام‌ها · ۷ روز" />}
+          value={`${d.messages_7d}`}
+        />
+        <StatCard
+          icon="chat"
+          tone={d.conversations_waiting_reply > 0 ? "warn" : "ok"}
+          label={<Bi en="Waiting for reply" fa="منتظر پاسخ" />}
+          value={`${d.conversations_waiting_reply}`}
+        />
+        <StatCard
+          icon="clock"
+          tone={d.avg_first_reply_minutes == null ? "neutral" : d.avg_first_reply_minutes > 30 ? "warn" : "ok"}
+          label={<Bi en="Avg first reply" fa="میانگین اولین پاسخ" />}
+          value={
+            d.avg_first_reply_minutes == null
+              ? "–"
+              : bi(`${d.avg_first_reply_minutes} min`, `${d.avg_first_reply_minutes} دقیقه`)
+          }
+        />
+      </div>
+
+      <div className="kpi-row kpi-row--4 kpi-row--even">
+        <StatCard
+          icon="briefcase"
+          tone="accent"
+          label={<Bi en="Open cases" fa="پرونده‌های باز" />}
+          value={`${d.cases.open}`}
+        />
+        <StatCard
+          icon="alert"
+          tone={d.cases.sla_breached > 0 ? "danger" : "ok"}
+          label={<Bi en="SLA breached" fa="SLA نقض‌شده" />}
+          value={`${d.cases.sla_breached}`}
+        />
+        <StatCard
+          icon="check"
+          tone={d.approvals_pending > 0 ? "warn" : "ok"}
+          label={<Bi en="Pending approvals" fa="تأییدهای منتظر" />}
+          value={`${d.approvals_pending}`}
+        />
+        <StatCard
+          icon="alert"
+          tone={d.divar_errors > 0 ? "danger" : "ok"}
+          label={<Bi en="Divar errors" fa="خطاهای دیوار" />}
+          value={`${d.divar_errors}`}
+        />
+      </div>
+
+      <Card>
+        <SectionHeader icon="car" title={<Bi en="Vehicles" fa="خودروها" />} />
+        <div className="kpi-row kpi-row--3 kpi-row--even">
+          <StatCard icon="car" tone="ok" label={<Bi en="In stock" fa="موجود" />} value={`${d.vehicles.in_stock}`} />
+          <StatCard icon="clock" tone="warn" label={<Bi en="Reserved" fa="رزرو" />} value={`${d.vehicles.reserved}`} />
+          <StatCard icon="check" tone="accent" label={<Bi en="Sold" fa="فروخته" />} value={`${d.vehicles.sold}`} />
+        </div>
+      </Card>
+
+      <div className="grid grid-2">
+        <Card padded={false}>
+          <SectionHeader
+            icon="branch"
+            title={<Bi en="Open tasks by branch" fa="کارهای باز به تفکیک شعبه" />}
+            count={d.tasks_by_branch.length}
+          />
+          {d.tasks_by_branch.length === 0 ? (
+            <div className="flush-foot">
+              <EmptyState
+                titleEn="No open tasks"
+                titleFa="کار بازی نیست"
+                bodyEn="Nothing is pending right now."
+                bodyFa="الان کار بازی وجود ندارد."
+              />
+            </div>
+          ) : (
+            <Table
+              rows={d.tasks_by_branch}
+              rowKey={(r) => r.branch}
+              columns={[
+                { key: "branch", header: <Bi en="Branch" fa="شعبه" />, render: (r) => r.branch },
+                { key: "open", header: <Bi en="Open" fa="باز" />, render: (r) => `${r.open}` },
+                {
+                  key: "overdue",
+                  header: <Bi en="Overdue" fa="عقب‌افتاده" />,
+                  render: (r) => (
+                    <span className={r.overdue > 0 ? "cell-warn" : undefined}>{`${r.overdue}`}</span>
+                  ),
+                },
+              ]}
+            />
+          )}
+        </Card>
+
+        <Card padded={false}>
+          <SectionHeader
+            icon="users"
+            title={<Bi en="Busiest people" fa="پرکارترین‌ها" />}
+            count={d.top_users.length}
+          />
+          {d.top_users.length === 0 ? (
+            <div className="flush-foot">
+              <EmptyState
+                titleEn="No assignments"
+                titleFa="ارجاعی نیست"
+                bodyEn="Nobody has an open task right now."
+                bodyFa="الان هیچ‌کس کار باز ندارد."
+              />
+            </div>
+          ) : (
+            <Table
+              rows={d.top_users}
+              rowKey={(r) => r.user_id}
+              columns={[
+                { key: "name", header: <Bi en="Person" fa="نفر" />, render: (r) => r.name },
+                {
+                  key: "tasks",
+                  header: <Bi en="Open tasks" fa="کارهای باز" />,
+                  render: (r) => `${r.open_tasks}`,
+                },
+              ]}
+            />
+          )}
+        </Card>
+      </div>
+
+      <Card>
+        <SectionHeader icon="activity" title={<Bi en="Weekly trend · open tasks" fa="روند هفتگی · کارهای باز" />} />
+        {d.trend.length === 0 ? (
+          <EmptyState
+            titleEn="No snapshots yet"
+            titleFa="هنوز اسنپ‌شاتی نیست"
+            bodyEn="The worker stores one KPI snapshot per week."
+            bodyFa="worker هر هفته یک اسنپ‌شات KPI ذخیره می‌کند."
+          />
+        ) : (
+          <div className="trend-bars">
+            {d.trend.map((t) => {
+              const open = Number(t.kpis?.open_tasks ?? 0);
+              return (
+                <div key={t.date ?? `w-${t.week}`} className="trend-col">
+                  <div
+                    className="trend-bar"
+                    style={{ height: `${Math.max(Math.round((open / maxTasks) * 100), 2)}%` }}
+                  />
+                  <Muted className="trend-label">
+                    {t.week != null ? bi(`Week ${t.week}`, `هفته ${t.week}`) : "–"}
+                  </Muted>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <Muted>
+          <Bi en={`Weekly worker snapshot · ${d.as_of_jalali}`} fa={`اسنپ‌شات هفتگی worker · ${d.as_of_jalali}`} />
+        </Muted>
+      </Card>
+    </>
+  );
+}
+
+const AUDIT_ENTITIES = [
+  "",
+  "work_item",
+  "task",
+  "case",
+  "conversation",
+  "customer",
+  "approval",
+  "report",
+  "user",
+  "auth",
+];
+
+/** تب «ممیزی» — فیلتر کاربر/موجودیت/اقدام/تاریخ + خروجی اکسل. */
+function AuditTab() {
+  const bi = useBi();
+  const [actor, setActor] = useState("");
+  const [entity, setEntity] = useState("");
+  const [action, setAction] = useState("");
+  const [day, setDay] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+
+  const filters = {
+    ...(actor ? { actorId: actor.trim() } : {}),
+    ...(entity ? { entityType: entity } : {}),
+    ...(action ? { action: action.trim() } : {}),
+    ...(day ? { day } : {}),
+  };
+  const filterKey = JSON.stringify(filters);
+
+  const query = useQuery({
+    queryKey: ["admin", "audit", filterKey],
+    queryFn: () => api.audit.list(filters),
+  });
+  const rows = query.data ?? [];
+
+  return (
+    <Card padded={false}>
+      <SectionHeader
+        icon="check"
+        title={<Bi en="Audit trail" fa="گزارش ممیزی" />}
+        count={rows.length}
+        action={
+          <Button
+            variant="secondary"
+            disabled={exporting}
+            onClick={() => {
+              setExportError("");
+              setExporting(true);
+              void api.audit
+                .downloadXlsx(filters)
+                .catch((e: unknown) => setExportError(String((e as Error).message)))
+                .finally(() => setExporting(false));
+            }}
+          >
+            {bi("Export Excel", "خروجی اکسل")}
+          </Button>
+        }
+      />
+      <div className="form-grid">
+        <Field label={<Bi en="User id" fa="شناسه کاربر" />}>
+          <Input value={actor} onChange={(e) => setActor(e.target.value)} placeholder="…" />
+        </Field>
+        <Field label={<Bi en="Entity type" fa="نوع موجودیت" />}>
+          <Select value={entity} onChange={(e) => setEntity(e.target.value)}>
+            {AUDIT_ENTITIES.map((v) => (
+              <option key={v || "all"} value={v}>
+                {v === "" ? bi("All", "همه") : v}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={<Bi en="Action" fa="اقدام" />}>
+          <Input value={action} onChange={(e) => setAction(e.target.value)} placeholder="auth.login" />
+        </Field>
+        <Field label={<Bi en="Day" fa="تاریخ" />}>
+          <Input type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+        </Field>
+      </div>
+      <ErrorMessage error={exportError} />
+      {query.isLoading ? (
+        <LoadingState />
+      ) : query.isError ? (
+        <ErrorMessage error={String((query.error as Error).message)} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          titleEn="No audit rows"
+          titleFa="ردیف ممیزی نیست"
+          bodyEn="Clear the filters to see more."
+          bodyFa="برای دیدن موارد بیشتر فیلترها را پاک کنید."
+        />
+      ) : (
+        <Table
+          rows={rows}
+          rowKey={(r) => String(r.id)}
+          columns={[
+            { key: "action", header: <Bi en="Action" fa="اقدام" />, render: (r) => String(r.action) },
+            { key: "entity", header: <Bi en="Entity" fa="موجودیت" />, render: (r) => String(r.entity_type) },
+            {
+              key: "entity_id",
+              header: <Bi en="Entity id" fa="شناسه" />,
+              render: (r) => <span className="mono">{String(r.entity_id)}</span>,
+            },
+            {
+              key: "actor",
+              header: <Bi en="Actor" fa="کاربر" />,
+              render: (r) => (r.actor_id ? <span className="mono">{String(r.actor_id)}</span> : "–"),
+            },
+            {
+              key: "when",
+              header: <Bi en="When" fa="زمان" />,
+              render: (r) => <DateText value={String(r.created_at ?? "")} />,
+            },
+          ]}
+        />
+      )}
+    </Card>
+  );
+}
+
 function RoleEditor({
   codes,
   selected,
@@ -429,23 +762,23 @@ function RoleEditor({
           ))}
         </Select>
       </Field>
-      <ul className="tag-list" style={{ marginTop: "var(--space-3)" }}>
+      <ul className="tag-list mt-3">
         {codes.map((code) => (
           <li key={code}>
-            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <label className="chip-row">
               <input
                 type="checkbox"
                 checked={checked.has(code)}
                 onChange={() => toggle(code)}
               />
-              <span className="mono" style={{ fontSize: "0.78rem" }}>
+              <span className="mono mono-xs">
                 {code}
               </span>
             </label>
           </li>
         ))}
       </ul>
-      <div style={{ marginTop: "var(--space-3)" }}>
+      <div className="mt-3">
         <Button disabled={busy} onClick={() => onSave(Array.from(checked).sort(), level)}>
           {bi("Save role", "ذخیره نقش")}
         </Button>

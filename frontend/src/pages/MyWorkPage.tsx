@@ -219,7 +219,7 @@ export function MyWorkPage() {
             <div className="progress-bar" aria-hidden>
               <span style={{ width: `${pct}%` }} />
             </div>
-            <div className="mini-stats" style={{ marginBottom: 0 }}>
+            <div className="mini-stats">
               <div className="mini-stat">
                 <span>
                   <Bi en="To do" fa="مانده" />
@@ -244,7 +244,7 @@ export function MyWorkPage() {
           {has("work_item.write") && (
             <Card as="form" stack onSubmit={createShared}>
               <SectionHeader icon="plus" title={<Bi en="Start a project" fa="شروع یک پروژه" />} />
-              <p className="help-text" style={{ margin: 0 }}>
+              <p className="help-text">
                 <Bi
                   en="Give it a short name. Next you can add people and split the work."
                   fa="یک نام کوتاه بدهید. در قدم بعد همکاران را اضافه و کار را بینشان تقسیم می‌کنید."

@@ -71,7 +71,7 @@ export function ReportsPage() {
           />
         </Card>
       ) : (
-        <div className="kpi-row">
+        <div className="kpi-row kpi-row--4">
           {stats.map((s) => (
             <StatCard
               key={s.key}
@@ -88,26 +88,27 @@ export function ReportsPage() {
         <SectionHeader
           title={<Bi en="Exports" fa="خروجی‌ها" />}
           action={
-            <Muted>
-              <Bi en="As of" fa="تا تاریخ" /> {String(data.as_of_jalali ?? "—")}
-            </Muted>
+            <span className="chip-row">
+              <Muted className="fine">
+                <Bi en="As of" fa="تا تاریخ" /> {String(data.as_of_jalali ?? "—")}
+              </Muted>
+              {(["csv", "xlsx", "pdf"] as const).map((format) => (
+                <Button
+                  key={format}
+                  variant="secondary"
+                  className="btn-sm"
+                  onClick={() => {
+                    void api.reports.download(format).catch((err: unknown) => {
+                      console.error("export failed", err);
+                    });
+                  }}
+                >
+                  {format.toUpperCase()}
+                </Button>
+              ))}
+            </span>
           }
         />
-        <div className="toolbar">
-          {(["csv", "xlsx", "pdf"] as const).map((format) => (
-            <Button
-              key={format}
-              variant="secondary"
-              onClick={() => {
-                void api.reports.download(format).catch((err: unknown) => {
-                  console.error("export failed", err);
-                });
-              }}
-            >
-              {format.toUpperCase()}
-            </Button>
-          ))}
-        </div>
         <Muted>
           <Bi
             en="CSV opens anywhere, XLSX in Excel, PDF for sharing."

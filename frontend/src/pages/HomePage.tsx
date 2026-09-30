@@ -1,17 +1,15 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorMessage,
   Icon,
   type IconName,
-  Input,
   LoadingState,
   PageHeader,
   SectionHeader,
@@ -35,8 +33,6 @@ export function HomePage() {
   const bi = useBi();
   const { locale } = useLocale();
   const [showOnboard, setShowOnboard] = useState(shouldShowOnboarding);
-  const [askText, setAskText] = useState("");
-  const navigate = useNavigate();
 
   const inbox = useQuery({
     queryKey: ["home-inbox", user?.id, roleHint, locale],
@@ -214,11 +210,21 @@ export function HomePage() {
             seen.add(s.title);
             return true;
           });
-        return { stories: ranked.slice(0, 8), roleHintLine };
+
+        // «منتظر پاسخ شما» — همان needs_reply سمت سرور، بدون درخواست اضافه.
+        const conversations = await api.conversations.list().catch(() => []);
+        const waitingReply = conversations.filter((c) => Boolean(c.needs_reply)).length;
+        const approvals = (await api.approvals.list().catch(() => [])).filter(
+          (a) => String(a.status || "pending") === "pending",
+        ).length;
+
+        return { stories: ranked.slice(0, 8), roleHintLine, waitingReply, approvals };
     },
   });
   const stories = inbox.data?.stories ?? [];
   const roleHintLine = inbox.data?.roleHintLine ?? "";
+  const waitingReply = inbox.data?.waitingReply ?? 0;
+  const approvals = inbox.data?.approvals ?? 0;
   const loading = inbox.isLoading;
   const error = inbox.isError ? String((inbox.error as Error).message) : "";
 
@@ -244,20 +250,14 @@ export function HomePage() {
   const sharedCount = stories.filter((s) => s.kind === "shared").length;
   const next = stories[0];
 
-  function askAi(e: FormEvent) {
-    e.preventDefault();
-    const q = askText.trim();
-    navigate(q ? `/agent?q=${encodeURIComponent(q)}` : "/agent");
-  }
-
   return (
     <>
       <PageHeader
         title={
-          <>
+          <span className="bidi-mixed">
             {greet}
             {user?.full_name ? `، ${user.full_name}` : ""}
-          </>
+          </span>
         }
         description={
           <>
@@ -284,11 +284,13 @@ export function HomePage() {
         />
       )}
 
-      <p>
-        <Link to="/approvals">
-          <Bi en="Open approvals" fa="تأییدهای منتظر" />
-        </Link>
-      </p>
+      {approvals > 0 ? (
+        <p>
+          <Link to="/approvals">
+            <Bi en="Open approvals" fa="تأییدهای منتظر" /> ({approvals})
+          </Link>
+        </p>
+      ) : null}
       <ErrorMessage error={error} />
 
       {!loading && (
@@ -318,7 +320,7 @@ export function HomePage() {
         </Card>
       )}
 
-      <div className="kpi-row kpi-row--3">
+      <div className="kpi-row kpi-row--4">
         <StatCard
           icon="user"
           tone="accent"
@@ -342,9 +344,17 @@ export function HomePage() {
           hint={<Bi en="team work you’re part of" fa="کارهای تیمی که در آن هستید" />}
           to="/work-items"
         />
+        <StatCard
+          icon="message"
+          tone={waitingReply > 0 ? "warn" : "neutral"}
+          label={<Bi en="Waiting for your reply" fa="منتظر پاسخ شما" />}
+          value={loading ? "–" : waitingReply}
+          hint={<Bi en="conversations you owe an answer" fa="گفتگوهایی که جوابتان را می‌خواهند" />}
+          to="/communication"
+        />
       </div>
 
-      <div className="home-layout">
+      {stories.length === 0 && !loading ? null : (
         <section className="home-main">
           <SectionHeader
             icon="flag"
@@ -360,15 +370,6 @@ export function HomePage() {
           {loading ? (
             <Card>
               <LoadingState />
-            </Card>
-          ) : stories.length === 0 ? (
-            <Card>
-              <EmptyState
-                titleEn="You’re all caught up"
-                titleFa="همه‌چیز مرتب است"
-                bodyEn="When work is assigned or something slips, it shows up here first."
-                bodyFa="وقتی کاری سپرده شود یا چیزی عقب بیفتد، اول اینجا دیده می‌شود."
-              />
             </Card>
           ) : (
             <ul className="story-grid">
@@ -428,35 +429,7 @@ export function HomePage() {
             </ul>
           )}
         </section>
-
-        <aside className="home-side">
-          <Card className="ask-card">
-            <SectionHeader icon="sparkles" title={<Bi en="Ask anything" fa="هر سؤالی بپرسید" />} />
-            <form onSubmit={askAi}>
-              <Input
-                value={askText}
-                onChange={(e) => setAskText(e.target.value)}
-                placeholder={bi("Is Elantra 2021 in stock?", "النترا ۲۰۲۱ موجود است؟")}
-              />
-              <Button type="submit">
-                <Icon name="send" size={14} />
-              </Button>
-            </form>
-          </Card>
-
-          <Card>
-            <SectionHeader title={<Bi en="Jump to" fa="دسترسی سریع" />} />
-            <div className="quick-grid">
-              {QUICK.map((q) => (
-                <Link key={q.to} to={q.to} className="quick-tile">
-                  <Icon name={q.icon} />
-                  {bi(q.en, q.fa)}
-                </Link>
-              ))}
-            </div>
-          </Card>
-        </aside>
-      </div>
+      )}
     </>
   );
 }
@@ -468,11 +441,4 @@ const KIND_META: Record<AttentionStory["kind"], { icon: IconName; en: string; fa
   task: { icon: "check", en: "To-do", fa: "کار" },
   alert: { icon: "bell", en: "Alert", fa: "هشدار" },
 };
-
-const QUICK: Array<{ to: string; icon: IconName; en: string; fa: string }> = [
-  { to: "/vehicles", icon: "car", en: "Vehicles", fa: "خودروها" },
-  { to: "/customers", icon: "user", en: "Customers", fa: "مشتریان" },
-  { to: "/communication", icon: "message", en: "Messages", fa: "پیام‌ها" },
-  { to: "/knowledge", icon: "book", en: "Rules & guides", fa: "قوانین و راهنماها" },
-];
 

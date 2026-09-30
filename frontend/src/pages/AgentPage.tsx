@@ -416,7 +416,7 @@ export function AgentPage() {
               </form>
             </Card>
           ) : (
-            <div className="stack" style={{ gap: "var(--space-4)" }}>
+            <div className="stack stack--roomy">
               <Card as="form" className="agent-run" onSubmit={run}>
                 <SectionHeader icon={curMeta.icon} title={<Bi en={curMode.en} fa={curMode.fa} />} />
                 <Muted>{bi(curMeta.descEn, curMeta.descFa)}</Muted>
@@ -464,7 +464,7 @@ export function AgentPage() {
                         />
                       </Field>
                     )}
-                    <label className="check-row" style={{ height: "var(--control-h)" }}>
+                    <label className="check-row check-row--tall">
                       <input
                         type="checkbox"
                         checked={autoCreate}

@@ -76,13 +76,18 @@ export function formatJalaliShort(value: unknown): string | null {
   return `${day} ${PERSIAN_MONTHS[m - 1]}`;
 }
 
-/** "1405/03/21 14:30" — Persian date plus local time. */
+/** "1405/03/21 14:30" — Persian date plus 24-hour local time.
+ *
+ * ساعت عمداً دستی ساخته می‌شود، نه با `toLocaleTimeString`:
+ * آن تابع هم ارقام فارسی می‌دهد (ناسازگار با تاریخ لاتین کنارش) و هم
+ * نشانگر AM/PM که در متن RTL جابه‌جا رندر می‌شود. */
 export function formatJalaliDateTime(value: unknown): string | null {
   const d = toDate(value);
   if (!d) return null;
   const date = formatJalali(d);
-  const time = d.toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" });
-  return `${date} ${time}`;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${date} ${hh}:${mm}`;
 }
 
 /**

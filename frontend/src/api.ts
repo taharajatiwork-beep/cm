@@ -50,6 +50,26 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   return res.json() as Promise<T>;
 }
 
+/** نمای کلی سازمان برای تب «نمای کلی» صفحه ادمین (فقط org.admin). */
+export interface AdminOverview {
+  as_of_jalali: string;
+  users: { total: number; active: number; inactive: number; locked: number };
+  messages_7d: number;
+  conversations_waiting_reply: number;
+  avg_first_reply_minutes: number | null;
+  tasks_by_branch: Array<{ branch: string; open: number; overdue: number }>;
+  top_users: Array<{ user_id: string; name: string; open_tasks: number }>;
+  cases: { open: number; sla_breached: number };
+  approvals_pending: number;
+  vehicles: { in_stock: number; reserved: number; sold: number };
+  divar_errors: number;
+  trend: Array<{
+    week: number | null;
+    date: string | null;
+    kpis: Record<string, number | string>;
+  }>;
+}
+
 export const api = {
   login: (organization_slug: string, email: string, password: string, totp?: string) =>
     request<{ access_token: string }>("/auth/login", {
@@ -185,6 +205,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
+    update: (id: string, body: { status?: string; owner_id?: string | null }) =>
+      request<Record<string, unknown>>(`/cases/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
     timeline: (id: string) =>
       request<Array<Record<string, unknown>>>(`/timeline/case/${id}`),
   },
@@ -289,6 +314,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
+    /** نمای کلی سازمان — فقط org.admin در بک‌اند مجاز است. */
+    overview: () => request<AdminOverview>("/admin/overview"),
   },
   people: {
     list: (q?: string) =>
@@ -341,6 +368,13 @@ export const api = {
     },
     archive: (id: string) =>
       request<{ id: string; archived: boolean }>(`/conversations/${id}/archive`, { method: "POST" }),
+    unarchive: (id: string) =>
+      request<{ id: string; archived: boolean }>(`/conversations/${id}/unarchive`, { method: "POST" }),
+    addParticipant: (id: string, user_id: string) =>
+      request<{ id: string; user_id: string }>(`/conversations/${id}/participants`, {
+        method: "POST",
+        body: JSON.stringify({ user_id }),
+      }),
     create: (body: Record<string, unknown>) =>
       request<Record<string, unknown>>("/conversations", {
         method: "POST",
@@ -533,10 +567,48 @@ export const api = {
       }),
   },
   audit: {
-    list: (action?: string) =>
-      request<Array<Record<string, unknown>>>(
-        `/audit${action ? `?entity_type=${encodeURIComponent(action)}` : ""}`,
-      ),
+    list: (opts?: { actorId?: string; entityType?: string; action?: string; day?: string }) => {
+      const sp = new URLSearchParams();
+      if (opts?.actorId) sp.set("actor_id", opts.actorId);
+      if (opts?.entityType) sp.set("entity_type", opts.entityType);
+      if (opts?.action) sp.set("action", opts.action);
+      if (opts?.day) sp.set("day", opts.day);
+      const qs = sp.toString();
+      return request<Array<Record<string, unknown>>>(`/audit${qs ? `?${qs}` : ""}`);
+    },
+    /** خروجی اکسل با همان فیلترهای تب ممیزی. */
+    downloadXlsx: async (opts?: { actorId?: string; entityType?: string; action?: string; day?: string }) => {
+      const sp = new URLSearchParams();
+      if (opts?.actorId) sp.set("actor_id", opts.actorId);
+      if (opts?.entityType) sp.set("entity_type", opts.entityType);
+      if (opts?.action) sp.set("action", opts.action);
+      if (opts?.day) sp.set("day", opts.day);
+      const qs = sp.toString();
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = ["Bearer", token].join(" ");
+      const res = await fetch(`/api/audit.xlsx${qs ? `?${qs}` : ""}`, {
+        headers,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const body = await res.json();
+          detail = body.detail?.message || body.detail || detail;
+        } catch {
+          /* ignore */
+        }
+        throw new ApiError(res.status, String(detail));
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "audit.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    },
   },
   totp: {
     setup: () =>

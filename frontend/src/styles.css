@@ -46,8 +46,9 @@
   --control-h: 2rem;
   --nav-w: 216px;
 
-  --font-display: "Sora", "Vazirmatn", "Segoe UI", sans-serif;
-  --font-body: "IBM Plex Sans", "Vazirmatn", "Segoe UI", sans-serif;
+  /* فونت‌ها از @fontsource در ریپو سرو می‌شوند؛ نام‌های بعدی فقط fallback‌اند */
+  --font-display: "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+  --font-body: "IBM Plex Sans", "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
 }
 
 * {
@@ -113,7 +114,10 @@ ol {
   color: var(--muted);
 }
 
-.error,
+.error {
+  color: var(--danger);
+  margin: 0;
+}
 .danger-text {
   color: var(--danger);
 }
@@ -131,8 +135,48 @@ ol {
   gap: var(--space-3);
 }
 
+/* ---------- Layout helpers (replace inline styles) ---------- */
+
+.stack--roomy {
+  gap: var(--space-4);
+}
+.stack--tight {
+  gap: var(--space-2);
+}
+.mt-3 {
+  margin-top: var(--space-3);
+}
+.mt-4 {
+  margin-top: var(--space-4);
+}
+.grow {
+  flex: 1;
+}
+.chip-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fine {
+  font-size: 0.72rem;
+}
+.mono-xs {
+  font-size: 0.78rem;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.stat-num {
+  font-size: 0.9rem;
+}
+.muted-list {
+  margin: 0;
+  padding-inline-start: 1.2rem;
+}
+
 .block-gap {
-  margin-bottom: var(--space-4);
+  margin-bottom: 0;
 }
 
 /* ---------- Shell ---------- */
@@ -365,6 +409,20 @@ html[dir="rtl"] .global-search input {
   unicode-bidi: isolate;
 }
 
+/* متن لاتین (ایمیل، هندل تلگرام، otpauth URI) داخل متن فارسی RTL:
+   بدون این دو، ترتیب نقطه/اسلش/ات‌ساین معکوس می‌شود («متصل @ dgfgdfsvhds»). */
+.ltr-value {
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-block;
+}
+
+/* جملهٔ ترکیبی فارسی + لاتین (مثل «صبح بخیر، Ali Manager»):
+   هر بخش جهت خودش را نگه می‌دارد و ترتیب کل جمله درست می‌ماند. */
+.bidi-mixed {
+  unicode-bidi: plaintext;
+}
+
 .shell-top-actions {
   display: flex;
   align-items: center;
@@ -447,8 +505,14 @@ html[dir="rtl"] .global-search input {
   color: #fff;
 }
 
+/* مالک ریتم عمودی همهٔ صفحه‌ها: فاصلهٔ بین بلوک‌های سطح‌بالای هر صفحه فقط از همین
+   gap می‌آید؛ کامپوننت‌ها (Card, Toolbar, header, kpi-row) margin بیرونی ندارند. */
 .main {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-4);
   padding: var(--space-5);
 }
 
@@ -460,7 +524,7 @@ html[dir="rtl"] .global-search input {
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  margin-bottom: 0;
 }
 
 .ui-page-header h1 {
@@ -504,10 +568,16 @@ html[lang="fa"] .ui-page-header h1 {
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
+  margin-bottom: 0;
 }
 
 .ui-card--flush {
   padding: 0;
+}
+
+/* Empty cards render as stray borders — collapse them entirely */
+.ui-card:empty {
+  display: none;
 }
 
 .ui-card-title {
@@ -524,10 +594,6 @@ html[lang="fa"] .ui-page-header h1 {
 
 .ui-card-title:first-child {
   margin-top: 0;
-}
-
-.ui-card-title--sm {
-  font-size: 0.78rem;
 }
 
 .section-head {
@@ -729,6 +795,7 @@ textarea.control,
   position: relative;
   display: flex;
   align-items: center;
+  gap: var(--space-2);
   flex: 1 1 14rem;
   max-width: 24rem;
 }
@@ -762,18 +829,6 @@ textarea.control,
 
 .form-grid .span-all {
   grid-column: 1 / -1;
-}
-
-.form-section-label {
-  grid-column: 1 / -1;
-  margin-top: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px dashed var(--line);
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
 }
 
 .inline-form {
@@ -888,7 +943,7 @@ textarea.control,
   display: inline-flex;
   flex-wrap: wrap;
   gap: 2px;
-  margin-bottom: var(--space-4);
+  margin-bottom: 0;
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -917,21 +972,13 @@ textarea.control,
   box-shadow: var(--shadow-sm);
 }
 
-.tab-count {
-  padding: 0 5px;
-  border-radius: 999px;
-  background: var(--line);
-  font-size: 0.68rem;
-  font-weight: 600;
-}
-
 /* ---------- KPI ---------- */
 
 .kpi-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  margin-bottom: 0;
 }
 
 .kpi {
@@ -1016,16 +1063,6 @@ textarea.control,
   color: var(--ai);
 }
 
-/* legacy stat (Dashboard) */
-.stat .label {
-  color: var(--muted);
-  font-size: 0.74rem;
-}
-
-.stat .value {
-  font: 600 1.35rem/1.2 var(--font-display);
-}
-
 /* ---------- Grids / layouts ---------- */
 
 .grid {
@@ -1036,10 +1073,6 @@ textarea.control,
 
 .grid-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.grid-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .split {
@@ -1053,6 +1086,11 @@ textarea.control,
   grid-template-columns: minmax(0, 1fr) 24rem;
 }
 
+/* فهرست باریک در یک سمت، جزئیات پهن در سمت دیگر (Cases و مشابه) */
+.split--side {
+  grid-template-columns: 22rem minmax(0, 1fr);
+}
+
 .split--left {
   grid-template-columns: 17rem minmax(0, 1fr);
 }
@@ -1062,6 +1100,13 @@ textarea.control,
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
+}
+.side-stack--flush {
+  gap: 0;
+}
+.side-stack .search-field {
+  max-width: none;
+}
 }
 
 /* ---------- Lists ---------- */
@@ -1155,11 +1200,6 @@ html[dir="rtl"] .work-list > li.is-warn {
   border-bottom: 0;
 }
 
-.checklist > li.done .check-body strong {
-  color: var(--faint);
-  text-decoration: line-through;
-}
-
 .check-mark {
   display: grid;
   place-items: center;
@@ -1177,11 +1217,6 @@ html[dir="rtl"] .work-list > li.is-warn {
   background: var(--ok-soft);
 }
 
-.check-body {
-  flex: 1;
-  min-width: 0;
-}
-
 /* Row list — compact clickable rows with leading icon */
 
 .rows {
@@ -1190,6 +1225,71 @@ html[dir="rtl"] .work-list > li.is-warn {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+.case-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.case-actions .control {
+  width: auto;
+  flex: 1 1 9rem;
+}
+.case-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+}
+.case-create input {
+  grid-column: 1;
+  grid-row: 1;
+}
+.case-create .btn {
+  grid-column: 2;
+  grid-row: 1;
+}
+.case-create select.control {
+  width: auto;
+  min-width: 0;
+}
+.case-create select.control:nth-of-type(1) {
+  grid-column: 1;
+  grid-row: 2;
+}
+.case-create select.control:nth-of-type(2) {
+  grid-column: 2;
+  grid-row: 2;
+}
+.case-timeline-empty {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.rows--scroll {
+  max-height: calc(100vh - 14rem);
+  overflow-y: auto;
+}
+.rows--boxed {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+/* در کارت‌های بدون پدینگ، ردیف‌ها لبه‌به‌لبه می‌نشینند */
+.ui-card--flush .row-item {
+  padding-inline: var(--space-4);
+}
+.row-title--wrap {
+  white-space: normal;
+}
+.check-mark--ok {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+.check-row--tall {
+  height: var(--control-h);
 }
 
 .row-item {
@@ -1371,6 +1471,46 @@ a.row-title:hover {
   font-size: 0.74rem;
 }
 
+.cell-warn {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* ---------- روند هفتگی (نوارهای CSS، بدون کتابخانه نمودار) ---------- */
+.trend-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  height: 140px;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--space-2);
+}
+
+.trend-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  height: 100%;
+  min-width: 0;
+}
+
+.trend-bar {
+  width: 100%;
+  max-width: 42px;
+  min-height: 3px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: linear-gradient(180deg, var(--accent), var(--accent-soft));
+}
+
+.trend-label {
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
 /* ---------- Card toolbar header (list cards) ---------- */
 
 .card-bar {
@@ -1385,6 +1525,10 @@ a.row-title:hover {
 
 .card-bar .section-head {
   margin-bottom: 0;
+}
+.card-bar select.control {
+  width: auto;
+  flex: 0 1 11rem;
 }
 
 .compose-pop.inline-form {
@@ -1505,7 +1649,7 @@ a.row-title:hover {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  margin-bottom: 0;
   padding: var(--space-2) var(--space-3);
   border: 1px solid #f6c4d3;
   border-radius: var(--radius-sm);
@@ -1516,19 +1660,6 @@ a.row-title:hover {
 .ui-error--block {
   flex-direction: column;
   align-items: flex-start;
-}
-
-.notice {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid #b7e3dc;
-  border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-  font-size: 0.8rem;
 }
 
 /* ---------- Sheet (slide-over) ---------- */
@@ -1618,7 +1749,7 @@ html[dir="rtl"] .sheet {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  margin-bottom: 0;
   background: linear-gradient(90deg, var(--accent-soft), var(--surface) 70%);
 }
 
@@ -1653,7 +1784,7 @@ html[dir="rtl"] .sheet {
 }
 
 .help-text {
-  margin: 0 0 var(--space-3);
+  margin: 0;
   color: var(--muted);
   font-size: 0.8rem;
   line-height: 1.6;
@@ -1665,7 +1796,7 @@ html[dir="rtl"] .sheet {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  margin-bottom: 0;
   border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
   background: linear-gradient(90deg, var(--accent-soft), var(--surface) 75%);
 }
@@ -1724,8 +1855,24 @@ html[dir="rtl"] .next-step .icon-arrow {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.kpi-row--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* Rows where one card carries a hint — keep all cards equally tall */
+.kpi-row--even .kpi {
+  min-height: 4.95rem;
+}
+
+@media (max-width: 900px) {
+  .kpi-row--4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 520px) {
-  .kpi-row--3 {
+  .kpi-row--3,
+  .kpi-row--4 {
     grid-template-columns: 1fr;
   }
 
@@ -1800,28 +1947,6 @@ details.advanced > .advanced-body {
   min-width: 0;
 }
 
-.attention-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-.attention-head h2 {
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.attention-count {
-  padding: 0 7px;
-  border-radius: 999px;
-  background: var(--ink);
-  color: #fff;
-  font-size: 0.7rem;
-  font-weight: 700;
-  line-height: 1.6;
-}
-
 .story-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(16.5rem, 1fr));
@@ -1868,6 +1993,13 @@ details.advanced > .advanced-body {
 
 .story-card.is-warn::before {
   background: var(--warn);
+}
+
+.story-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
 .story-top {
@@ -1932,6 +2064,8 @@ details.advanced > .advanced-body {
   color: var(--faint);
   font-size: 0.7rem;
   text-align: center;
+  /* علامت‌های خنثی ( ! ✓ ) در متن RTL جابه‌جا می‌افتند؛ ایزوله می‌مانند */
+  unicode-bidi: isolate;
 }
 
 .story-lines li.is-waiting .story-mark,
@@ -2315,6 +2449,19 @@ html[dir="rtl"] .thread-row.needs {
   color: var(--faint);
 }
 
+.pane-empty--snug {
+  padding: var(--space-4);
+}
+.spec-grid--single {
+  grid-template-columns: 1fr;
+}
+.flush-head {
+  padding: var(--space-3) var(--space-4) 0;
+}
+.flush-foot {
+  padding: 0 var(--space-4) var(--space-4);
+}
+
 /* ---------- Vehicles ---------- */
 
 .vehicle-cell {
@@ -2424,18 +2571,7 @@ html[dir="rtl"] .thread-row.needs {
   color: var(--accent);
 }
 
-.details-toggle {
-  display: flex;
-}
-
 /* legacy */
-.spec-list {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
 
 /* ---------- Work item ---------- */
 
@@ -2452,22 +2588,6 @@ html[dir="rtl"] .thread-row.needs {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--accent), #22b3a8);
-}
-
-.collab-status-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-}
-
-.next-action {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
 }
 
 .next-card {
@@ -2553,7 +2673,10 @@ html[dir="rtl"] .thread-row.needs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  margin: 0;
+}
+.mini-stats--half {
+  grid-template-columns: 1fr 1fr;
 }
 
 .mini-stat {
@@ -2811,27 +2934,10 @@ html[dir="rtl"] .tag-list li {
 
 /* ---------- Search results / misc legacy ---------- */
 
-.compose-form,
-.compose-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
 .compose-actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-}
-
-.shortcut-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.collab-feed-summary {
-  color: var(--muted);
 }
 
 /* ---------- Login ---------- */
@@ -3053,10 +3159,8 @@ html[dir="rtl"] .tag-list li {
   }
 
   .split--left,
+  .split--side,
   .grid-2,
-  .grid-3 {
-    grid-template-columns: minmax(0, 1fr);
-  }
 
   .inbox {
     grid-template-columns: minmax(0, 1fr);
@@ -3090,5 +3194,35 @@ html[dir="rtl"] .tag-list li {
 
   .form-grid .span-2 {
     grid-column: 1 / -1;
+  }
+
+  /* Comfortable touch targets on phones */
+  .nav-toggle {
+    min-width: 2.4rem;
+    min-height: 2.4rem;
+    padding: 0;
+  }
+
+  .seg {
+    height: 2.2rem;
+  }
+
+  .done-btn {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .btn,
+  .btn.btn-ghost {
+    min-height: 2.2rem;
+  }
+
+  .lang-switch button {
+    height: 2rem;
+  }
+
+  input[type="checkbox"] {
+    width: 1.15rem;
+    height: 1.15rem;
   }
 }

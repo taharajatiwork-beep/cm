@@ -142,7 +142,7 @@ export function CustomersPage() {
               {
                 key: "email",
                 header: <Bi en="Email" fa="ایمیل" />,
-                render: (c) => <span className="cell-sub">{String(c.email || "—")}</span>,
+                render: (c) => <span className="cell-sub ltr-value">{String(c.email || "—")}</span>,
               },
             ]}
             empty={
@@ -165,7 +165,7 @@ export function CustomersPage() {
         <aside className="side-stack">
           <Card>
             {!selected ? (
-              <div className="pane-empty" style={{ padding: "var(--space-4)" }}>
+              <div className="pane-empty pane-empty--snug">
                 <div>
                   <Icon name="user" size={22} />
                   <div className="muted">
@@ -183,15 +183,24 @@ export function CustomersPage() {
                       <Bi en="Customer" fa="مشتری" />
                     </Muted>
                   </div>
+                  <Button
+                    variant="secondary"
+                    to={`/communication?new=1&customer=${String(selected.id)}&topic=${encodeURIComponent(
+                      bi(`About: ${String(selected.full_name)}`, `درباره: ${String(selected.full_name)}`),
+                    )}`}
+                  >
+                    <Icon name="message" size={14} />
+                    <Bi en="Message about this customer" fa="گفتگو درباره این مشتری" />
+                  </Button>
                 </div>
-                <dl className="spec-grid" style={{ gridTemplateColumns: "1fr" }}>
+                <dl className="spec-grid spec-grid--single">
                   <div>
                     <dt>{bi("Phone", "تلفن")}</dt>
                     <dd className="mono">{String(selected.phone || "—")}</dd>
                   </div>
                   <div>
                     <dt>{bi("Email", "ایمیل")}</dt>
-                    <dd>{String(selected.email || "—")}</dd>
+                    <dd className="ltr-value">{String(selected.email || "—")}</dd>
                   </div>
                   <div>
                     <dt>{bi("Added", "ثبت")}</dt>
