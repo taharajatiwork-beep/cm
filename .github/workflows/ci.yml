@@ -32,9 +32,22 @@ jobs:
       - name: Ruff lint
         working-directory: backend
         run: pip install ruff && ruff check app --select E9,F63,F821,F401
-      - name: Mypy (scope, sessions, enterprise ops)
+      - name: Mypy (whole app)
         working-directory: backend
-        run: pip install mypy && mypy app/core/scope.py app/services/sessions.py app/services/enterprise_ops.py
+        run: pip install mypy && mypy app --ignore-missing-imports
+      - name: Shellcheck (deploy scripts)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck && shellcheck deploy/backup.sh
+      - name: Nginx config is valid
+        run: |
+          sudo apt-get update -qq
+          docker run --rm -v "$PWD/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:1.27-alpine nginx -t
+      - name: Production compose is valid (no secrets in file)
+        run: |
+          # فایل باید بدون هیچ متغیر محیطی هم parse شود؛ فقط ساختار مهم است.
+          POSTGRES_PASSWORD=x MINIO_ROOT_USER=x MINIO_ROOT_PASSWORD=x \
+          DATABASE_URL=x BACKUP_PASSPHRASE=x GF_SECURITY_ADMIN_PASSWORD=x CORS_ORIGINS=x \
+            docker compose -f docker-compose.prod.yml config --quiet
       - name: Dependency audit
         working-directory: backend
         continue-on-error: true
@@ -46,6 +59,17 @@ jobs:
           LLM_PROVIDER: rules
           POSTGRES_TEST_URL: postgresql+asyncpg://cm:cm@localhost:5432/cm
         run: pytest -q --tb=short
+      - name: Load test on Postgres (perf budgets)
+        working-directory: backend
+        env:
+          APP_ENV: development
+          LLM_PROVIDER: rules
+          DATABASE_URL: postgresql+asyncpg://cm:cm@localhost:5432/cm
+          LOADTEST_DATABASE_URL: postgresql+asyncpg://cm:cm@localhost:5432/cm
+        # این تنها مرحله‌ای است که اعداد کارایی به دیتابیس واقعی نزدیک‌اند.
+        # بودجه‌ها روی runner شلوغ CI سخت‌گیرانه‌اند؛ اگر شکست خورد اول
+        # محلی با --print-only بررسی کن که مشکل از کد است یا ماشین.
+        run: python -m scripts.loadtest --users 8 --rounds 2
       - name: Alembic upgrade and schema check
         working-directory: backend
         env:
@@ -55,6 +79,16 @@ jobs:
           TELEGRAM_MODE: "off"
           TELEGRAM_BOT_TOKEN: ""
         run: alembic upgrade head && alembic check
+      - name: Audit hash chain intact
+        working-directory: backend
+        env:
+          APP_ENV: development
+          DATABASE_URL: postgresql+asyncpg://cm:cm@localhost:5432/cm
+          SECRET_KEY: ci-secret-not-a-placeholder-value
+          TELEGRAM_MODE: "off"
+          TELEGRAM_BOT_TOKEN: ""
+        # اگر کسی سطر ممیزی را مستقیم در دیتابیس تغییر دهد، این مرحله شکست می‌خورد
+        run: python -m scripts.verify_audit_chain
       - name: Postgres smoke
         working-directory: backend
         env:

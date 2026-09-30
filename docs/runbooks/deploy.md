@@ -6,7 +6,15 @@ This is the path that `docker-compose.prod.yml` expects. Do not start it with th
 
 - Docker Engine and the Compose plugin.
 - A DNS name that staff browsers trust, and a TLS certificate in `deploy/certs` (`fullchain.pem` and `privkey.pem`). nginx in `deploy/nginx.conf` reads those paths.
-- Copy `.env.example` to `.env` and set real values. Leave `FILE_BACKEND=local` until MinIO is reachable, then set `FILE_BACKEND=s3`, `S3_ENDPOINT=http://minio:9000`, `S3_BUCKET=cm`, and the MinIO keys.
+- Generate the secrets instead of copying the example — it fills `DATABASE_URL` correctly, which is the error operators make most often:
+
+  ```bash
+  sh deploy/make-secrets.sh
+  # set CORS_ORIGINS to your real https host, then:
+  cp .env.prod.local .env
+  ```
+
+  Leave `FILE_BACKEND=local` until MinIO is reachable, then set `FILE_BACKEND=s3`, `S3_ENDPOINT=http://minio:9000`, `S3_BUCKET=cm`, and the MinIO keys from the generated file.
 
 ## 2. Start
 
