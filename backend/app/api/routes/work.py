@@ -15,6 +15,7 @@ from app.models.enums import CaseStatus, CaseType
 from app.schemas import (
     CaseCreate,
     CaseOut,
+    CaseUpdate,
     ConversationCreate,
     ConversationOut,
     DelegateIn,
@@ -31,7 +32,7 @@ from app.schemas import (
     WorkItemCreate,
     WorkItemOut,
 )
-from app.services import CommunicationService, SlaService, TimelineService, WorkService
+from app.services import UNSET, CommunicationService, SlaService, TimelineService, WorkService
 
 router = APIRouter(tags=["work"])
 
@@ -56,6 +57,7 @@ async def create_conversation(
         work_item_id=body.work_item_id,
         case_id=body.case_id,
         vehicle_id=body.vehicle_id,
+        customer_id=body.customer_id,
         campaign_id=body.campaign_id,
         actor_id=ctx.user.id,
     )
@@ -435,6 +437,29 @@ async def create_case(
         deadline=body.deadline,
         sla_policy_id=body.sla_policy_id,
     )
+
+
+@router.patch("/cases/{case_id}", response_model=CaseOut)
+async def update_case(
+    case_id: UUID,
+    body: CaseUpdate,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.CASE_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    try:
+        return await WorkService(db).update_case(
+            organization_id=ctx.organization_id,
+            case_id=case_id,
+            actor_id=ctx.user.id,
+            status=body.status,
+            owner_id=body.owner_id if "owner_id" in body.model_fields_set else UNSET,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.post("/tasks", response_model=TaskOut)

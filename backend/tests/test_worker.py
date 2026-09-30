@@ -1,12 +1,11 @@
 """Tests for worker coordination locks and fallback logic."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.worker import (
-    Worker,
     _InMemoryLockManager,
     acquire_job,
     get_poll_offset,
@@ -14,7 +13,6 @@ from app.worker import (
     release_job,
     release_leader_lock,
     run_poll_provider,
-    run_sla_and_digest,
     set_poll_offset,
     try_acquire_leader_lock,
 )
@@ -106,8 +104,6 @@ class TestWorkerLoops:
     async def test_run_sla_and_digest(self, db_engine):
         from app.worker import run_sla_and_digest
         from sqlalchemy.ext.asyncio import async_sessionmaker
-        from sqlalchemy.pool import StaticPool
-        from app.db.session import get_db
 
         # Create a session factory for the test database
         session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
@@ -136,7 +132,6 @@ class TestWorkerClass:
 
     @pytest.mark.asyncio
     async def test_start_stop(self, db_engine):
-        from app.db.session import AsyncSessionLocal
         from sqlalchemy.ext.asyncio import async_sessionmaker
 
         session_factory = async_sessionmaker(db_engine, expire_on_commit=False)

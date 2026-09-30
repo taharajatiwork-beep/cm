@@ -2,13 +2,11 @@
 
 import pytest
 from httpx import AsyncClient
-from starlette.testclient import TestClient
 
 from app.core.metrics import (
     record_request,
     record_latency,
     render_metrics,
-    health_check_data,
     async_timed_request,
 )
 

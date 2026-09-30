@@ -1,5 +1,4 @@
 import os
-import uuid
 from collections.abc import AsyncGenerator
 
 # Force deterministic planners in tests (ignore developer .env LLM settings)
@@ -11,14 +10,13 @@ os.environ["TELEGRAM_MODE"] = "off"
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["BALE_MODE"] = "off"
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import get_settings
-
-get_settings.cache_clear()
 
 from app import models  # noqa: F401
 from app.core.permissions import PermissionCode
@@ -27,6 +25,18 @@ from app.db.session import get_db
 from app.main import app
 from app.models.enums import RelationshipType
 from app.services import OrgService
+
+
+@pytest.fixture(autouse=True)
+def _reset_settings_cache():
+    """بعد از هر تست، کش تنظیمات پاک می‌شود.
+
+    بدون این، تستی که `REQUIRE_HUMAN_APPROVAL_FOR_SENSITIVE_AI=true` ست می‌کند
+    تنظیمات را کش می‌کند؛ monkeypatch env را برمی‌گردارد ولی کش همچنان `true`
+    می‌ماند و تست‌های بعدی (که حاکمیت AI را خاموش فرض می‌کنند) شکست می‌خورند.
+    """
+    yield
+    get_settings.cache_clear()
 
 
 @pytest_asyncio.fixture

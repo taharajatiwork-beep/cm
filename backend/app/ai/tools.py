@@ -12,11 +12,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.governance import is_ai_governance_enabled, is_sensitive_tool, request_ai_approval
 from app.core.permissions import AuthorizationError, PermissionCode, require_permission
-from app.models import Branch, CommunicationCase, Event, Task, Team, User
+from app.models import (
+    Branch,
+    CommunicationCase,
+    Event,
+    Permission,
+    Role,
+    RolePermission,
+    Task,
+    Team,
+    User,
+)
 from app.models.ai_audit import AiActionLog
 from app.models.enums import CaseStatus, CaseType, NotificationChannel, Priority, TaskStatus
-from app.models.inventory import Vehicle
-from app.services import WorkService, get_user_permissions, notify
+from app.services import WorkService, notify
 from app.services.inventory import InventoryService
 from app.services.search import SearchEntityType, SearchService
 
@@ -190,6 +199,21 @@ class ToolExecutor:
     def __init__(self, ctx: ToolContext):
         self.ctx = ctx
 
+    async def _org_admin_ids(self) -> list[UUID]:
+        """کاربران دارای مجوز org.admin در همین سازمان — تأییدکنندهٔ جایگزین."""
+        rows = await self.ctx.db.execute(
+            select(User.id)
+            .join(Role, User.role_id == Role.id)
+            .join(RolePermission, RolePermission.role_id == Role.id)
+            .join(Permission, RolePermission.permission_id == Permission.id)
+            .where(
+                User.organization_id == self.ctx.organization_id,
+                Permission.code == PermissionCode.ORG_ADMIN,
+                User.is_active.is_(True),
+            )
+        )
+        return [r for r in rows.scalars().all() if r != self.ctx.user.id]
+
     def _require(self, tool_name: str) -> ToolSpec:
         spec = TOOL_SPECS[tool_name]
         require_permission(self.ctx.permissions, spec.permission)
@@ -215,7 +239,16 @@ class ToolExecutor:
         # AI Governance: check if sensitive tool needs human approval
         if is_ai_governance_enabled() and is_sensitive_tool(tool_name):
             # Request approval instead of executing
-            approver_ids = [self.ctx.user.manager_id] if self.ctx.user.manager_id else [self.ctx.user.id]
+            # اگر کاربر مدیر نداشته باشد، تأیید به سرپرستِ سرپرست یا ادمین سازمان می‌رود؛
+            # هرگز به خودِ درخواست‌دهنده (که حاکمیت AI را بی‌اثر می‌کرد).
+            approver_ids = [self.ctx.user.manager_id] if self.ctx.user.manager_id else []
+            if not approver_ids:
+                approver_ids = await self._org_admin_ids()
+            if not approver_ids:
+                return _err(
+                    "برای این عملیات حساس هیچ تأییدکننده‌ای وجود ندارد؛ "
+                    "لطفاً مدیر سازمان را تعیین کنید یا از سرپرست بخواهید درخواست را بررسی کند."
+                )
             row = await request_ai_approval(
                 self.ctx.db,
                 organization_id=self.ctx.organization_id,

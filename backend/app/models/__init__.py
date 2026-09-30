@@ -493,3 +493,9 @@ class AuditLog(Base):
     entity_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     details: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # زنجیرهٔ هش (audit tamper-evident): prev_hash به سطر قبلی در همان سازمان اشاره می‌کند
+    prev_hash: Mapped[str | None] = mapped_column(String(64))
+    row_hash: Mapped[str | None] = mapped_column(String(64))
+    # شمارهٔ ترتیبی در زنجیره (شروع از ۱) — ترتیب را صریح می‌کند چون created_at
+    # در SQLite میلی‌ثانیه‌ای نیست و چند سطر می‌توانند زمان یکسان داشته باشند.
+    chain_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

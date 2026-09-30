@@ -6,12 +6,13 @@ import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.permissions import PermissionCode, require_permission
 from app.models import AuditLog, CommunicationCase, Task, User, WorkItem
-from app.models.enums import TaskStatus
+from app.models.enums import CaseStatus, SlaState, TaskStatus
 from app.models.enterprise import AiUsage, ApprovalRequest, ApprovalStep, ReportSchedule, UserTeam
 from app.models.inventory import Vehicle
 from app.models.telegram import TelegramAccount
@@ -73,6 +74,8 @@ class EnterpriseService:
         actor_permissions: set[str],
         actor_id: UUID | None = None,
         entity_type: str | None = None,
+        action: str | None = None,
+        day: str | None = None,
         limit: int = 50,
     ) -> list[AuditLog]:
         if PermissionCode.ORG_ADMIN not in actor_permissions:
@@ -82,6 +85,18 @@ class EnterpriseService:
             q = q.where(AuditLog.actor_id == actor_id)
         if entity_type:
             q = q.where(AuditLog.entity_type == entity_type)
+        if action:
+            q = q.where(AuditLog.action == action)
+        if day:
+            # day = YYYY-MM-DD (به وقت سرور) — برای فیلتر تاریخ در تب ممیزی
+            try:
+                start = datetime.fromisoformat(day)
+            except ValueError as e:
+                raise ValueError("bad day filter") from e
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=UTC)
+            end = start + timedelta(days=1)
+            q = q.where(AuditLog.created_at >= start, AuditLog.created_at < end)
         q = q.order_by(AuditLog.created_at.desc()).limit(limit)
         return list((await self.db.execute(q)).scalars().all())
 
@@ -95,6 +110,9 @@ class EnterpriseService:
         payload: dict,
         approver_ids: list[UUID],
     ) -> ApprovalRequest:
+        # خود-تأییدی ممنوع: درخواست‌دهنده نباید در زنجیرهٔ تأیید خودش باشد
+        if requester_id in approver_ids:
+            raise ValueError("requester cannot be an approver of their own request")
         row = ApprovalRequest(
             organization_id=organization_id,
             kind=kind,
@@ -168,6 +186,175 @@ class EnterpriseService:
         )
         await self.db.flush()
         return row
+
+    async def admin_overview(self, organization_id: UUID) -> dict:
+        """نمای کلی ادمین — فقط خواندنی و پشت ORG_ADMIN (مرحله ۴ پلن محصول فعلی)."""
+        from app.models import Branch, Conversation, Message, TaskAssignee
+        from app.models.divar import DivarListing
+        from app.models.enterprise import KpiSnapshot
+
+        now = datetime.now(UTC)
+        week_ago = now - timedelta(days=7)
+
+        async def _count(model, *extra):
+            q = select(func.count()).select_from(model).where(model.organization_id == organization_id)
+            for cond in extra:
+                q = q.where(cond)
+            return int((await self.db.scalar(q)) or 0)
+
+        # --- کاربران: فعال / غیرفعال / قفل‌شده ---
+        users_total = await _count(User)
+        users_active = await _count(User, User.is_active.is_(True))
+        users_locked = await _count(User, User.locked_until.is_not(None), User.locked_until > now)
+
+        # --- پیام‌های ۷ روز اخیر ---
+        messages_7d = await _count(Message, Message.created_at >= week_ago)
+
+        # --- گفتگوهای منتظر پاسخ + میانگین زمان اولین پاسخ ---
+        convs = list(
+            (
+                await self.db.execute(
+                    select(Conversation)
+                    .options(selectinload(Conversation.messages))
+                    .where(
+                        Conversation.organization_id == organization_id,
+                        Conversation.archived_at.is_(None),
+                    )
+                )
+            ).scalars().all()
+        )
+        waiting_reply = 0
+        first_reply_minutes: list[float] = []
+        for conv in convs:
+            msgs = sorted(conv.messages, key=lambda m: m.created_at or now)
+            if not msgs:
+                continue
+            first = msgs[0]
+            reply = next((m for m in msgs[1:] if m.sender_id != first.sender_id), None)
+            if reply and first.created_at and reply.created_at:
+                delta = reply.created_at - first.created_at
+                first_reply_minutes.append(max(delta.total_seconds(), 0) / 60)
+            # منتظر پاسخ: هنوز کسی جواب نداده یا آخرین دو پیام از یک نفر است.
+            if len(msgs) == 1 or msgs[-1].sender_id == msgs[-2].sender_id:
+                waiting_reply += 1
+        avg_first_reply = (
+            round(sum(first_reply_minutes) / len(first_reply_minutes), 1)
+            if first_reply_minutes
+            else None
+        )
+
+        # --- کارهای باز و عقب‌افتاده به تفکیک شعبه ---
+        open_statuses = [TaskStatus.OPEN, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED]
+        branch_rows = (
+            await self.db.execute(
+                select(
+                    Branch.name,
+                    func.count(Task.id),
+                    func.sum(
+                        case((Task.deadline.is_not(None) & (Task.deadline < now), 1), else_=0)
+                    ),
+                )
+                .select_from(Task)
+                .join(WorkItem, WorkItem.id == Task.work_item_id, isouter=True)
+                .join(Branch, Branch.id == WorkItem.branch_id, isouter=True)
+                .where(Task.organization_id == organization_id, Task.status.in_(open_statuses))
+                .group_by(Branch.name)
+            )
+        ).all()
+        tasks_by_branch = [
+            {
+                "branch": name or "بدون شعبه",
+                "open": int(open_count or 0),
+                "overdue": int(overdue or 0),
+            }
+            for name, open_count, overdue in branch_rows
+        ]
+
+        # --- ۵ نفر پرکار (بیشترین کار باز) ---
+        top_rows = (
+            await self.db.execute(
+                select(TaskAssignee.user_id, func.count(Task.id))
+                .join(Task, Task.id == TaskAssignee.task_id)
+                .where(Task.organization_id == organization_id, Task.status.in_(open_statuses))
+                .group_by(TaskAssignee.user_id)
+                .order_by(func.count(Task.id).desc())
+                .limit(5)
+            )
+        ).all()
+        top_users = []
+        for user_id, cnt in top_rows:
+            person = await self.db.get(User, user_id)
+            top_users.append(
+                {"user_id": str(user_id), "name": person.full_name if person else str(user_id)[:8], "open_tasks": int(cnt)}
+            )
+
+        # --- پرونده‌ها و SLA ---
+        cases_open = await _count(
+            CommunicationCase,
+            CommunicationCase.status.notin_([CaseStatus.COMPLETED, CaseStatus.CANCELLED]),
+        )
+        cases_sla_breached = await _count(
+            CommunicationCase,
+            CommunicationCase.sla_state.in_([SlaState.BREACHED, SlaState.ESCALATED]),
+        )
+
+        # --- تأییدهای منتظر ---
+        approvals_pending = await _count(ApprovalRequest, ApprovalRequest.status == "pending")
+
+        # --- خودروها و خطاهای دیوار ---
+        vehicle_rows = (
+            await self.db.execute(
+                select(Vehicle.status, func.count(Vehicle.id))
+                .where(Vehicle.organization_id == organization_id)
+                .group_by(Vehicle.status)
+            )
+        ).all()
+        vehicle_counts = {str(getattr(status, "value", status)): int(cnt) for status, cnt in vehicle_rows}
+        divar_errors = await _count(DivarListing, DivarListing.last_error.is_not(None))
+
+        # --- روند ۸ هفته از kpi_snapshots ---
+        snapshots = list(
+            (
+                await self.db.execute(
+                    select(KpiSnapshot)
+                    .where(KpiSnapshot.organization_id == organization_id)
+                    .order_by(KpiSnapshot.created_at.desc())
+                    .limit(8)
+                )
+            ).scalars().all()
+        )
+        snapshots.reverse()
+        trend = [
+            {
+                "week": row.created_at.isocalendar()[1] if row.created_at else None,
+                "date": row.created_at.date().isoformat() if row.created_at else None,
+                "kpis": json.loads(row.payload_json) if row.payload_json else {},
+            }
+            for row in snapshots
+        ]
+
+        return {
+            "users": {
+                "total": users_total,
+                "active": users_active,
+                "inactive": users_total - users_active,
+                "locked": users_locked,
+            },
+            "messages_7d": messages_7d,
+            "conversations_waiting_reply": waiting_reply,
+            "avg_first_reply_minutes": avg_first_reply,
+            "tasks_by_branch": tasks_by_branch,
+            "top_users": top_users,
+            "cases": {"open": cases_open, "sla_breached": cases_sla_breached},
+            "approvals_pending": approvals_pending,
+            "vehicles": {
+                "in_stock": vehicle_counts.get("IN_STOCK", 0),
+                "reserved": vehicle_counts.get("RESERVED", 0),
+                "sold": vehicle_counts.get("SOLD", 0),
+            },
+            "divar_errors": divar_errors,
+            "trend": trend,
+        }
 
     async def kpis(self, organization_id: UUID) -> dict:
         open_tasks = await self.db.scalar(

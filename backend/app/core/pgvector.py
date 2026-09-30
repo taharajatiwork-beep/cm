@@ -134,7 +134,7 @@ async def sync_embedding_vectors(db: AsyncSession, model_name: str = "hash-v1", 
             select(EmbeddingModel.id, EmbeddingModel.embedding)
             .where(
                 EmbeddingModel.embedding_model == model_name,
-                EmbeddingModel.embedding_vec.is_(None),
+                getattr(EmbeddingModel, "embedding_vec").is_(None),
             )
             .limit(batch)
         )

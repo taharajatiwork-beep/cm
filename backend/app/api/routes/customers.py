@@ -1,6 +1,7 @@
 from uuid import UUID
 
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -44,6 +45,14 @@ class CustomerOut(BaseModel):
     stage: str = "lead"
 
     model_config = {"from_attributes": True}
+
+
+def _status_value(status: Any) -> str | None:
+    """مقدار خوانای enum وضعیت؛ اگر None یا بدون value بود، None برمی‌گرداند."""
+    if status is None:
+        return None
+    value = getattr(status, "value", status)
+    return value if isinstance(value, str) else None
 
 
 @router.post("", response_model=CustomerOut)
@@ -206,9 +215,7 @@ async def export_customer(
             {
                 "id": str(c.id),
                 "subject": c.subject,
-                "status": getattr(c, "status", None).value
-                if getattr(c, "status", None) is not None
-                else None,
+                "status": _status_value(getattr(c, "status", None)),
                 "created_at": c.created_at.isoformat() if c.created_at else None,
             }
             for c in cases

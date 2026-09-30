@@ -13,7 +13,6 @@ from app.integrations.divar.client import DivarClient, get_divar_client
 from app.integrations.divar.mapper import vehicle_to_divar_product
 from app.models.divar import DivarListing
 from app.models.enums import CaseType, Priority, VehicleStatus
-from app.models.inventory import Vehicle
 from app.services import WorkService
 from app.services.inventory import InventoryService
 

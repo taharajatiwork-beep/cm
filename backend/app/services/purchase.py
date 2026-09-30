@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import CommunicationCase
-from app.models.enums import CaseStatus, CaseType, InventoryRequestStatus, VehicleStatus
+from app.models.enums import CaseType, InventoryRequestStatus, VehicleStatus
 from app.models.inventory import InventoryRequest
 from app.services.inventory import InventoryService
 from app.services.sales import OPEN_STATUSES, extract_vehicle_hints

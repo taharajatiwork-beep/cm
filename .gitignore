@@ -10,7 +10,10 @@ build/
 venv/
 .env
 .env.local
+.env.prod.local
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
 
 # IDE / OS
@@ -29,6 +32,11 @@ htmlcov/
 
 # Alembic
 backend/alembic/versions/__pycache__/
+
+# Runtime output (generated exports, Playwright artifacts, local databases)
+var/
+frontend/var/
+backend/var/
 
 # Misc
 *.log

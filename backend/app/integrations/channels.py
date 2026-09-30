@@ -11,7 +11,6 @@ import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Any, Protocol
-from uuid import UUID
 
 import httpx
 
@@ -298,6 +297,32 @@ class ChannelRegistry:
             "erp": type(self.erp).__name__,
             "divar": type(self.divar).__name__,
         }
+
+
+def channel_status(settings: Any | None = None) -> dict[str, Any]:
+    """وضعیت هر کانال: ارائه‌دهندهٔ فعال + حالت پیکربندی.
+
+    مسیر GET /integrations/status این را صدا می‌زند؛ قبلاً تابعی به این نام
+    وجود نداشت و هر بار ۵۰۰ می‌داد.
+    """
+    from app.core.config import get_settings
+
+    cfg = settings if settings is not None else get_settings()
+    out: dict[str, Any] = {"providers": channels.status()}
+    for name in (
+        "sms_mode",
+        "email_mode",
+        "voip_mode",
+        "erp_mode",
+        "divar_mode",
+        "telegram_mode",
+        "bale_mode",
+        "worker_mode",
+    ):
+        value = getattr(cfg, name, None)
+        if value is not None:
+            out[name] = value
+    return out
 
 
 # Singleton instance

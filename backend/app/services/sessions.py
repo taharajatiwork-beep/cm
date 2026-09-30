@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -10,24 +9,21 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.ratelimit import allow_hit
 from app.core.security import create_access_token, hash_refresh_token, new_refresh_token
 from app.models import User
 from app.models.enterprise import RefreshToken
 from app.services import write_audit
 
-_hits: dict[str, list[float]] = {}
-
 
 def login_allowed(host: str, email: str, limit: int = 1000, window: int = 60) -> bool:
-    now = time.time()
+    """آیا این تلاش ورود مجاز است؟
+
+    شمارنده در Redis نگه داشته می‌شود تا بین replicaهای API مشترک باشد؛
+    اگر Redis نباشد به شمارندهٔ حافظه‌ای برمی‌گردد.
+    """
     key = f"{host}:{email.lower()}"
-    recent = [t for t in _hits.get(key, []) if now - t < window]
-    if len(recent) >= limit:
-        _hits[key] = recent
-        return False
-    recent.append(now)
-    _hits[key] = recent
-    return True
+    return allow_hit(key, limit=limit, window=window)
 
 
 async def record_login_failure(db: AsyncSession, organization_id: UUID, email: str) -> None:

@@ -364,40 +364,40 @@ class HybridRagService:
         rrf = reciprocal_rank_fusion(lists) if lists else {}
 
         by_key: dict[tuple[str, UUID], FusedHit] = {}
-        for h in sql_hits:
-            key = (h.entity_type, h.entity_id)
+        for s in sql_hits:  # SearchHit
+            key = (s.entity_type, s.entity_id)
             sources = ["sql"]
-            if h.match_kind == "exact":
+            if s.match_kind == "exact":
                 sources = ["sql", "exact"]
-            elif h.match_kind == "text":
+            elif s.match_kind == "text":
                 sources = ["sql", "text"]
             by_key[key] = FusedHit(
-                entity_type=h.entity_type,
-                entity_id=h.entity_id,
-                title=h.title,
-                content=h.subtitle or h.title,
+                entity_type=s.entity_type,
+                entity_id=s.entity_id,
+                title=s.title,
+                content=s.subtitle or s.title,
                 sources=sources,
-                score=rrf.get(key, h.score / 10.0),
-                metadata={**h.metadata, "match_kind": h.match_kind},
+                score=rrf.get(key, s.score / 10.0),
+                metadata={**s.metadata, "match_kind": s.match_kind},
             )
-        for h in vector_hits:
-            key = (h.entity_type, h.entity_id)
+        for vhit in vector_hits:  # RetrievalHit
+            key = (vhit.entity_type, vhit.entity_id)
             if key in by_key:
                 if "vector" not in by_key[key].sources:
                     by_key[key].sources.append("vector")
                 by_key[key].score = rrf.get(key, by_key[key].score)
-                if len(h.content) > len(by_key[key].content):
-                    by_key[key].content = h.content
+                if len(vhit.content) > len(by_key[key].content):
+                    by_key[key].content = vhit.content
             else:
-                title = str(h.metadata.get("title") or h.content[:80])
+                title = str(vhit.metadata.get("title") or vhit.content[:80])
                 by_key[key] = FusedHit(
-                    entity_type=h.entity_type,
-                    entity_id=h.entity_id,
+                    entity_type=vhit.entity_type,
+                    entity_id=vhit.entity_id,
                     title=title,
-                    content=h.content,
+                    content=vhit.content,
                     sources=["vector"],
-                    score=rrf.get(key, h.score),
-                    metadata=h.metadata,
+                    score=rrf.get(key, vhit.score),
+                    metadata=vhit.metadata,
                 )
 
         fused = list(by_key.values())
@@ -407,8 +407,8 @@ class HybridRagService:
         context = self._build_context(fused, limit=context_char_limit)
         answer, answer_mode = await self._answer(analyzed, fused, context)
 
-        for h in fused:
-            h.metadata["request_id"] = request_id
+        for f in fused:
+            f.metadata["request_id"] = request_id
 
         return HybridResult(
             request_id=request_id,

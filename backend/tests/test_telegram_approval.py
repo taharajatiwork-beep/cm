@@ -9,7 +9,6 @@ from app.api.routes import telegram as telegram_routes
 from app.integrations.telegram.callbacks import encode_approval_callback, verify_callback
 from app.integrations.telegram.client import FakeTelegramClient
 from app.integrations.telegram.outbox import dispatch_pending
-from app.models.enterprise import ApprovalRequest, ApprovalStep
 from app.models.telegram import TelegramAccount, TelegramOutbox
 from app.services.enterprise_ops import EnterpriseService, notify_current_approver
 from tests.conftest import auth, login
@@ -90,6 +89,7 @@ async def test_two_step_approval_from_telegram_buttons(
     """First button keeps status pending; the second one approves."""
     await _link(client, "reza@autoco.example", 9002, 1002, update_id=1)
     await _link(client, "ali@autoco.example", 9001, 1001, update_id=2)
+    await _link(client, "sara@autoco.example", 9003, 1003, update_id=3)
 
     requester = await login(client, "reza@autoco.example")
     created = await client.post(
@@ -99,7 +99,8 @@ async def test_two_step_approval_from_telegram_buttons(
             "kind": "discount",
             "title": "تخفیف ۱۰ درصد",
             "payload": {"percent": 10},
-            "approver_ids": [str(seeded["reza"].id), str(seeded["ali"].id)],
+            # درخواست‌دهنده (reza) نباید تأییدکننده باشد — خود-تأییدی ممنوع
+            "approver_ids": [str(seeded["ali"].id), str(seeded["sara"].id)],
         },
     )
     assert created.status_code == 200, created.text
@@ -108,11 +109,11 @@ async def test_two_step_approval_from_telegram_buttons(
     approve = encode_approval_callback("approve", request_id)
     assert verify_callback(approve) is not None
 
-    first = await _callback(client, approve, 9002, 1002, update_id=11)
+    first = await _callback(client, approve, 9001, 1001, update_id=11)
     assert first["ok"] is True
     assert await _approval_status(client, "reza@autoco.example", request_id) == "pending"
 
-    second = await _callback(client, approve, 9001, 1001, update_id=12)
+    second = await _callback(client, approve, 9003, 1003, update_id=12)
     assert second["ok"] is True
     assert "تأیید" in second["reply_text"]
     assert await _approval_status(client, "reza@autoco.example", request_id) == "approved"
@@ -133,7 +134,7 @@ async def test_button_by_unrelated_user_is_refused(
         json={
             "kind": "discount",
             "title": "درخواست دسترسی",
-            "approver_ids": [str(seeded["reza"].id)],
+            "approver_ids": [str(seeded["ali"].id)],
         },
     )
     assert created.status_code == 200, created.text
@@ -151,6 +152,7 @@ async def test_tampered_callback_is_rejected(
     client: AsyncClient, seeded, fake_tg: FakeTelegramClient
 ):
     await _link(client, "reza@autoco.example", 9002, 1002, update_id=31)
+    await _link(client, "ali@autoco.example", 9001, 1001, update_id=33)
 
     requester = await login(client, "reza@autoco.example")
     created = await client.post(
@@ -159,7 +161,7 @@ async def test_tampered_callback_is_rejected(
         json={
             "kind": "discount",
             "title": "درخواست جعلی",
-            "approver_ids": [str(seeded["reza"].id)],
+            "approver_ids": [str(seeded["ali"].id)],
         },
     )
     assert created.status_code == 200, created.text

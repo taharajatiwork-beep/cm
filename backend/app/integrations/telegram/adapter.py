@@ -15,7 +15,6 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -26,7 +25,7 @@ from app.integrations.telegram.callbacks import encode_callback, is_approval_cal
 from app.integrations.telegram.client import FakeTelegramClient, TelegramClient
 from app.integrations.telegram.outbox import inline_keyboard
 from app.integrations.telegram.resolver import EntityResolver
-from app.models import Conversation, Message, Task, TaskAssignee, User
+from app.models import Conversation, Message, Task, User
 from app.models.enterprise import ApprovalRequest
 from app.models.enums import Channel, MessageType, Priority, TaskStatus
 from app.models.inventory import Vehicle
@@ -521,7 +520,8 @@ class TelegramAdapter:
         lang: str,
     ) -> AdapterResult:
         pending = await self._find_confirm_by_prefix(user.id, short_id)
-        if not pending or as_utc(pending.expires_at) < utc_now():
+        expires_at = as_utc(pending.expires_at) if pending else None
+        if pending is None or expires_at is None or expires_at < utc_now():
             await self.client.answer_callback_query(cq_id, text=msg.link_invalid(lang=lang), show_alert=True)
             return AdapterResult(ok=False, reply_text="expired")
         payload = json.loads(pending.payload_json)
@@ -541,8 +541,8 @@ class TelegramAdapter:
     async def _handle_message(self, message: dict[str, Any]) -> AdapterResult:
         chat = message.get("chat") or {}
         from_user = message.get("from") or {}
-        chat_id = int(chat.get("id"))
-        tg_user_id = int(from_user.get("id"))
+        chat_id = int(chat.get("id") or 0)
+        tg_user_id = int(from_user.get("id") or 0)
         username = from_user.get("username")
         text = (message.get("text") or "").strip()
         tg_message_id = str(message.get("message_id")) if message.get("message_id") else None

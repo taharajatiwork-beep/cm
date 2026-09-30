@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import uuid
 
 import pytest
 from httpx import AsyncClient
@@ -326,3 +327,70 @@ async def test_case_and_events(client: AsyncClient, seeded):
     types = {e["event_type"] for e in timeline.json()}
     assert "case.created" in types
     assert "case.assigned" in types
+
+
+@pytest.mark.asyncio
+async def test_update_case_status_and_owner(client: AsyncClient, seeded):
+    token = await login(client, "ali@autoco.example")
+    case = await client.post(
+        "/cases",
+        headers=auth(token),
+        json={"subject": "Follow-up", "type": CaseType.FOLLOW_UP.value},
+    )
+    assert case.status_code == 200
+    cid = case.json()["id"]
+    assert case.json()["status"] == "OPEN"
+
+    # فقط وضعیت
+    r = await client.patch(f"/cases/{cid}", headers=auth(token), json={"status": "IN_PROGRESS"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "IN_PROGRESS"
+    assert r.json()["owner_id"] is None
+
+    # فقط مسئول — وضعیتِ IN_PROGRESS حفظ می‌شود
+    r = await client.patch(
+        f"/cases/{cid}", headers=auth(token), json={"owner_id": str(seeded["reza"].id)}
+    )
+    assert r.status_code == 200
+    assert r.json()["owner_id"] == str(seeded["reza"].id)
+    assert r.json()["status"] == "IN_PROGRESS"
+
+    timeline = await client.get(f"/timeline/case/{cid}", headers=auth(token))
+    types = {e["event_type"] for e in timeline.json()}
+    assert "case.status_changed" in types
+    assert "case.assigned" in types
+
+    # حذف مسئول
+    r = await client.patch(f"/cases/{cid}", headers=auth(token), json={"owner_id": None})
+    assert r.status_code == 200
+    assert r.json()["owner_id"] is None
+
+    # پروندهٔ ناموجود → 404
+    r = await client.patch(
+        f"/cases/{uuid.uuid4()}", headers=auth(token), json={"status": "OPEN"}
+    )
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_conversation_with_customer_link(client: AsyncClient, seeded):
+    token = await login(client, "ali@autoco.example")
+    customer = await client.post(
+        "/customers",
+        headers=auth(token),
+        json={"full_name": "خریدار تست"},
+    )
+    assert customer.status_code == 200
+    cust_id = customer.json()["id"]
+
+    conv = await client.post(
+        "/conversations",
+        headers=auth(token),
+        json={
+            "topic": "About customer",
+            "participant_ids": [str(seeded["ali"].id)],
+            "customer_id": cust_id,
+        },
+    )
+    assert conv.status_code == 200
+    assert conv.json()["customer_id"] == cust_id

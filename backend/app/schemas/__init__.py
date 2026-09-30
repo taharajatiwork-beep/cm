@@ -150,6 +150,7 @@ class ConversationCreate(BaseModel):
     work_item_id: UUID | None = None
     case_id: UUID | None = None
     vehicle_id: UUID | None = None
+    customer_id: UUID | None = None
     campaign_id: UUID | None = None
 
 
@@ -163,6 +164,7 @@ class ConversationOut(BaseModel):
     work_item_id: UUID | None
     case_id: UUID | None
     vehicle_id: UUID | None
+    customer_id: UUID | None
     campaign_id: UUID | None
     participant_ids: list[UUID] = []
     last_message_text: str | None = None
@@ -232,6 +234,12 @@ class CaseCreate(BaseModel):
     customer_id: UUID | None = None
     deadline: datetime | None = None
     sla_policy_id: UUID | None = None
+
+
+class CaseUpdate(BaseModel):
+    """تغییر وضعیت/مسئول پرونده — فیلدهای نفرستاده‌شده دست‌نخورده می‌مانند."""
+    status: CaseStatus | None = None
+    owner_id: UUID | None = None
 
 
 class CaseOut(BaseModel):

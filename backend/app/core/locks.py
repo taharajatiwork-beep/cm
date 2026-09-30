@@ -14,9 +14,14 @@ from app.models.enterprise import JobLock
 async def try_lock(db: AsyncSession, name: str, ttl_seconds: int = 120) -> str | None:
     now = datetime.now(UTC)
     existing = await db.get(JobLock, name)
-    if existing and existing.expires_at > now:
-        return None
     if existing:
+        # SQLite تاریخ‌ها را بدون منطقهٔ زمانی برمی‌گرداند؛ مقایسهٔ آن با
+        # datetime آگاه به منطقهٔ زمانی استثنا می‌دهد. قبل از مقایسه یکدستش می‌کنیم.
+        expires = existing.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        if expires > now:
+            return None
         await db.delete(existing)
         await db.flush()
     owner = uuid4().hex

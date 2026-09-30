@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
 from typing import Any
-from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -17,7 +15,7 @@ from app.integrations.telegram.adapter import TelegramAdapter
 from app.integrations.telegram.client import HttpTelegramClient, TelegramClient
 from app.integrations.telegram.messages import BOT_COMMANDS, digest_text, btn_show
 from app.integrations.telegram.callbacks import encode_callback
-from app.integrations.telegram.outbox import dispatch_pending, enqueue_telegram, inline_keyboard
+from app.integrations.telegram.outbox import dispatch_pending, enqueue_telegram
 from app.models import Task, User
 from app.models.enums import TaskStatus
 from app.models.telegram import TelegramAccount

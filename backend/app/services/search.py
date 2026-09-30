@@ -240,7 +240,7 @@ class SearchService:
                     )
                 )
 
-        rows = list((await self.db.execute(query.limit(40))).scalars().all())
+        rows: list[Any] = list((await self.db.execute(query.limit(40))).scalars().all())
         hits: list[SearchHit] = []
         for v in rows:
             exact = (vin and v.vin == vin.upper()) or (stock_number and v.stock_number == stock_number)

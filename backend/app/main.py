@@ -27,10 +27,10 @@ from app.api.routes import (
 )
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.core.metrics import record_request, record_latency, render_metrics, async_timed_request
+from app.core.metrics import record_request, render_metrics, async_timed_request
 from app.core.permissions import AuthorizationError
 from app.core.startup import assert_production_safe
-from app.db.session import AsyncSessionLocal, get_db
+from app.db.session import AsyncSessionLocal, _tune_sqlite, get_db
 from app.worker import start_background, stop_background
 
 
@@ -38,10 +38,13 @@ from app.worker import start_background, stop_background
 async def lifespan(_app: FastAPI):
     settings = get_settings()
     assert_production_safe(settings)
+    # SQLite (توسعه و تست) برای کار هم‌زمان به WAL و busy_timeout نیاز دارد
+    await _tune_sqlite()
     if settings.worker_mode == "embedded" and (
         settings.telegram_mode != "off" or settings.bale_mode != "off"
     ):
-        start_background(AsyncSessionLocal)
+        # نگه‌داشتن reference تا garbage collector تسک‌ها را نبندد
+        _bg_tasks = await start_background(AsyncSessionLocal)
     yield
     await stop_background()
 

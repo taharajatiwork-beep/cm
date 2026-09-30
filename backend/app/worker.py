@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import timedelta
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -372,6 +372,37 @@ async def run_sla_and_digest(
     return {"sla_evaluated": evaluated, "digests_sent": digests}
 
 
+async def run_kpi_snapshot_weekly(session_factory: async_sessionmaker[AsyncSession]) -> int:
+    """هر هفته یک KPI snapshot برای هر سازمان می‌سازد (روند ۸ هفته‌ای نمای کلی ادمین)."""
+    import json as _json
+
+    from app.models import Organization
+    from app.models.enterprise import KpiSnapshot
+    from app.services.enterprise_ops import EnterpriseService
+
+    created = 0
+    async with session_factory() as db:
+        org_ids = list((await db.execute(select(Organization.id))).scalars().all())
+        for org_id in org_ids:
+            last = await db.scalar(
+                select(KpiSnapshot.created_at)
+                .where(KpiSnapshot.organization_id == org_id)
+                .order_by(KpiSnapshot.created_at.desc())
+                .limit(1)
+            )
+            if last and last.tzinfo is None:
+                last = last.replace(tzinfo=UTC)
+            if last and (datetime.now(UTC) - last) < timedelta(days=7):
+                continue
+            data = await EnterpriseService(db).kpis(org_id)
+            db.add(KpiSnapshot(organization_id=org_id, payload_json=_json.dumps(data)))
+            created += 1
+        await db.commit()
+    if created:
+        log.info("kpi_snapshot_created", count=created)
+    return created
+
+
 async def run_telegram_setup() -> None:
     """One-time setup: set commands / webhook."""
     from app.integrations.telegram.runtime import build_clients, setup_telegram
@@ -444,8 +475,23 @@ class Worker:
                     log.warning("worker_poll_loop_error", provider=provider, error=str(e))
                 await asyncio.sleep(3)  # backoff on error
 
+        async def _snapshot_loop():
+            while True:
+                try:
+                    if await acquire_job("kpi_snapshot", ttl_seconds=1800):
+                        try:
+                            await run_kpi_snapshot_weekly(self.session_factory)
+                        finally:
+                            await release_job("kpi_snapshot")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    log.warning("worker_kpi_snapshot_loop_error", error=str(e))
+                await asyncio.sleep(3600)
+
         self._tasks.append(asyncio.create_task(_outbox_loop(), name="worker-outbox"))
         self._tasks.append(asyncio.create_task(_sla_loop(), name="worker-sla"))
+        self._tasks.append(asyncio.create_task(_snapshot_loop(), name="worker-kpi-snapshot"))
 
         clients = build_clients()
         if settings.telegram_mode == "polling" and "telegram" in clients:

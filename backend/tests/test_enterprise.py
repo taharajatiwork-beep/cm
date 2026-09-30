@@ -83,7 +83,8 @@ async def test_approval_two_steps(client: AsyncClient, seeded):
             "kind": "discount",
             "title": "تخفیف ۱۰ درصد",
             "payload": {"percent": 10},
-            "approver_ids": [str(seeded["reza"].id), str(seeded["ali"].id)],
+            # درخواست‌دهنده (reza) نباید تأییدکننده باشد — خود-تأییدی ممنوع
+            "approver_ids": [str(seeded["ali"].id), str(seeded["sara"].id)],
         },
     )
     assert created.status_code == 200, created.text
@@ -93,20 +94,21 @@ async def test_approval_two_steps(client: AsyncClient, seeded):
         json={
             "kind": "discount",
             "title": "تخفیف ۱۰ درصد",
-            "approver_ids": [str(seeded["reza"].id)],
+            "approver_ids": [str(seeded["ali"].id), str(seeded["sara"].id)],
         },
     )
     assert again.json()["id"] == created.json()["id"]
     request_id = created.json()["id"]
     first = await client.post(
         f"/approvals/{request_id}/decision",
-        headers=auth(reza),
+        headers=auth(ali),
         json={"decision": "approved"},
     )
     assert first.json()["status"] == "pending"
+    sara = await login(client, "sara@autoco.example")
     second = await client.post(
         f"/approvals/{request_id}/decision",
-        headers=auth(ali),
+        headers=auth(sara),
         json={"decision": "approved"},
     )
     assert second.json()["status"] == "approved"

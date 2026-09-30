@@ -73,6 +73,8 @@ def _admin(ctx: AuthContext) -> None:
 async def list_audit(
     actor_id: UUID | None = None,
     entity_type: str | None = None,
+    action: str | None = None,
+    day: str | None = None,
     limit: int = 50,
     envelope_mode: bool = False,
     ctx: AuthContext = Depends(get_current_user),
@@ -84,8 +86,12 @@ async def list_audit(
             actor_permissions=ctx.permissions,
             actor_id=actor_id,
             entity_type=entity_type,
+            action=action,
+            day=day,
             limit=limit,
         )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     except AuthorizationError as e:
         raise handle_authz(e) from e
     items = [
@@ -101,9 +107,71 @@ async def list_audit(
         for r in rows
     ]
     if envelope_mode:
-        nxt = encode_cursor(items[-1]["id"]) if len(items) == limit else None
+        last_id = items[-1].get("id") if items else None
+        nxt = encode_cursor(last_id) if (len(items) == limit and last_id) else None
         return envelope(items, total=len(items), next_cursor=nxt)
     return items
+
+
+@router.get("/audit.xlsx")
+async def audit_xlsx(
+    actor_id: UUID | None = None,
+    entity_type: str | None = None,
+    action: str | None = None,
+    day: str | None = None,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """خروجی اکسل ممیزی — همان فیلترهای تب ممیزی."""
+    from io import BytesIO
+
+    from openpyxl import Workbook
+
+    _admin(ctx)
+    try:
+        rows = await EnterpriseService(db).list_audit(
+            ctx.organization_id,
+            actor_permissions=ctx.permissions,
+            actor_id=actor_id,
+            entity_type=entity_type,
+            action=action,
+            day=day,
+            limit=1000,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    wb = Workbook()
+    ws = wb.active
+    if ws is None:  # openpyxl types `active` as optional
+        ws = wb.create_sheet()
+    ws.title = "audit"
+    ws.append(["action", "entity_type", "entity_id", "actor_id", "created_at"])
+    for r in rows:
+        ws.append(
+            [
+                r.action,
+                r.entity_type,
+                str(r.entity_id),
+                str(r.actor_id) if r.actor_id else "",
+                r.created_at.isoformat() if r.created_at else "",
+            ]
+        )
+    buffer = BytesIO()
+    wb.save(buffer)
+    await write_audit(
+        db,
+        organization_id=ctx.organization_id,
+        actor_id=ctx.user.id,
+        action="report.export",
+        entity_type="report",
+        entity_id=ctx.organization_id,
+        details={"format": "xlsx", "kind": "audit"},
+    )
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=audit.xlsx"},
+    )
 
 
 @router.post("/approvals")
@@ -122,14 +190,18 @@ async def create_approval(
         )
         if existing:
             return json.loads(existing.response_body)
-    row = await EnterpriseService(db).request_approval(
-        organization_id=ctx.organization_id,
-        requester_id=ctx.user.id,
-        kind=body.kind,
-        title=body.title,
-        payload=body.payload,
-        approver_ids=body.approver_ids,
-    )
+    try:
+        row = await EnterpriseService(db).request_approval(
+            organization_id=ctx.organization_id,
+            requester_id=ctx.user.id,
+            kind=body.kind,
+            title=body.title,
+            payload=body.payload,
+            approver_ids=body.approver_ids,
+        )
+    except ValueError as e:
+        # خود-تأییدی، تأییدکنندهٔ نامعتبر و سایر خطاهای دامنه → ۴۰۰ نه ۵۰۰
+        raise HTTPException(400, str(e)) from e
     await notify_current_approver(db, row)
     payload = {"id": str(row.id), "status": row.status, "current_step": row.current_step}
     if idempotency_key:
@@ -320,6 +392,15 @@ async def kpis_pdf(ctx: AuthContext = Depends(get_current_user), db: AsyncSessio
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=kpis.pdf"},
     )
+
+
+@router.get("/admin/overview")
+async def admin_overview(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """نمای کلی سازمان — فقط برای دارندگان org.admin."""
+    _admin(ctx)
+    data = await EnterpriseService(db).admin_overview(ctx.organization_id)
+    data["as_of_jalali"] = format_jalali(datetime.now(UTC))
+    return data
 
 
 @router.post("/reports/schedules")

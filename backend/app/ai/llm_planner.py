@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterable, Protocol
 from uuid import UUID
 
 from app.ai.llm import LLMClient, get_llm_client
@@ -22,6 +22,18 @@ log = get_logger(__name__)
 class ToolCall:
     name: str
     args: dict[str, Any]
+
+
+class _AnyToolCall(Protocol):
+    """هر ToolCall ای که نام و آرگومان دارد — planner دوم همین شکل را دارد."""
+
+    name: str
+    args: dict[str, Any]
+
+
+def _as_tool_calls(calls: Iterable[_AnyToolCall]) -> list[ToolCall]:
+    """تبدیل ToolCall های RulesPlanner به این ماژول (دو کلاس هم‌نام جدا دارند)."""
+    return [ToolCall(c.name, c.args) for c in calls]
 
 
 ALLOWED_PLAN_TOOLS = {
@@ -74,29 +86,30 @@ class LLMPlanner:
             return "clarify", [], resolution.clarification
 
         if self.client is None:
-            intent, calls, clarification = await RulesPlanner(self.resolver).plan(
+            intent, rule_calls, clarification = await RulesPlanner(self.resolver).plan(
                 organization_id, text
             )
-            return intent, [ToolCall(c.name, c.args) for c in calls], clarification
+            return intent, _as_tool_calls(rule_calls), clarification
 
         try:
             raw = await self.client.chat_json(system=SYSTEM_PROMPT, user=text)
-            intent, calls, clarification = _normalize_plan(raw, text)
+            intent, planned, clarification = _normalize_plan(raw, text)
+            calls = _as_tool_calls(planned)
             if clarification:
                 return "clarify", [], clarification
             if not calls and intent == "create_work":
                 log.warning("llm_plan_incomplete_fallback")
-                intent, calls, clarification = await RulesPlanner(self.resolver).plan(
+                intent, rule_calls, clarification = await RulesPlanner(self.resolver).plan(
                     organization_id, text
                 )
-                return intent, [ToolCall(c.name, c.args) for c in calls], clarification
+                return intent, _as_tool_calls(rule_calls), clarification
             return intent, calls, None
         except Exception as exc:  # noqa: BLE001
             log.warning("llm_plan_failed_fallback", error=str(exc))
-            intent, calls, clarification = await RulesPlanner(self.resolver).plan(
+            intent, rule_calls, clarification = await RulesPlanner(self.resolver).plan(
                 organization_id, text
             )
-            return intent, [ToolCall(c.name, c.args) for c in calls], clarification
+            return intent, _as_tool_calls(rule_calls), clarification
 
 
 def _normalize_plan(

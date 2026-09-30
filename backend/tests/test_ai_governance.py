@@ -46,10 +46,16 @@ class TestToolExecutorGovernance:
         from app.core.config import get_settings
         get_settings.cache_clear()
 
+        ali = seeded["ali"]
+        # ali در فیکسچر مدیر ندارد؛ سناریوی معتبر: مدیرش را تعیین می‌کنیم
+        ali.manager_id = seeded["sara"].id
+        db.add(ali)
+        await db.flush()
+
         ctx = ToolContext(
             db=db,
             organization_id=seeded["org"].id,
-            user=seeded["ali"],
+            user=ali,
             permissions={PermissionCode.WORK_ITEM_WRITE, PermissionCode.TASK_ASSIGN},
             request_id="test-req-123",
         )
