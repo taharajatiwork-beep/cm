@@ -18,6 +18,23 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.models.ai_audit import AiActionLog  # noqa: F401
+from app.models.campaign import Campaign  # noqa: F401
+from app.models.customer import Customer  # noqa: F401
+from app.models.divar import DivarListing  # noqa: F401
+from app.models.embeddings import Embedding  # noqa: F401
+from app.models.enterprise import (  # noqa: F401
+    AiUsage,
+    ApprovalRequest,
+    ApprovalStep,
+    IdempotencyRecord,
+    JobLock,
+    KpiSnapshot,
+    RefreshToken,
+    ReportSchedule,
+    StoredFile,
+    UserTeam,
+)
 from app.models.enums import (
     AssignmentTargetType,
     CaseStatus,
@@ -39,29 +56,12 @@ from app.models.inventory import (  # noqa: F401 — register metadata
     VehicleBranch,
     VehicleHistory,
 )
+from app.models.knowledge import Document, DocumentChunk  # noqa: F401
 from app.models.telegram import (  # noqa: F401
     TelegramAccount,
     TelegramOutbox,
     TelegramPendingConfirm,
     TelegramProcessedUpdate,
-)
-from app.models.embeddings import Embedding  # noqa: F401
-from app.models.ai_audit import AiActionLog  # noqa: F401
-from app.models.knowledge import Document, DocumentChunk  # noqa: F401
-from app.models.divar import DivarListing  # noqa: F401
-from app.models.customer import Customer  # noqa: F401
-from app.models.campaign import Campaign  # noqa: F401
-from app.models.enterprise import (  # noqa: F401
-    AiUsage,
-    ApprovalRequest,
-    ApprovalStep,
-    IdempotencyRecord,
-    JobLock,
-    RefreshToken,
-    KpiSnapshot,
-    ReportSchedule,
-    StoredFile,
-    UserTeam,
 )
 
 

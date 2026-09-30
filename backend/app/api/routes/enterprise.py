@@ -19,7 +19,7 @@ from app.api.pagination import encode_cursor, envelope
 from app.core.jalali import format_jalali
 from app.core.permissions import AuthorizationError, PermissionCode, require_permission
 from app.db.session import get_db
-from app.models import Conversation, Role, RolePermission, Permission, User
+from app.models import Conversation, Permission, Role, RolePermission, User
 from app.models.enterprise import ApprovalRequest, ApprovalStep, IdempotencyRecord, KpiSnapshot, ReportSchedule
 from app.services import write_audit
 from app.services.enterprise_ops import EnterpriseService, notify_current_approver

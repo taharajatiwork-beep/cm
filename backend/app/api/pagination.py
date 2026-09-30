@@ -15,7 +15,7 @@ def decode_cursor(cursor: str | None) -> str | None:
         return None
     try:
         return base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
-    except Exception:
+    except ValueError:  # bad base64 / non-ascii / non-utf8 all derive from ValueError
         return None
 
 

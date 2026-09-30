@@ -16,9 +16,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.core.config import get_settings
-
 from app import models  # noqa: F401
+from app.core.config import get_settings
 from app.core.permissions import PermissionCode
 from app.db.base import Base
 from app.db.session import get_db

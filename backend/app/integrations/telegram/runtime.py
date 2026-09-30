@@ -12,9 +12,9 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.timeutil import utc_now
 from app.integrations.telegram.adapter import TelegramAdapter
-from app.integrations.telegram.client import HttpTelegramClient, TelegramClient
-from app.integrations.telegram.messages import BOT_COMMANDS, digest_text, btn_show
 from app.integrations.telegram.callbacks import encode_callback
+from app.integrations.telegram.client import HttpTelegramClient, TelegramClient
+from app.integrations.telegram.messages import BOT_COMMANDS, btn_show, digest_text
 from app.integrations.telegram.outbox import dispatch_pending, enqueue_telegram
 from app.models import Task, User
 from app.models.enums import TaskStatus
@@ -251,6 +251,6 @@ async def stop_background() -> None:
             await t
         except asyncio.CancelledError:
             pass
-        except Exception:
-            pass
+        except Exception as exc:  # shutdown must finish even if a task failed
+            log.warning("telegram_task_stop_failed", error=str(exc))
     _tasks = []

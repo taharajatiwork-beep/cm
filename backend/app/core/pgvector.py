@@ -1,4 +1,4 @@
-"""pgvector integration for PostgreSQL — zero-impact on SQLite.
+"""pgvector integration for PostgreSQL â€” zero-impact on SQLite.
 
 Adds a vector column and ivfflat index when dialect is postgresql.
 Keeps the JSON text column as the portable source of truth.
@@ -12,7 +12,10 @@ from typing import Any
 from sqlalchemy import DDL, event, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
 from app.models.embeddings import Embedding as EmbeddingModel
+
+log = get_logger(__name__)
 
 
 def _add_pgvector_column() -> None:
@@ -36,9 +39,8 @@ def _add_pgvector_column() -> None:
                 ON embeddings USING ivfflat (embedding_vec vector_cosine_ops)
                 WITH (lists = 100)
             """))
-        except Exception:
-            # pgvector not available — silently continue with JSON fallback
-            pass
+        except Exception as exc:  # noqa: BLE001 - pgvector missing: continue with JSON fallback
+            log.info("pgvector_unavailable", error=str(exc))
 
 
 # Call at module import to register the event
@@ -115,8 +117,8 @@ async def pgvector_semantic_search(
                 "metadata": meta,
             })
         return hits
-    except Exception:
-        # pgvector not available or error — caller should fallback to Python cosine
+    except Exception:  # noqa: BLE001 - caller falls back to Python cosine
+        # pgvector not available or error â€” caller should fallback to Python cosine
         return []
 
 
@@ -134,7 +136,8 @@ async def sync_embedding_vectors(db: AsyncSession, model_name: str = "hash-v1", 
             select(EmbeddingModel.id, EmbeddingModel.embedding)
             .where(
                 EmbeddingModel.embedding_model == model_name,
-                getattr(EmbeddingModel, "embedding_vec").is_(None),
+                # column is added by DDL at runtime, so it is not on the mapped class
+                getattr(EmbeddingModel, "embedding_vec").is_(None),  # noqa: B009
             )
             .limit(batch)
         )
@@ -150,10 +153,10 @@ async def sync_embedding_vectors(db: AsyncSession, model_name: str = "hash-v1", 
                     text("UPDATE embeddings SET embedding_vec = :vec WHERE id = :id"),
                     {"vec": vec_literal, "id": row.id}
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001 - skip unconvertible row
                 continue
         
         await db.commit()
         return len(rows)
-    except Exception:
+    except Exception:  # noqa: BLE001 - backfill is best effort
         return 0

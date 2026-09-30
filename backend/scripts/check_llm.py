@@ -55,6 +55,7 @@ async def main() -> None:
     try:
         # raw peek
         import httpx
+
         from app.core.config import get_settings as gs2
 
         s2 = gs2()

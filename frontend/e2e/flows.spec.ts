@@ -1,28 +1,6 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "@playwright/test";
 
-async function signIn(page: Page, request: APIRequestContext) {
-  const slug = `e2e${Date.now()}`;
-  const email = `boss-${Date.now()}@example.com`;
-  const boot = await request.post("/api/auth/bootstrap", {
-    data: {
-      organization_name: "E2E",
-      organization_slug: slug,
-      admin_email: email,
-      admin_name: "Boss",
-      admin_password: "password",
-    },
-  });
-  expect(boot.ok()).toBeTruthy();
-  await page.goto("/login");
-  await page.getByLabel(/company code|کد شرکت/i).fill(slug);
-  await page.getByLabel(/email|ایمیل/i).fill(email);
-  await page.getByLabel(/password|رمز عبور/i).fill("password");
-  await page.getByRole("button", { name: /sign in|ورود/i }).click();
-  // لاگین bcrypt دارد و روی SQLite می‌تواند چند ثانیه طول بکشد؛
-  // پیش‌فرض ۵ ثانیهٔ Playwright برای این مسیر کم است و تست را flaky می‌کند.
-  await expect(page).not.toHaveURL(/login/, { timeout: 20_000 });
-  return { slug, email };
-}
+import { signIn } from "./helpers";
 
 /** Add a colleague through the admin API so a conversation has a second side. */
 async function addColleague(request: APIRequestContext, slug: string, bossEmail: string) {

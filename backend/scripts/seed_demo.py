@@ -17,9 +17,11 @@ from sqlalchemy import select
 
 from app import models  # noqa: F401 — register mappers
 from app.core.permissions import PermissionCode
+from app.core.permissions import PermissionCode as PC
 from app.db.base import Base
 from app.db.session import AsyncSessionLocal, engine
 from app.models import Organization, User
+from app.models.campaign import Campaign
 from app.models.enums import (
     AssignmentTargetType,
     CampaignStatus,
@@ -30,7 +32,6 @@ from app.models.enums import (
     VehicleStatus,
 )
 from app.models.inventory import Vehicle
-from app.models.campaign import Campaign
 from app.services import (
     CommunicationService,
     OrgService,
@@ -42,7 +43,6 @@ from app.services.campaign import CampaignService
 from app.services.customer import CustomerService
 from app.services.inventory import InventoryService
 from app.services.knowledge import KnowledgeService
-from app.core.permissions import PermissionCode as PC
 
 
 async def _ensure_schema() -> None:

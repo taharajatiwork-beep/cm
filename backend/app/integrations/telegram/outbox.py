@@ -46,8 +46,8 @@ def parse_prefs(raw: str | None) -> dict[str, bool]:
             for k, v in data.items():
                 if k in prefs:
                     prefs[k] = bool(v)
-    except Exception:
-        pass
+    except (ValueError, TypeError):
+        log.warning("telegram_prefs_unparseable")
     return prefs
 
 

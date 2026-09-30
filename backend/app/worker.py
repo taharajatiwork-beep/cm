@@ -19,8 +19,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import get_settings
-from app.core.logging import get_logger
 from app.core.locks import release_lock, try_lock
+from app.core.logging import get_logger
 from app.db.session import AsyncSessionLocal
 
 log = get_logger(__name__)
@@ -119,8 +119,8 @@ async def _redis_release_lock(job_name: str) -> None:
     key = LEADER_LOCK_KEY.format(job_name=job_name)
     try:
         await r.delete(key)
-    except Exception:
-        pass
+    except Exception as exc:  # best effort: the lock expires by TTL anyway
+        log.warning("leader_lock_release_failed", job=job_name, error=str(exc))
 
 
 async def get_poll_offset(provider: str) -> int:
@@ -144,8 +144,8 @@ async def set_poll_offset(provider: str, offset: int) -> None:
     key = POLL_OFFSET_KEY.format(provider=provider)
     try:
         await r.set(key, str(offset))
-    except Exception:
-        pass
+    except Exception as exc:  # offset is re-derived from the next poll
+        log.warning("poll_offset_save_failed", provider=provider, error=str(exc))
 
 
 # In-memory poll offsets (fallback when no Redis)
@@ -228,8 +228,8 @@ async def _redis_mode() -> str:
     finally:
         try:
             await client.aclose()
-        except Exception:
-            pass
+        except Exception as exc:  # closing a probe client must not mask the result
+            log.debug("redis_probe_close_failed", error=str(exc))
     return _redis_state
 
 
@@ -285,7 +285,6 @@ async def run_outbox_dispatch(
     from app.integrations.telegram.outbox import dispatch_pending
     from app.integrations.telegram.runtime import build_clients
 
-    settings = get_settings()
     clients = build_clients()
     if not clients:
         return 0
@@ -460,7 +459,6 @@ class Worker:
                 await asyncio.sleep(settings.telegram_sla_poll_seconds)
 
         async def _poll_loop(provider: str):
-            settings = get_settings()
             while True:
                 try:
                     # Hold the lock for the whole getUpdates long-poll (up to 25s).
@@ -513,8 +511,8 @@ class Worker:
                 await t
             except asyncio.CancelledError:
                 pass
-            except Exception:
-                pass
+            except Exception as exc:  # shutdown must finish even if a task failed
+                log.warning("worker_task_stop_failed", error=str(exc))
         self._tasks.clear()
         log.info("worker_stopped")
 
@@ -548,7 +546,7 @@ async def run_external_worker() -> None:
             await asyncio.sleep(300)  # 5 minutes
             # Refresh the DB lock
             async with AsyncSessionLocal() as db:
-                from app.core.locks import try_lock, release_lock
+                from app.core.locks import release_lock, try_lock
                 await release_lock(db, "telegram-worker", owner)
                 await db.commit()
                 new_owner = await try_lock(db, "telegram-worker", ttl_seconds=3600)

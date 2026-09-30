@@ -1,7 +1,8 @@
+from uuid import UUID
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from uuid import UUID
 
 from app.integrations.divar import reset_fake_divar_client
 from app.models.ai_audit import AiActionLog

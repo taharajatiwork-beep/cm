@@ -2,7 +2,8 @@ import pytest
 from httpx import AsyncClient
 
 from app.ai.llm import FakeLLMClient
-from app.ai.llm_planner import LLMPlanner, ToolCall as PlanToolCall
+from app.ai.llm_planner import LLMPlanner
+from app.ai.llm_planner import ToolCall as PlanToolCall
 from app.integrations.telegram.resolver import EntityResolver
 from tests.conftest import auth, login
 

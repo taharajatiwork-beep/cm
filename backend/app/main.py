@@ -1,14 +1,11 @@
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
-import uuid
-
-from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import PlainTextResponse
 
 from app.api.routes import (
@@ -27,7 +24,7 @@ from app.api.routes import (
 )
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.core.metrics import record_request, render_metrics, async_timed_request
+from app.core.metrics import async_timed_request, record_request, render_metrics
 from app.core.permissions import AuthorizationError
 from app.core.startup import assert_production_safe
 from app.db.session import AsyncSessionLocal, _tune_sqlite, get_db
@@ -135,7 +132,7 @@ def create_app() -> FastAPI:
     async def ready(db: AsyncSession = Depends(get_db)):
         try:
             await db.execute(text("SELECT 1"))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - readiness probe: any failure means not ready
             return JSONResponse(status_code=503, content={"status": "not_ready", "error": str(exc)})
         return {"status": "ready"}
 

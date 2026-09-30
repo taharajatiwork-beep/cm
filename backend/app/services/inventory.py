@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -362,7 +362,7 @@ class InventoryService:
         status: VehicleStatus = VehicleStatus.IN_STOCK,
     ) -> list[dict[str, Any]]:
         """Vehicles in stock longer than min_days (aging signal)."""
-        cutoff = datetime.now(timezone.utc) - timedelta(days=min_days)
+        cutoff = datetime.now(UTC) - timedelta(days=min_days)
         rows = list(
             (
                 await self.db.execute(
@@ -378,12 +378,12 @@ class InventoryService:
             .scalars()
             .all()
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         out: list[dict[str, Any]] = []
         for v in rows:
             created = v.created_at
             if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
+                created = created.replace(tzinfo=UTC)
             days = max(0, (now - created).days)
             out.append(
                 {

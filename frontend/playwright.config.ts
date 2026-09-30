@@ -14,6 +14,16 @@ const python = existsSync(venvPython) ? `"${venvPython}"` : "python";
 
 export default defineConfig({
   testDir: "./e2e",
+  // همهٔ تست‌ها یک سرور و یک فایل SQLite (`e2e.db`) را به اشتراک می‌گذارند،
+  // پس اجرای موازی با چند worker باعث قفل‌شدن DB و در نتیجه flake می‌شود —
+  // نه در تست‌ها، بلکه در زمان‌بندی. یک worker تنها راه درست برای این مجموعه است.
+  // روی ۶ هسته پیش‌فرض ۳ worker بود و همین ریشهٔ flakeهای تکرارشونده بود.
+  workers: 1,
+  fullyParallel: false,
+  forbidOnly: !!process.env.CI,
+  retries: 0,
+  reporter: process.env.CI ? "line" : "list",
+  timeout: 60_000,
   use: {
     baseURL: `http://127.0.0.1:${webPort}`,
     ...devices["Desktop Chrome"],

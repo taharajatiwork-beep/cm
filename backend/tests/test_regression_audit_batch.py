@@ -18,7 +18,7 @@ async def _create_org_admin(client, seeded, db) -> str:
     from app.services import OrgService
     from tests.conftest import login
 
-    admin = await OrgService(db).create_user(
+    await OrgService(db).create_user(
         organization_id=seeded["org"].id,
         email="ops@autoco.example",
         full_name="Ops Admin",

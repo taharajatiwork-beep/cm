@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
@@ -14,7 +14,7 @@ from tests.conftest import auth, login
 async def _age_case(db, case_id: str, days: int = 5):
     case = await db.get(CommunicationCase, UUID(case_id))
     assert case is not None
-    case.created_at = datetime.now(timezone.utc) - timedelta(days=days)
+    case.created_at = datetime.now(UTC) - timedelta(days=days)
     await db.commit()
 
 

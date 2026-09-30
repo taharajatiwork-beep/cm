@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
@@ -29,22 +30,46 @@ engine = create_async_engine(
     connect_args=_connect_args,
     **_engine_kwargs,
 )
+
+# PRAGMAهای SQLite به «اتصال» گره خورده‌اند نه به فایل، پس باید روی هر
+# اتصال تازه اعمال شوند. اجرای یک‌بارهٔ آن‌ها در startup کافی نیست: استخر
+# اتصال (به‌خاطر `pool_pre_ping`) اتصال‌های قدیمی را دوباره برمی‌گرداند و آن‌ها
+# `busy_timeout` ندارند — نتیجه‌اش خطای گاه‌به‌گاه «database is locked» و
+# «database is locked»/«no such table» زیر بار هم‌زمان است.
+_SQLITE_PRAGMAS = (
+    "PRAGMA journal_mode=WAL",
+    "PRAGMA busy_timeout=30000",
+    "PRAGMA synchronous=NORMAL",
+    "PRAGMA foreign_keys=ON",
+)
+
+if _is_sqlite:
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _sqlite_pragmas_on_connect(dbapi_conn, _record) -> None:  # noqa: ANN001
+        cur = dbapi_conn.cursor()
+        try:
+            for pragma in _SQLITE_PRAGMAS:
+                cur.execute(pragma)
+        finally:
+            cur.close()
+
+
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def _tune_sqlite() -> None:
-    """WAL و busy_timeout را برای هر اتصال فعال می‌کند.
+    """journal_mode روی فایل است (نه اتصال) و فقط توسط اتصال‌های تازه ست می‌شود.
 
-    PRAGMAها به «اتصال» گره خورده‌اند نه به فایل، پس باید روی هر
-    اتصال جدید اجرا شوند — وگرنه فقط اولین درخواست آن‌ها را دارد.
+    PRAGMAهای per-connection از طریق hook بالا اعمال می‌شوند؛ این تابع فقط
+    تضمین می‌کند WAL یک‌بار روی فایل اعمال شده باشد و اتصال‌های از پیش
+    ساخته‌شده دور ریخته شوند.
     """
     if not _is_sqlite:
         return
     async with engine.connect() as conn:
         await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
-        await conn.exec_driver_sql("PRAGMA busy_timeout=30000")
-        await conn.exec_driver_sql("PRAGMA synchronous=NORMAL")
-    await engine.dispose()  # اتصال جدید با PRAGMAهای تازه برقرار می‌شود
+    await engine.dispose()  # اتصال‌های تازه با PRAGMAهای درست برقرار می‌شوند
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

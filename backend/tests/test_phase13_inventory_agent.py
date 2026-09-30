@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
@@ -16,7 +16,7 @@ from tests.conftest import auth, login
 async def _age_vehicle(db, vehicle_id, days: int = 35):
     vehicle = await db.get(Vehicle, UUID(str(vehicle_id)))
     assert vehicle is not None
-    vehicle.created_at = datetime.now(timezone.utc) - timedelta(days=days)
+    vehicle.created_at = datetime.now(UTC) - timedelta(days=days)
     await db.commit()
 
 

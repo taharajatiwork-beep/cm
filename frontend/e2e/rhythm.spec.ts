@@ -1,25 +1,6 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-async function signIn(page: Page, request: APIRequestContext) {
-  const slug = `e2e${Date.now()}`;
-  const email = `boss-${Date.now()}@example.com`;
-  const boot = await request.post("/api/auth/bootstrap", {
-    data: {
-      organization_name: "E2E",
-      organization_slug: slug,
-      admin_email: email,
-      admin_name: "Boss",
-      admin_password: "password",
-    },
-  });
-  expect(boot.ok()).toBeTruthy();
-  await page.goto("/login");
-  await page.getByLabel(/company code|کد شرکت/i).fill(slug);
-  await page.getByLabel(/email|ایمیل/i).fill(email);
-  await page.getByLabel(/password|رمز عبور/i).fill("password");
-  await page.getByRole("button", { name: /sign in|ورود/i }).click();
-  await expect(page).not.toHaveURL(/login/);
-}
+import { signIn } from "./helpers";
 
 /** Consecutive visible children of <main> must be separated by exactly --space-4. */
 function topLevelGaps(page: Page): Promise<number[]> {
@@ -37,6 +18,27 @@ function topLevelGaps(page: Page): Promise<number[]> {
     }
     return gaps;
   });
+}
+
+/** انتظار تا رندر کامل شود — ظاهر شدن <main> به‌تنهایی کافی نیست. */
+function waitForRenderSettled(page: Page, timeout = 15_000): Promise<unknown> {
+  return page.waitForFunction(
+    () =>
+      new Promise<boolean>((resolve) => {
+        let last = -1;
+        let stable = 0;
+        const tick = () => {
+          const now = document.querySelector("main")?.children.length ?? -1;
+          stable = now === last ? stable + 1 : 0;
+          last = now;
+          if (stable >= 3) resolve(true);
+          else requestAnimationFrame(tick);
+        };
+        tick();
+      }),
+    null,
+    { timeout },
+  );
 }
 
 const PAGES = [
@@ -65,7 +67,10 @@ test("vertical rhythm is uniform on every page", async ({ page, request }) => {
     await expect(page.locator("main")).toBeVisible();
     // فونت باید لود شده باشد تا ارتفاع فونت fallback اندازه‌ها را منحرف نکند
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
-    await page.waitForTimeout(600);
+    // فقط ظاهر شدن <main> کافی نیست: صفحه‌ای که داده‌اش دیر برسد ابتدا یک
+    // اسپینر رندر می‌کند و بلوک‌ها بعداً اضافه می‌شوند، پس فاصله‌گیری روی
+    // درخت ناقص انجام می‌شود و تست flake می‌خورد.
+    await waitForRenderSettled(page);
     const gaps = await topLevelGaps(page);
     const bad = gaps
       .map((g, i) => ({ i, g: Math.round(g) }))
@@ -83,7 +88,7 @@ test("no horizontal overflow on desktop", async ({ page, request }) => {
     // فونت‌های self-host هنوز ممکن است لود نشده باشند؛ فونت fallback عرض
     // متفاوتی دارد و اندازه‌گیری زودهنگام سرریز جعلی می‌دهد.
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
-    await page.waitForTimeout(400);
+    await waitForRenderSettled(page);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
@@ -99,7 +104,7 @@ test("no horizontal overflow on mobile (390px)", async ({ page, request }) => {
     await expect(page.locator("main")).toBeVisible();
     // فونت باید قبل از اندازه‌گیری لود شده باشد (ریشهٔ سرریز جعلی)
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
-    await page.waitForTimeout(400);
+    await waitForRenderSettled(page);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

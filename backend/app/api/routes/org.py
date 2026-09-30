@@ -6,14 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import AuthContext, get_current_user, get_org_by_slug
 from app.core.permissions import PermissionCode, require_any_permission, require_permission
 from app.core.security import create_access_token
-from app.services.sessions import (
-    issue_session,
-    login_allowed,
-    record_login_failure,
-    record_login_success,
-    revoke_all,
-    rotate_refresh,
-)
 from app.db.session import get_db
 from app.schemas import (
     BootstrapIn,
@@ -33,6 +25,14 @@ from app.schemas import (
     UserOut,
 )
 from app.services import OrgService
+from app.services.sessions import (
+    issue_session,
+    login_allowed,
+    record_login_failure,
+    record_login_success,
+    revoke_all,
+    rotate_refresh,
+)
 
 router = APIRouter(tags=["auth-org"])
 

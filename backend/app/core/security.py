@@ -1,3 +1,4 @@
+import binascii
 import hashlib
 import hmac
 import secrets
@@ -66,7 +67,8 @@ def totp_key(secret: str) -> bytes:
         padded = compact.upper() + ("=" * ((8 - len(compact) % 8) % 8))
         try:
             return base64.b32decode(padded, casefold=True)
-        except Exception:
+        except (binascii.Error, ValueError):
+            # not valid base32 after all: treat the secret as raw text
             pass
     return secret.encode("utf-8")
 

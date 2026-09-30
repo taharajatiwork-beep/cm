@@ -171,9 +171,8 @@ class QueryAnalyzer:
             vehicle_focus = bool(brand or model or vin or stock_number) and not any(
                 t in types for t in ("work_item", "user", "case")
             )
-            if brand or model or vin or stock_number:
-                if "vehicle" not in types:
-                    types.append("vehicle")
+            if (brand or model or vin or stock_number) and "vehicle" not in types:
+                types.append("vehicle")
             if vehicle_focus or (wants_status and "vehicle" in types and not wants_policy):
                 # Status-of-car questions: don't dilute with KB
                 types = [t for t in types if t != "document"]
@@ -289,9 +288,10 @@ class HybridRagService:
             )
 
         # Direct inventory fallback when brand/model known but SQL channel empty/unavailable
-        if (analyzed.brand or analyzed.model) and not any(
+        needs_vehicle_fallback = (analyzed.brand or analyzed.model) and not any(
             h.entity_type == "vehicle" for h in sql_hits
-        ):
+        )
+        if needs_vehicle_fallback:  # noqa: SIM102 - kept nested: the block below is large
             if (
                 PermissionCode.INVENTORY_READ in actor_permissions
                 or PermissionCode.ORG_ADMIN in actor_permissions

@@ -22,11 +22,11 @@ import sys
 from dataclasses import dataclass
 from uuid import UUID
 
+from sqlalchemy import select
+
 from app.db.session import AsyncSessionLocal
 from app.models import Organization
 from app.services import verify_audit_chain
-
-from sqlalchemy import select
 
 
 @dataclass

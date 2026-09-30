@@ -4,10 +4,10 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.metrics import (
-    record_request,
-    record_latency,
-    render_metrics,
     async_timed_request,
+    record_latency,
+    record_request,
+    render_metrics,
 )
 
 

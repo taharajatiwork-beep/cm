@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /**
  * عملیات پرخطر سازمان — اینها در e2e پیشین پوششی نداشتند و بیشترین
@@ -9,27 +9,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
  * ندارد، فقط `erase` دارد که رکورد را نگه می‌دارد و اطلاعاتش را پاک می‌کند.
  */
 
-async function bootstrapOrg(request: APIRequestContext) {
-  const slug = `e2e${Date.now()}`;
-  const email = `boss-${Date.now()}@example.com`;
-  const boot = await request.post("/api/auth/bootstrap", {
-    data: {
-      organization_name: "E2E",
-      organization_slug: slug,
-      admin_email: email,
-      admin_name: "Boss",
-      admin_password: "password",
-    },
-  });
-  expect(boot.ok()).toBeTruthy();
-  const login = await request.post("/api/auth/login", {
-    data: { organization_slug: slug, email, password: "password" },
-  });
-  // بدون این ادعا، خطای لاگین فقط با یک خطای ۴۰۱ در جای دیگر خودش را نشان می‌دهد
-  expect(login.ok(), `login failed: ${await login.text()}`).toBeTruthy();
-  const { access_token } = (await login.json()) as { access_token: string };
-  return { slug, email, token: access_token };
-}
+import { bootstrapOrg, LOGIN_TIMEOUT } from "./helpers";
 
 async function signIn(page: Page, org: { slug: string; email: string }) {
   await page.goto("/login");
@@ -38,7 +18,7 @@ async function signIn(page: Page, org: { slug: string; email: string }) {
   await page.getByLabel(/password|رمز عبور/i).fill("password");
   await page.getByRole("button", { name: /sign in|ورود/i }).click();
   // bcrypt + SQLite ⇒ لاگین می‌تواند چند ثانیه طول بکشد
-  await expect(page).not.toHaveURL(/login/, { timeout: 20_000 });
+  await expect(page).not.toHaveURL(/login/, { timeout: LOGIN_TIMEOUT });
 }
 
 test.describe("destructive and irreversible operations", () => {

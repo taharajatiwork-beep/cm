@@ -21,7 +21,12 @@ from app.core.logging import get_logger
 from app.core.permissions import PermissionCode
 from app.core.timeutil import as_utc, utc_now
 from app.integrations.telegram import messages as msg
-from app.integrations.telegram.callbacks import encode_callback, is_approval_callback, match_uuid_prefix, verify_callback
+from app.integrations.telegram.callbacks import (
+    encode_callback,
+    is_approval_callback,
+    match_uuid_prefix,
+    verify_callback,
+)
 from app.integrations.telegram.client import FakeTelegramClient, TelegramClient
 from app.integrations.telegram.outbox import inline_keyboard
 from app.integrations.telegram.resolver import EntityResolver
@@ -714,8 +719,8 @@ class TelegramAdapter:
             message_type=MessageType.TEXT,
         )
         # Notify other participants
-        from app.models import ConversationParticipant
         from app.integrations.telegram.outbox import enqueue_telegram
+        from app.models import ConversationParticipant
 
         parts = (
             await self.db.execute(

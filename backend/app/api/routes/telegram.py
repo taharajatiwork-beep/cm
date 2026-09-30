@@ -168,9 +168,11 @@ async def telegram_webhook(
     x_telegram_bot_api_secret_token: str | None = Header(default=None),
 ):
     settings = get_settings()
-    if settings.telegram_webhook_secret:
-        if x_telegram_bot_api_secret_token != settings.telegram_webhook_secret:
-            raise HTTPException(403, "Invalid webhook secret")
+    if (
+        settings.telegram_webhook_secret
+        and x_telegram_bot_api_secret_token != settings.telegram_webhook_secret
+    ):
+        raise HTTPException(403, "Invalid webhook secret")
 
     update: dict[str, Any] = await request.json()
     adapter = TelegramAdapter(db, client=get_telegram_client("telegram"), provider="telegram")
@@ -190,9 +192,11 @@ async def bale_webhook(
     x_telegram_bot_api_secret_token: str | None = Header(default=None),
 ):
     settings = get_settings()
-    if settings.bale_webhook_secret:
-        if x_telegram_bot_api_secret_token != settings.bale_webhook_secret:
-            raise HTTPException(403, "Invalid webhook secret")
+    if (
+        settings.bale_webhook_secret
+        and x_telegram_bot_api_secret_token != settings.bale_webhook_secret
+    ):
+        raise HTTPException(403, "Invalid webhook secret")
     update: dict[str, Any] = await request.json()
     adapter = TelegramAdapter(db, client=get_telegram_client("bale"), provider="bale")
     result = await adapter.handle_update(update)
@@ -233,5 +237,5 @@ async def telegram_setup(
             await client.delete_webhook()
             return SetupResult(ok=True, mode="polling", detail="webhook deleted; polling will run")
         return SetupResult(ok=True, mode="off", detail="telegram_mode=off")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - admin setup endpoint reports any provider error
         return SetupResult(ok=False, mode=settings.telegram_mode, detail=str(e))

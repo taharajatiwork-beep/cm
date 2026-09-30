@@ -4,16 +4,16 @@ import pytest
 
 from app.integrations.channels import (
     ChannelRegistry,
-    FakeSmsAdapter,
-    FakeEmailAdapter,
-    FakeVoipAdapter,
-    FakeErpAdapter,
-    get_sms_adapter,
-    get_email_adapter,
-    get_voip_adapter,
-    get_erp_adapter,
-    get_divar_adapter,
     DeliveryResult,
+    FakeEmailAdapter,
+    FakeErpAdapter,
+    FakeSmsAdapter,
+    FakeVoipAdapter,
+    get_divar_adapter,
+    get_email_adapter,
+    get_erp_adapter,
+    get_sms_adapter,
+    get_voip_adapter,
 )
 
 

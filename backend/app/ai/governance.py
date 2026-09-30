@@ -12,7 +12,6 @@ from typing import Any
 
 from app.core.config import get_settings
 
-
 # Tools that require human approval when the flag is enabled
 SENSITIVE_TOOLS = frozenset(
     {

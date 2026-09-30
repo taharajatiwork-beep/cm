@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -218,11 +219,13 @@ class ToolExecutor:
         spec = TOOL_SPECS[tool_name]
         require_permission(self.ctx.permissions, spec.permission)
         # SEARCH is used by some read helpers
-        if tool_name in ("search_inventory", "search_messages"):
-            if PermissionCode.SEARCH not in self.ctx.permissions and PermissionCode.ORG_ADMIN not in self.ctx.permissions:
-                # allow inventory_read path for search_inventory via inventory service directly
-                if tool_name == "search_messages":
-                    require_permission(self.ctx.permissions, PermissionCode.SEARCH)
+        # (search_inventory is allowed through the inventory service directly)
+        if (
+            tool_name == "search_messages"
+            and PermissionCode.SEARCH not in self.ctx.permissions
+            and PermissionCode.ORG_ADMIN not in self.ctx.permissions
+        ):
+            require_permission(self.ctx.permissions, PermissionCode.SEARCH)
         return spec
 
     async def execute(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:

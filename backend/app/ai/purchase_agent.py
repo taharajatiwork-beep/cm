@@ -62,8 +62,7 @@ class PurchaseAgent:
             s in text for s in ("create", "بساز", "خرید", "purchase")
         ):
             # "scan purchase" still contains purchase — only force create off for pure scan/list
-            if scan_only or pipeline_only:
-                should_create = False
+            should_create = False
         if auto_create is not None:
             should_create = auto_create
 

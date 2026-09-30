@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import AuthContext, get_current_user, handle_authz
 from app.core.permissions import AuthorizationError, PermissionCode, require_permission
 from app.db.session import get_db
-from app.services.assignment import AssignmentEngine
 from app.services import WorkService
+from app.services.assignment import AssignmentEngine
 
 router = APIRouter(prefix="/assignment", tags=["assignment"])
 

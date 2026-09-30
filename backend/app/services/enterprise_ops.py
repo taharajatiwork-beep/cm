@@ -12,8 +12,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.permissions import PermissionCode, require_permission
 from app.models import AuditLog, CommunicationCase, Task, User, WorkItem
-from app.models.enums import CaseStatus, SlaState, TaskStatus
 from app.models.enterprise import AiUsage, ApprovalRequest, ApprovalStep, ReportSchedule, UserTeam
+from app.models.enums import CaseStatus, SlaState, TaskStatus
 from app.models.inventory import Vehicle
 from app.models.telegram import TelegramAccount
 from app.services import write_audit

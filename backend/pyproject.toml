@@ -41,6 +41,39 @@ cm-api = "app.main:run"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F: pyflakes+pycodestyle, I: imports, B: bugbear, UP: pyupgrade,
+# S110: silent try/except/pass, BLE: blind except, SIM102: collapsible if.
+select = ["E9", "F", "I", "B", "UP", "S110", "BLE", "SIM102"]
+ignore = ["UP042"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI Depends()/Query()/Body() in defaults is the framework's idiom.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Path",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# (UP042 is ignored globally below: StrEnum changes str() semantics and the
+# enum values are persisted, so the migration is not a pure refactor.)
+# Long-running supervisors and external-service boundaries must survive any
+# failure of a single job/update; each handler logs and continues.
+"app/worker.py" = ["BLE001"]
+"app/integrations/**" = ["BLE001"]
+"scripts/**" = ["BLE001"]
+# Importing a pytest fixture and using it as an argument is the idiom.
+"tests/**" = ["F811", "BLE001", "S110"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 

@@ -31,7 +31,7 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Ruff lint
         working-directory: backend
-        run: pip install ruff && ruff check app --select E9,F63,F821,F401
+        run: pip install ruff && ruff check app tests scripts
       - name: Mypy (whole app)
         working-directory: backend
         run: pip install mypy && mypy app --ignore-missing-imports

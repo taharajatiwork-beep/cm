@@ -102,8 +102,9 @@ class TestWorkerLoops:
 
     @pytest.mark.asyncio
     async def test_run_sla_and_digest(self, db_engine):
-        from app.worker import run_sla_and_digest
         from sqlalchemy.ext.asyncio import async_sessionmaker
+
+        from app.worker import run_sla_and_digest
 
         # Create a session factory for the test database
         session_factory = async_sessionmaker(db_engine, expire_on_commit=False)

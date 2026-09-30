@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import time
 from collections import Counter, defaultdict
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import Any
+
+from sqlalchemy import text
 
 # Prometheus metrics (no external dependency)
 _requests: Counter[tuple[str, str]] = Counter()
@@ -105,9 +107,6 @@ def timed_request(method: str, path: str):
         record_latency(method, path, duration)
 
 
-from contextlib import asynccontextmanager
-
-
 @asynccontextmanager
 async def async_timed_request(method: str, path: str):
     """Asynchronous context manager to time a request and record metrics."""
@@ -134,8 +133,9 @@ async def health_check_data() -> dict[str, Any]:
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
             db_ok = True
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 - readiness probe: any failure means "db down"
+        # get_json_logger returns a callable(level, message, **fields), not a Logger
+        log("warning", "readiness_db_check_failed", error=str(exc))
 
     return {
         "status": "ok" if db_ok else "degraded",
@@ -145,6 +145,3 @@ async def health_check_data() -> dict[str, Any]:
         "database": "connected" if db_ok else "disconnected",
         "workers": "embedded",  # could read from worker status
     }
-
-
-from sqlalchemy import text

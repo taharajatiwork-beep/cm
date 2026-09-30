@@ -3,7 +3,6 @@ from httpx import AsyncClient
 
 from tests.conftest import auth, login
 
-
 SOP_TEXT = """
 Communication SOP
 

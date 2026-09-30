@@ -6,8 +6,9 @@ Never invents entity IDs — only proposes search/find tools + compose markers.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable, Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from app.ai.llm import LLMClient, get_llm_client

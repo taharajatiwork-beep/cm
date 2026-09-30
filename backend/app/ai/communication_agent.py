@@ -13,8 +13,8 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.tools import ToolExecutor, ToolContext
 from app.ai.llm_planner import LLMPlanner
+from app.ai.tools import ToolContext, ToolExecutor
 from app.core.permissions import PermissionCode, require_permission
 from app.integrations.telegram.resolver import EntityResolver
 from app.models import User
@@ -368,7 +368,6 @@ class CommunicationAgent:
 
     @staticmethod
     def _task_title_for(full_name: str, text: str) -> str:
-        lower = text.lower()
         first = full_name.split()[0].lower()
         if first == "reza" or "رضا" in full_name:
             if "مشتری" in text or "پیگیری" in text:

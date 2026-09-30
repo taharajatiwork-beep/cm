@@ -138,7 +138,7 @@ class DivarService:
                 task_id = task.get("id")
                 validation_errors = task.get("validationErrors") or []
                 task_status = task.get("status")
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - external API: record the error, keep the draft
                 last_error = (getattr(self.client, "last_error", None) or str(exc))[:500]
 
         work_item_id = None

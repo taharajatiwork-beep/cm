@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -82,12 +82,12 @@ class SalesService:
             .scalars()
             .all()
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         out: list[dict[str, Any]] = []
         for c in rows:
             created = c.created_at
             if created and created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
+                created = created.replace(tzinfo=UTC)
             days = (now - created).days if created else 0
             out.append(
                 {
@@ -165,7 +165,7 @@ class SalesService:
         Skips cases that already have an open FOLLOW_UP case on the same vehicle
         (or same case_number referenced in subject).
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
+        cutoff = datetime.now(UTC) - timedelta(days=stale_days)
         pipeline = await self.list_pipeline(
             organization_id,
             case_types=(CaseType.BUYER_REQUEST, CaseType.CUSTOMER_INTEREST),
@@ -194,7 +194,7 @@ class SalesService:
                 continue
             created_dt = datetime.fromisoformat(created)
             if created_dt.tzinfo is None:
-                created_dt = created_dt.replace(tzinfo=timezone.utc)
+                created_dt = created_dt.replace(tzinfo=UTC)
             if created_dt > cutoff:
                 continue
             if item.get("vehicle_id") and item["vehicle_id"] in covered_vehicles:

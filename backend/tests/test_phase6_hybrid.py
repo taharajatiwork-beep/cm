@@ -1,9 +1,10 @@
+from uuid import uuid4
+
 import pytest
 from httpx import AsyncClient
 
 from app.services.hybrid_rag import QueryAnalyzer, reciprocal_rank_fusion
 from tests.conftest import auth, login
-from uuid import uuid4
 
 
 def test_query_analyzer_extracts_structured_fields():

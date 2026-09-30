@@ -1,8 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
-from app.integrations.telegram.client import FakeTelegramClient
 from app.api.routes import telegram as telegram_routes
+from app.integrations.telegram.client import FakeTelegramClient
 from tests.conftest import auth, login
 
 WEBHOOK_SECRET = "dev-telegram-webhook-secret"

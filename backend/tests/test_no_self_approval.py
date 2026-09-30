@@ -9,8 +9,9 @@
 admin_role = نقش با همهٔ مجوزها از جمله org.admin.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.ai.tools import ToolContext, ToolExecutor
 from app.core.permissions import PermissionCode

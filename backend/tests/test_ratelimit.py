@@ -33,7 +33,7 @@ class FakeRedis:
     def ping(self) -> bool:
         return True
 
-    def pipeline(self) -> "FakePipeline":
+    def pipeline(self) -> FakePipeline:
         return FakePipeline(self)
 
 
@@ -48,11 +48,11 @@ class FakePipeline:
         self._client = client
         self._commands: list[tuple[str, str]] = []
 
-    def incr(self, key: str) -> "FakePipeline":
+    def incr(self, key: str) -> FakePipeline:
         self._commands.append(("incr", key))
         return self
 
-    def ttl(self, key: str) -> "FakePipeline":
+    def ttl(self, key: str) -> FakePipeline:
         self._commands.append(("ttl", key))
         return self
 

@@ -76,11 +76,13 @@ def _client():
 
 
 def _put_s3(key: str, data: bytes, content_type: str) -> None:
+    from botocore.exceptions import ClientError
+
     settings = get_settings()
     client = _client()
     try:
         client.head_bucket(Bucket=settings.s3_bucket)
-    except Exception:
+    except ClientError:  # bucket missing (404) or not visible: create it
         client.create_bucket(Bucket=settings.s3_bucket)
     client.put_object(Bucket=settings.s3_bucket, Key=key, Body=data, ContentType=content_type)
 

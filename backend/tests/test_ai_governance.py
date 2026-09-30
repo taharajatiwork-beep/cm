@@ -1,7 +1,8 @@
 """Tests for AI Governance — human approval for sensitive tools."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.ai.governance import (
     SENSITIVE_TOOLS,
@@ -9,7 +10,7 @@ from app.ai.governance import (
     is_sensitive_tool,
     request_ai_approval,
 )
-from app.ai.tools import ToolContext, ToolExecutor, TOOL_SPECS
+from app.ai.tools import TOOL_SPECS, ToolContext, ToolExecutor
 
 
 class TestAIGovernanceFlags:

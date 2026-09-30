@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
-from typing import Iterable
 
 _FONT = Path(__file__).with_name("fonts") / "Vazirmatn-Regular.ttf"
 _FONT_NAME = "Vazirmatn"
@@ -16,7 +16,7 @@ def _shape(text: str) -> str:
         from bidi.algorithm import get_display
 
         return get_display(arabic_reshaper.reshape(text))
-    except Exception:
+    except Exception:  # noqa: BLE001 - shaping is cosmetic; fall back to raw text
         return text
 
 
