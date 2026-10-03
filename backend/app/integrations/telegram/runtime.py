@@ -83,7 +83,7 @@ async def _outbox_loop(session_factory: async_sessionmaker[AsyncSession]) -> Non
             clients = build_clients()
             if clients:
                 async with session_factory() as db:
-                    n = await dispatch_pending(db, clients)
+                    n = await dispatch_pending(db, clients, commit_each=True)
                     if n:
                         await db.commit()
                         log.info("telegram_outbox_sent", count=n)

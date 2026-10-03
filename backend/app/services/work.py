@@ -352,6 +352,7 @@ class WorkService:
     async def delegate_task(
         self,
         *,
+        organization_id: UUID,
         task_id: UUID,
         actor_id: UUID,
         actor_permissions: set[str],
@@ -361,7 +362,7 @@ class WorkService:
     ) -> Task:
         require_permission(actor_permissions, PermissionCode.TASK_DELEGATE)
         task = await self.db.get(Task, task_id)
-        if not task:
+        if not task or task.organization_id != organization_id:
             raise ValueError("Task not found")
         if to_user_id:
             self.db.add(

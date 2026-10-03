@@ -134,6 +134,7 @@ async def apply_assignment(
             user_id = rec.recommended_user_id
 
         task = await WorkService(db).delegate_task(
+            organization_id=ctx.organization_id,
             task_id=body.task_id,
             actor_id=ctx.user.id,
             actor_permissions=ctx.permissions,
@@ -158,5 +159,10 @@ async def add_skill(
         require_permission(ctx.permissions, PermissionCode.USER_WRITE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    from app.models import User
+
+    target = await db.get(User, user_id)
+    if not target or target.organization_id != ctx.organization_id:
+        raise HTTPException(404, "User not found")
     row = await AssignmentEngine(db).add_skill(user_id, body.skill_code, body.level)
     return {"user_id": user_id, "skill_code": row.skill_code, "level": row.level}

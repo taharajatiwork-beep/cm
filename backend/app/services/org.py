@@ -215,27 +215,34 @@ class OrgService:
         )
         return rel
 
-    async def list_relationships(self, user_id: UUID) -> list[OrgRelationship]:
+    async def list_relationships(self, user_id: UUID, *, organization_id: UUID) -> list[OrgRelationship]:
         result = await self.db.execute(
             select(OrgRelationship).where(
-                (OrgRelationship.from_user_id == user_id) | (OrgRelationship.to_user_id == user_id)
+                OrgRelationship.organization_id == organization_id,
+                (OrgRelationship.from_user_id == user_id) | (OrgRelationship.to_user_id == user_id),
             )
         )
         return list(result.scalars().all())
 
-    async def who_manages(self, user_id: UUID) -> list[User]:
+    async def who_manages(self, user_id: UUID, *, organization_id: UUID) -> list[User]:
         result = await self.db.execute(
             select(User)
             .join(OrgRelationship, OrgRelationship.from_user_id == User.id)
             .where(
+                User.organization_id == organization_id,
                 OrgRelationship.to_user_id == user_id,
                 OrgRelationship.relationship_type == RelationshipType.MANAGES,
             )
         )
         return list(result.scalars().all())
 
-    async def team_members(self, team_id: UUID) -> list[User]:
-        result = await self.db.execute(select(User).where(User.team_id == team_id))
+    async def team_members(self, team_id: UUID, *, organization_id: UUID) -> list[User]:
+        team = await self.db.get(Team, team_id)
+        if not team or team.organization_id != organization_id:
+            raise ValueError("Team not found")
+        result = await self.db.execute(
+            select(User).where(User.team_id == team_id, User.organization_id == organization_id)
+        )
         return list(result.scalars().all())
 
     async def eligible_assignees(
@@ -297,11 +304,12 @@ class OrgService:
         )
         return list(result.scalars().all())
 
-    async def who_reports_to(self, manager_id: UUID) -> list[User]:
+    async def who_reports_to(self, manager_id: UUID, *, organization_id: UUID) -> list[User]:
         result = await self.db.execute(
             select(User)
             .join(OrgRelationship, OrgRelationship.to_user_id == User.id)
             .where(
+                User.organization_id == organization_id,
                 OrgRelationship.from_user_id == manager_id,
                 OrgRelationship.relationship_type == RelationshipType.MANAGES,
             )

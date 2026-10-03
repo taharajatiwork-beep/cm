@@ -692,8 +692,8 @@ def test_files_relative_read(tmp_path, monkeypatch):
 
 
 def test_files_s3_paths_mocked(monkeypatch):
-    from app.core.config import get_settings
     from app.core import files as files_mod
+    from app.core.config import get_settings
 
     monkeypatch.setenv("FILE_BACKEND", "s3")
     monkeypatch.setenv("S3_ENDPOINT", "http://localhost:9000")

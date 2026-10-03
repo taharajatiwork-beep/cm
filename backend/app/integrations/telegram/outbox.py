@@ -70,6 +70,28 @@ def inline_keyboard(rows: list[list[dict[str, str]]]) -> dict[str, Any]:
     return {"inline_keyboard": rows}
 
 
+def sanitize_buttons(
+    buttons: list[list[dict[str, str]]] | None,
+) -> list[list[dict[str, str]]] | None:
+    """دکمه‌های URL باید https باشند — تلگرام http:// را با 400 رد می‌کند.
+
+    ردیف سمی که مدام 400 می‌گیرد تا ابد در صف retry می‌ماند؛ پس دکمهٔ URL
+    ناامن را همان موقع حذف می‌کنیم (متن پیام خودش گویاست).
+    """
+    if not buttons:
+        return buttons
+    cleaned: list[list[dict[str, str]]] = []
+    for row_btns in buttons:
+        keep = [
+            b
+            for b in row_btns
+            if "url" not in b or str(b.get("url", "")).startswith("https://")
+        ]
+        if keep:
+            cleaned.append(keep)
+    return cleaned or None
+
+
 async def get_active_account(
     db: AsyncSession,
     user_id: UUID,
@@ -142,7 +164,9 @@ async def enqueue_telegram(
         provider=account.provider,
         event_type=event_type,
         text=text,
-        buttons_json=json.dumps(buttons, ensure_ascii=False) if buttons else None,
+        buttons_json=json.dumps(sanitize_buttons(buttons), ensure_ascii=False)
+        if sanitize_buttons(buttons)
+        else None,
         entity_type=entity_type,
         entity_id=entity_id,
         conversation_id=conversation_id,
@@ -160,8 +184,14 @@ async def dispatch_pending(
     clients: dict[str, TelegramClient],
     *,
     limit: int = 20,
+    commit_each: bool = False,
 ) -> int:
-    """Send pending outbox rows. Returns number sent."""
+    """Send pending outbox rows. Returns number sent.
+
+    با ``commit_each=True`` بعد از هر ردیف commit می‌شود تا تراکنشِ نوشتن
+    روی SQLite/Postgres حین فراخوانی‌های شبکه (تا ۳۵ ثانیه هر send) باز
+    نماند و بقیهٔ درخواست‌ها «database is locked» نگیرند.
+    """
     now = utc_now()
     rows = list(
         (
@@ -224,6 +254,15 @@ async def dispatch_pending(
                 delay = e.retry_after or min(60, 2 ** min(row.attempts, 5))
                 row.next_attempt_at = utc_now() + timedelta(seconds=delay)
                 row.status = "pending"
+            elif 400 <= e.status_code < 500:
+                # 4xx غیر از 429 خطای دائمی است (مثلاً payload نامعتبر) —
+                # retry هیچ‌وقت جواب نمی‌دهد؛ ردیف را همانجا می‌بندیم.
+                row.status = "failed"
+                log.warning(
+                    "telegram_send_rejected",
+                    status=e.status_code,
+                    provider=row.provider,
+                )
             elif row.attempts >= 5:
                 row.status = "failed"
             else:
@@ -235,6 +274,8 @@ async def dispatch_pending(
                 row.status = "failed"
             else:
                 row.next_attempt_at = utc_now() + timedelta(seconds=min(120, 2**row.attempts))
+        if commit_each:
+            await db.commit()
     await db.flush()
     return sent
 

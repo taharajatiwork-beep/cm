@@ -352,7 +352,7 @@ async def list_user_relationships(
 ):
     from uuid import UUID
 
-    return await OrgService(db).list_relationships(UUID(user_id))
+    return await OrgService(db).list_relationships(UUID(user_id), organization_id=ctx.organization_id)
 
 
 @router.get("/org/users/{user_id}/managers", response_model=list[UserOut])
@@ -363,7 +363,7 @@ async def list_managers(
 ):
     from uuid import UUID
 
-    return await OrgService(db).who_manages(UUID(user_id))
+    return await OrgService(db).who_manages(UUID(user_id), organization_id=ctx.organization_id)
 
 
 @router.get("/org/teams/{team_id}/members", response_model=list[UserOut])
@@ -374,7 +374,10 @@ async def list_team_members(
 ):
     from uuid import UUID
 
-    return await OrgService(db).team_members(UUID(team_id))
+    try:
+        return await OrgService(db).team_members(UUID(team_id), organization_id=ctx.organization_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
 
 
 @router.get("/org/eligible-assignees", response_model=list[UserOut])
@@ -435,7 +438,7 @@ async def list_direct_reports(
     require_any_permission(
         ctx.permissions, PermissionCode.USER_READ, PermissionCode.WORK_ITEM_READ
     )
-    return await OrgService(db).who_reports_to(UUID(user_id))
+    return await OrgService(db).who_reports_to(UUID(user_id), organization_id=ctx.organization_id)
 
 
 @router.get("/branches", response_model=list[BranchOut])

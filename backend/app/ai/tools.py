@@ -595,6 +595,7 @@ class ToolExecutor:
             )
         to_target_id = args.get("to_target_id") or args.get("assignment_target_id")
         task = await self.ctx.work.delegate_task(
+            organization_id=self.ctx.organization_id,
             task_id=UUID(args["task_id"]),
             actor_id=self.ctx.user.id,
             actor_permissions=self.ctx.permissions,

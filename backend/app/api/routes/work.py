@@ -91,10 +91,15 @@ async def list_messages(
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.models import Conversation
+
     try:
         require_permission(ctx.permissions, PermissionCode.CONVERSATION_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    conv = await db.get(Conversation, conversation_id)
+    if not conv or conv.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Conversation not found")
     return await CommunicationService(db).list_messages(conversation_id)
 
 
@@ -150,6 +155,11 @@ async def work_item_progress(
         require_permission(ctx.permissions, PermissionCode.WORK_ITEM_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    from app.models import WorkItem
+
+    wi = await db.get(WorkItem, work_item_id)
+    if not wi or wi.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Work item not found")
     try:
         data = await WorkService(db).work_item_progress(work_item_id)
     except ValueError as e:
@@ -210,12 +220,16 @@ async def add_work_item_participant(
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.models import WorkItem
     from app.models.enums import ParticipantRole
 
     try:
         require_permission(ctx.permissions, PermissionCode.WORK_ITEM_WRITE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    wi = await db.get(WorkItem, work_item_id)
+    if not wi or wi.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Work item not found")
     try:
         row = await WorkService(db).add_work_item_participant(
             work_item_id=work_item_id,
@@ -307,12 +321,16 @@ async def add_task_participant(
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.models import Task
     from app.models.enums import TaskRole
 
     try:
         require_permission(ctx.permissions, PermissionCode.TASK_WRITE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    task = await db.get(Task, task_id)
+    if not task or task.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Task not found")
     try:
         row = await WorkService(db).add_task_participant(
             task_id=task_id,
@@ -335,6 +353,7 @@ async def assign_task(
     """Alias of delegate — assign to user and/or team/department/branch target."""
     try:
         return await WorkService(db).delegate_task(
+            organization_id=ctx.organization_id,
             task_id=task_id,
             actor_id=ctx.user.id,
             actor_permissions=ctx.permissions,
@@ -498,6 +517,14 @@ async def add_dependency(
         require_permission(ctx.permissions, PermissionCode.TASK_WRITE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    from app.models import Task
+
+    dependent = await db.get(Task, body.dependent_task_id)
+    if not dependent or dependent.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Task not found")
+    prerequisite = await db.get(Task, body.prerequisite_task_id)
+    if not prerequisite or prerequisite.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Task not found")
     dep = await WorkService(db).add_dependency(
         body.dependent_task_id, body.prerequisite_task_id, actor_id=ctx.user.id
     )
@@ -513,6 +540,7 @@ async def delegate_task(
 ):
     try:
         return await WorkService(db).delegate_task(
+            organization_id=ctx.organization_id,
             task_id=task_id,
             actor_id=ctx.user.id,
             actor_permissions=ctx.permissions,
@@ -536,6 +564,11 @@ async def complete_task(
         require_permission(ctx.permissions, PermissionCode.TASK_WRITE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    from app.models import Task
+
+    task = await db.get(Task, task_id)
+    if not task or task.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Task not found")
     try:
         return await WorkService(db).complete_task(task_id, ctx.user.id)
     except ValueError as e:
@@ -572,6 +605,11 @@ async def evaluate_task_sla(
         require_permission(ctx.permissions, PermissionCode.SLA_MANAGE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    from app.models import Task
+
+    task = await db.get(Task, task_id)
+    if not task or task.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Task not found")
     return await SlaService(db).evaluate_task(task_id)
 
 
@@ -585,6 +623,11 @@ async def evaluate_case_sla(
         require_permission(ctx.permissions, PermissionCode.SLA_MANAGE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    from app.models import CommunicationCase
+
+    case = await db.get(CommunicationCase, case_id)
+    if not case or case.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Case not found")
     return await SlaService(db).evaluate_case(case_id)
 
 

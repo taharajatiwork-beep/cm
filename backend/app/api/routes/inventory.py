@@ -245,6 +245,13 @@ async def change_status(
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        require_permission(ctx.permissions, PermissionCode.INVENTORY_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    vehicle = await InventoryService(db).get_vehicle(vehicle_id)
+    if not vehicle or vehicle.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Vehicle not found")
+    try:
         return await InventoryService(db).change_status(
             vehicle_id=vehicle_id,
             to_status=body.to_status,
@@ -269,6 +276,9 @@ async def link_branch(
         require_permission(ctx.permissions, PermissionCode.INVENTORY_WRITE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    vehicle = await InventoryService(db).get_vehicle(vehicle_id)
+    if not vehicle or vehicle.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Vehicle not found")
     try:
         link = await InventoryService(db).link_branch(
             vehicle_id=vehicle_id,

@@ -13,6 +13,7 @@ from app.integrations.telegram.outbox import (
     enqueue_telegram,
     is_quiet_now,
     parse_prefs,
+    sanitize_buttons,
 )
 from app.models.telegram import TelegramAccount
 
@@ -142,3 +143,78 @@ async def test_outbox_send_ok(db: AsyncSession, seeded):
     assert row.telegram_message_id is not None
     assert len(client.sent) == 1
     assert client.sent[0].reply_markup is not None
+
+
+@pytest.mark.asyncio
+async def test_outbox_4xx_no_retry(db: AsyncSession, seeded):
+    """خطای 400 دائمی است — ردیف نباید تا ۵ بار retry شود (ردیف سمی)."""
+    ali = seeded["ali"]
+    db.add(
+        TelegramAccount(
+            organization_id=ali.organization_id,
+            user_id=ali.id,
+            provider="telegram",
+            telegram_user_id=9001,
+            telegram_chat_id=1001,
+        )
+    )
+    await db.flush()
+    row = await enqueue_telegram(
+        db,
+        organization_id=ali.organization_id,
+        user_id=ali.id,
+        event_type="task_assigned",
+        text="hello",
+    )
+    client = FakeTelegramClient()
+    client.fail_status = 400
+    n = await dispatch_pending(db, {"telegram": client})
+    assert n == 0
+    await db.refresh(row)
+    assert row.status == "failed"
+    assert row.attempts == 1
+    assert row.last_error is not None
+
+
+def test_sanitize_buttons_drops_insecure_urls():
+    buttons = [
+        [{"text": "Open", "url": "http://localhost:5173/my-work"}],
+        [{"text": "Ok", "callback_data": "x"}],
+        [{"text": "Safe", "url": "https://example.com/a"}, {"text": "Bad", "url": "http://e.com"}],
+    ]
+    out = sanitize_buttons(buttons)
+    assert out == [
+        [{"text": "Ok", "callback_data": "x"}],
+        [{"text": "Safe", "url": "https://example.com/a"}],
+    ]
+    assert sanitize_buttons(None) is None
+    assert sanitize_buttons([[{"text": "Bad", "url": "http://e.com"}]]) is None
+
+
+@pytest.mark.asyncio
+async def test_dispatch_commit_each(db: AsyncSession, seeded):
+    """commit_each تراکنش را بعد از هر ردیف می‌بندد (قفل ننوشتن حین شبکه)."""
+    ali = seeded["ali"]
+    db.add(
+        TelegramAccount(
+            organization_id=ali.organization_id,
+            user_id=ali.id,
+            provider="telegram",
+            telegram_user_id=9001,
+            telegram_chat_id=1001,
+        )
+    )
+    await db.flush()
+    row = await enqueue_telegram(
+        db,
+        organization_id=ali.organization_id,
+        user_id=ali.id,
+        event_type="task_assigned",
+        text="hello",
+    )
+    client = FakeTelegramClient()
+    n = await dispatch_pending(db, {"telegram": client}, commit_each=True)
+    assert n == 1
+    assert db.in_transaction() is False
+    await db.refresh(row)
+    assert row.status == "sent"

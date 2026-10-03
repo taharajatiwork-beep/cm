@@ -37,6 +37,8 @@ backend/alembic/versions/__pycache__/
 var/
 frontend/var/
 backend/var/
+backend/cov.json
+backend/cov_run.txt
 
 # Misc
 *.log

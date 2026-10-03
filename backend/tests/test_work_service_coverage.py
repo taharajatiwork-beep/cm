@@ -55,6 +55,7 @@ async def test_work_progress_workload_delegate_deps(db: AsyncSession, seeded):
     assert load["open_tasks"] >= 1
 
     await work.delegate_task(
+        organization_id=ali.organization_id,
         task_id=t2.id,
         actor_id=ali.id,
         actor_permissions={PermissionCode.TASK_DELEGATE.value},
