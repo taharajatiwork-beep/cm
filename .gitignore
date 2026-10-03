@@ -42,4 +42,5 @@ backend/cov_run.txt
 
 # Misc
 *.log
+server.err
 .cursor/

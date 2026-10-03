@@ -572,7 +572,7 @@ async def test_run_external_worker_paths(monkeypatch):
 
     monkeypatch.setattr(worker_mod, "try_acquire_db_lock", acquire)
     monkeypatch.setattr(worker_mod, "Worker", FakeWorker)
-    monkeypatch.setattr(worker_mod, "AsyncSessionLocal", _Factory())
+    monkeypatch.setattr(worker_mod, "WorkerSessionLocal", _Factory())
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
     monkeypatch.setattr("app.core.logging.setup_logging", lambda: None)
     monkeypatch.setattr("app.core.locks.release_lock", AsyncMock())

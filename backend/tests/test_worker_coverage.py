@@ -377,7 +377,7 @@ class TestTelegramSetupAndDbLockDirect:
             async def __aexit__(self, *args):
                 return await self._cm.__aexit__(*args)
 
-        monkeypatch.setattr("app.worker.AsyncSessionLocal", lambda: _Ctx())
+        monkeypatch.setattr("app.worker.WorkerSessionLocal", lambda: _Ctx())
         owner = await try_acquire_db_lock("direct-db", 30)
         assert owner is not None
         await release_db_lock("direct-db", owner)

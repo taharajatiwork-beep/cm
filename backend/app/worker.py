@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import get_settings
 from app.core.locks import release_lock, try_lock
 from app.core.logging import get_logger
-from app.db.session import AsyncSessionLocal
+from app.db.session import WorkerSessionLocal
 
 log = get_logger(__name__)
 
@@ -192,14 +192,14 @@ async def try_acquire_db_lock(job_name: str, ttl_seconds: int = 120) -> str | No
     """Acquire a DB-backed lock using JobLock table.
     Returns owner token if acquired, None otherwise.
     """
-    async with AsyncSessionLocal() as db:
+    async with WorkerSessionLocal() as db:
         owner = await try_lock(db, job_name, ttl_seconds)
         await db.commit()
         return owner
 
 
 async def release_db_lock(job_name: str, owner: str) -> None:
-    async with AsyncSessionLocal() as db:
+    async with WorkerSessionLocal() as db:
         await release_lock(db, job_name, owner)
         await db.commit()
 
@@ -290,7 +290,7 @@ async def run_outbox_dispatch(
         return 0
 
     async with session_factory() as db:
-        n = await dispatch_pending(db, clients, limit=max_items)
+        n = await dispatch_pending(db, clients, limit=max_items, commit_each=True)
         if n:
             await db.commit()
             log.info("telegram_outbox_sent", count=n)
@@ -527,7 +527,7 @@ async def run_external_worker() -> None:
     from app.core.logging import setup_logging
     setup_logging()
     
-    session_factory = AsyncSessionLocal
+    session_factory = WorkerSessionLocal
     
     # Acquire persistent lock for this worker process
     owner = await try_acquire_db_lock("telegram-worker", ttl_seconds=3600)
@@ -545,7 +545,7 @@ async def run_external_worker() -> None:
         while True:
             await asyncio.sleep(300)  # 5 minutes
             # Refresh the DB lock
-            async with AsyncSessionLocal() as db:
+            async with WorkerSessionLocal() as db:
                 from app.core.locks import release_lock, try_lock
                 await release_lock(db, "telegram-worker", owner)
                 await db.commit()
@@ -557,7 +557,7 @@ async def run_external_worker() -> None:
                 owner = new_owner
     finally:
         await worker.stop()
-        async with AsyncSessionLocal() as db:
+        async with WorkerSessionLocal() as db:
             from app.core.locks import release_lock
             await release_lock(db, "telegram-worker", owner)
             await db.commit()

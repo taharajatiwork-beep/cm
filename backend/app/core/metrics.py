@@ -125,12 +125,13 @@ async def async_timed_request(method: str, path: str):
 async def health_check_data() -> dict[str, Any]:
     """Aggregate health information for /health endpoint."""
     from app.core.config import get_settings
-    from app.db.session import AsyncSessionLocal
+    from app.db.session import WorkerSessionLocal
 
     settings = get_settings()
     db_ok = False
     try:
-        async with AsyncSessionLocal() as db:
+        # probe فقط می‌خواند — انجین ورکر (deferred) تا قفل نوشتن نگیرد
+        async with WorkerSessionLocal() as db:
             await db.execute(text("SELECT 1"))
             db_ok = True
     except Exception as exc:  # noqa: BLE001 - readiness probe: any failure means "db down"

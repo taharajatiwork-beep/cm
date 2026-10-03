@@ -27,7 +27,7 @@ from app.core.logging import setup_logging
 from app.core.metrics import async_timed_request, record_request, render_metrics
 from app.core.permissions import AuthorizationError
 from app.core.startup import assert_production_safe
-from app.db.session import AsyncSessionLocal, _tune_sqlite, get_db
+from app.db.session import WorkerSessionLocal, _tune_sqlite, get_db
 from app.worker import start_background, stop_background
 
 
@@ -41,7 +41,7 @@ async def lifespan(_app: FastAPI):
         settings.telegram_mode != "off" or settings.bale_mode != "off"
     ):
         # نگه‌داشتن reference تا garbage collector تسک‌ها را نبندد
-        _bg_tasks = await start_background(AsyncSessionLocal)
+        _bg_tasks = await start_background(WorkerSessionLocal)
     yield
     await stop_background()
 
