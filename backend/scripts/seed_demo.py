@@ -92,6 +92,16 @@ async def _ensure_schema() -> None:
                 for name, col_type in vehicle_alters:
                     if name not in vcols:
                         sync_conn.execute(text(f"ALTER TABLE vehicles ADD COLUMN {name} {col_type}"))
+                pricing_alters = [
+                    ("price_updated_at", "DATETIME"),
+                    ("price_updated_by", "CHAR(36)"),
+                    ("stock_updated_at", "DATETIME"),
+                    ("stock_updated_by", "CHAR(36)"),
+                    ("delivery_note", "VARCHAR(255)"),
+                ]
+                for name, col_type in pricing_alters:
+                    if name not in vcols:
+                        sync_conn.execute(text(f"ALTER TABLE vehicles ADD COLUMN {name} {col_type}"))
 
         await conn.run_sync(_patch_columns)
 
@@ -143,16 +153,26 @@ async def _ensure_org(db) -> dict:
 
     branch = await get_or_create_branch("شعبهٔ تهران", "THR", "تهران")
     mashhad = await get_or_create_branch("شعبهٔ مشهد", "MHD", "مشهد")
+    marzdaran = await get_or_create_branch("مرزداران", "MZD", "تهران")
+    kashani = await get_or_create_branch("کاشانی", "KSH", "تهران")
+    iranmall = await get_or_create_branch("ایرانمال", "IRM", "تهران")
     sales_dept = await get_or_create_dept("فروش", "SALES")
     mkt_dept = await get_or_create_dept("بازاریابی", "MKT")
     ops_dept = await get_or_create_dept("عملیات", "OPS")
-    await get_or_create_dept("مالی", "FIN")
+    fin_dept = await get_or_create_dept("مالی", "FIN")
     sales_team = await get_or_create_team("تیم فروش تهران", "SALES_T", sales_dept.id)
     mkt_team = await get_or_create_team("تیم بازاریابی", "MKT_T", mkt_dept.id)
 
-    await get_or_create_role(
-        "Admin", "admin", [p.value for p in PermissionCode], "organization"
+    admin_role = await get_or_create_role(
+        "ادمین سایت", "admin", [p.value for p in PermissionCode], "organization"
     )
+    if admin_role.name != "ادمین سایت":
+        admin_role.name = "ادمین سایت"
+    from app.models import DataScope
+
+    admin_scope = await db.scalar(select(DataScope).where(DataScope.role_id == admin_role.id))
+    if admin_scope and admin_scope.level != "organization":
+        admin_scope.level = "organization"
     manager_role = await get_or_create_role(
         "Manager",
         "manager",
@@ -232,7 +252,25 @@ async def _ensure_org(db) -> dict:
         "team",
     )
     viewer_role = await get_or_create_role(
-        "Viewer", "viewer", [PC.WORK_ITEM_READ, PC.NOTIFICATION_READ], "self"
+        "Viewer",
+        "viewer",
+        [PC.WORK_ITEM_READ, PC.NOTIFICATION_READ, PC.RAG_READ],
+        "self",
+    )
+    finance_role = await get_or_create_role(
+        "مالی",
+        "finance",
+        [
+            PC.PRICE_WRITE,
+            PC.INVENTORY_READ,
+            PC.NOTIFICATION_READ,
+            PC.CONVERSATION_READ,
+            PC.CONVERSATION_WRITE,
+            PC.USER_READ,
+            PC.CAMPAIGN_READ,
+            PC.RAG_READ,
+        ],
+        "organization",
     )
 
     async def get_or_create_user(
@@ -308,6 +346,28 @@ async def _ensure_org(db) -> dict:
         viewer_role.id,
         branch_id=branch.id,
     )
+    site_admin = await get_or_create_user(
+        "admin@autoco.example",
+        "ادمین سایت",
+        admin_role.id,
+        branch_id=branch.id,
+    )
+    finance = await get_or_create_user(
+        "finance@autoco.example",
+        "ندا مالی",
+        finance_role.id,
+        branch_id=branch.id,
+        department_id=fin_dept.id,
+    )
+    mina = await get_or_create_user(
+        "mina@autoco.example",
+        "مینا مدیر مارکتینگ",
+        mkt_role.id,
+        branch_id=branch.id,
+        department_id=mkt_dept.id,
+        team_id=mkt_team.id,
+        manager_id=ali.id,
+    )
 
     # Relationships (ignore duplicates via try/existing check)
     async def ensure_rel(frm, to, typ):
@@ -344,6 +404,12 @@ async def _ensure_org(db) -> dict:
         "nima": nima,
         "maryam": maryam,
         "viewer": viewer,
+        "finance": finance,
+        "mina": mina,
+        "site_admin": site_admin,
+        "marzdaran": marzdaran,
+        "kashani": kashani,
+        "iranmall": iranmall,
         "created": created_org,
     }
 
@@ -882,6 +948,93 @@ async def _cover_operations(
     await db.flush()
 
 
+async def _ensure_pricing_demo(db, ctx) -> int:
+    """خودروهای شعب و سه پست امروز. اگر پست نمایشی باشد، دوباره ساخته نمی‌شود."""
+    from app.models.pricing import PostSlot
+
+    org = ctx["org"]
+    sara = ctx["sara"]
+    finance = ctx["finance"]
+    existing = await db.scalar(
+        select(PostSlot.id).where(PostSlot.organization_id == org.id, PostSlot.channel == "demo")
+    )
+
+    inv = InventoryService(db)
+    perms = {p.value for p in PermissionCode}
+    tehran = ctx["branch"]
+    million = 1_000_000
+    catalog = [
+        ("POST-Q4", "آئودی", "Q4", "سفید و مشکی", 2024, "مرزداران", 15700),
+        ("POST-FX", "آئودی", "FX", "سفید", 1403, "کاشانی", 6700),
+        ("POST-TG7", "تیگو", "تیگو ۷ پرو", "سفید", 1403, "مرزداران", 18500),
+        ("POST-A5", "آئودی", "A5", "مشکی", 1403, "کاشانی", 14200),
+        ("POST-M5", "آریزو", "آریزو M5", "سفید", 1403, "مرزداران", 9800),
+        ("POST-ID4", "فولکس", "ID4", "خاکستری", 2025, "ایرانمال", 21000),
+        ("POST-X7", "بیجینگ", "بیجینگ X7", "مشکی", 1403, "مرزداران", 12500),
+        ("POST-LC", "لوکانو", "لوکانو", "سبز", 1403, "کاشانی", 7800),
+    ]
+    by_stock: dict[str, Vehicle] = {}
+    for stock, brand, model, color, year, branch_name, price_m in catalog:
+        row = await db.scalar(
+            select(Vehicle).where(Vehicle.organization_id == org.id, Vehicle.stock_number == stock)
+        )
+        if row is None:
+            row = await inv.create_vehicle(
+                organization_id=org.id,
+                vin=stock,
+                brand=brand,
+                model=model,
+                year=year,
+                actor_id=finance.id,
+                actor_permissions=perms,
+                stock_number=stock,
+                color=color,
+                sale_price=price_m * million,
+                branch_id=tehran.id,
+                delivery_note=f"موجود در شعبه {branch_name}",
+                status=VehicleStatus.IN_STOCK,
+            )
+        elif row.branch_id != tehran.id:
+            row.branch_id = tehran.id
+            row.delivery_note = row.delivery_note or f"موجود در شعبه {branch_name}"
+        by_stock[stock] = row
+
+    if existing:
+        await db.flush()
+        return 0
+
+    offset = timedelta(hours=3, minutes=30)
+
+    def at_hour(hour: int) -> datetime:
+        local = datetime.now(UTC) + offset
+        return local.replace(hour=hour, minute=0, second=0, microsecond=0) - offset
+
+    now = datetime.now(UTC)
+    specs = [
+        ("POST-Q4", 11, "confirmed"),
+        ("POST-FX", 14, "requested"),
+        ("POST-ID4", 18, "needs_recheck"),
+    ]
+    for stock, hour, status in specs:
+        vehicle = by_stock[stock]
+        db.add(
+            PostSlot(
+                organization_id=org.id,
+                vehicle_id=vehicle.id,
+                post_at=at_hour(hour),
+                slot_type="video",
+                channel="demo",
+                requester_id=sara.id,
+                status=status,
+                confirmed_price=vehicle.sale_price if status != "requested" else None,
+                confirmed_by=finance.id if status == "confirmed" else None,
+                confirmed_at=now if status == "confirmed" else None,
+            )
+        )
+    await db.flush()
+    return len(specs)
+
+
 async def seed(*, reset: bool = False) -> dict:
     if reset:
         async with engine.begin() as conn:
@@ -904,6 +1057,7 @@ async def seed(*, reset: bool = False) -> dict:
             camps = await _ensure_campaigns(db, ctx)
             enriched = await _enrich_vehicle_details(db, org.id)
             stamped = await _stamp_sections(db, ctx)
+            posts = await _ensure_pricing_demo(db, ctx)
             await db.commit()
             return {
                 "status": "already_seeded",
@@ -912,6 +1066,8 @@ async def seed(*, reset: bool = False) -> dict:
                 "campaigns_added": camps,
                 "vehicles_enriched": enriched,
                 "sections_stamped": stamped,
+                "posts_added": posts,
+                "login": _demo_logins(),
             }
 
         inv = InventoryService(db)
@@ -1358,6 +1514,7 @@ async def seed(*, reset: bool = False) -> dict:
         )
 
         await _stamp_sections(db, ctx)
+        posts = await _ensure_pricing_demo(db, ctx)
         await db.commit()
         return {
             "status": "ok",
@@ -1366,14 +1523,22 @@ async def seed(*, reset: bool = False) -> dict:
             "customers": 3,
             "work_items": 4,
             "campaigns": 2,
-            "login": {
-                "slug": "autoco",
-                "manager": "ali@autoco.example / password",
-                "seller": "reza@autoco.example / password",
-                "marketing": "sara@autoco.example / password",
-                "mashhad": "maryam@autoco.example / password",
-            },
+            "posts_added": posts,
+            "login": _demo_logins(),
         }
+
+
+def _demo_logins() -> dict:
+    return {
+        "slug": "autoco",
+        "admin": "admin@autoco.example / password",
+        "manager": "ali@autoco.example / password",
+        "seller": "reza@autoco.example / password",
+        "marketing": "sara@autoco.example / password",
+        "marketing_manager": "mina@autoco.example / password",
+        "finance": "finance@autoco.example / password",
+        "mashhad": "maryam@autoco.example / password",
+    }
 
 
 def main() -> None:

@@ -31,7 +31,7 @@ type AuthState = {
   login: (slug: string, email: string, password: string, totp?: string) => Promise<void>;
   logout: () => void;
   has: (perm: string) => boolean;
-  roleHint: "admin" | "manager" | "seller" | "marketing" | "viewer";
+  roleHint: "admin" | "manager" | "seller" | "marketing" | "finance" | "viewer";
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -112,9 +112,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ? "marketing"
             : user.roleCode === "manager"
               ? "manager"
-              : user.roleCode === "admin"
-                ? "admin"
-                : roleHintFromPerms(user.permissions)
+              : user.roleCode === "finance"
+                ? "finance"
+                : user.roleCode === "admin"
+                  ? "admin"
+                  : roleHintFromPerms(user.permissions)
         : "viewer",
     }),
     [user, loading, login, logout],

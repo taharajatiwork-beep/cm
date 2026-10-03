@@ -248,6 +248,29 @@ export const api = {
         body: JSON.stringify({ user_id: userId }),
       }),
   },
+  pricing: {
+    board: () =>
+      request<{
+        slots: Array<Record<string, unknown>>;
+        waiting: number;
+        today_total: number;
+        missing_price: number;
+        all_priced: boolean;
+        vehicles: Array<Record<string, unknown>>;
+      }>("/pricing/board"),
+    requestSlot: (body: { vehicle_id: string; post_at: string; slot_type?: string; channel?: string }) =>
+      request<Record<string, unknown>>("/pricing/slots", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    confirm: (id: string, amount?: number | null) =>
+      request<Record<string, unknown>>(`/pricing/slots/${id}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ amount: amount ?? null }),
+      }),
+    posted: (id: string) =>
+      request<Record<string, unknown>>(`/pricing/slots/${id}/posted`, { method: "POST" }),
+  },
   vehicles: {
     list: (q = "") =>
       request<Array<Record<string, unknown>>>(
@@ -280,6 +303,22 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
+    update: (id: string, body: Record<string, unknown>) =>
+      request<Record<string, unknown>>(`/inventory/vehicles/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    remove: (id: string) => request<void>(`/inventory/vehicles/${id}`, { method: "DELETE" }),
+    pastePreview: (text: string) =>
+      request<{ rows: Array<Record<string, unknown>>; missing: Array<Record<string, unknown>> }>(
+        "/inventory/vehicles/paste/preview",
+        { method: "POST", body: JSON.stringify({ text }) },
+      ),
+    pasteApply: (rows: Array<Record<string, unknown>>) =>
+      request<{ created: number; updated: number; proposed: number; sold: number }>(
+        "/inventory/vehicles/paste/apply",
+        { method: "POST", body: JSON.stringify({ rows }) },
+      ),
     importFile: (file: File) => {
       const fd = new FormData();
       fd.append("file", file);

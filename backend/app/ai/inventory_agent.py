@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.tools import ToolContext, ToolExecutor
 from app.core.config import get_settings
-from app.core.permissions import PermissionCode, require_permission
+from app.core.permissions import PermissionCode, require_any_permission
 from app.models import User
 from app.services import get_user_permissions
 
@@ -45,7 +45,9 @@ class InventoryAgent:
     ) -> InventoryAgentResult:
         request_id = str(uuid.uuid4())
         permissions = await get_user_permissions(self.db, user)
-        require_permission(permissions, PermissionCode.AGENT_RUN)
+        require_any_permission(
+            permissions, PermissionCode.AGENT_RUN, PermissionCode.INVENTORY_READ
+        )
 
         settings = get_settings()
         aging_days = min_days if min_days is not None else settings.inventory_aging_days
@@ -64,6 +66,8 @@ class InventoryAgent:
         if "create" in text or "بساز" in text or "ایجاد" in text:
             should_create = True
         if scan_only and "create" not in text and "بساز" not in text:
+            should_create = False
+        if should_create and PermissionCode.CASE_WRITE not in permissions and PermissionCode.ORG_ADMIN not in permissions:
             should_create = False
 
         ctx = ToolContext(

@@ -368,7 +368,12 @@ async def run_sla_and_digest(
         await db.commit()
         digests = 1
 
-    return {"sla_evaluated": evaluated, "digests_sent": digests}
+        from app.services.pricing import PricingService
+
+        reminded = await PricingService(db).remind_due()
+        await db.commit()
+
+    return {"sla_evaluated": evaluated, "digests_sent": digests, "price_reminders": reminded}
 
 
 async def run_kpi_snapshot_weekly(session_factory: async_sessionmaker[AsyncSession]) -> int:

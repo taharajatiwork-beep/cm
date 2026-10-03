@@ -152,6 +152,10 @@ const PERM_COPY: Record<string, [string, string]> = {
     "Create an ad campaign and change it.",
     "کمپین تبلیغاتی بسازد و آن را تغییر دهد.",
   ],
+  "price.write": [
+    "Confirm the sale price of a car, including the price used in a scheduled post.",
+    "قیمت فروش خودرو را ثبت کند، از جمله قیمتی که برای یک پست زمان‌دار استفاده می‌شود.",
+  ],
 };
 
 const PERM_GROUPS: Array<{ en: string; fa: string; codes: string[] }> = [
@@ -174,6 +178,11 @@ const PERM_GROUPS: Array<{ en: string; fa: string; codes: string[] }> = [
     en: "Marketing",
     fa: "بازاریابی",
     codes: ["campaign.read", "campaign.write"],
+  },
+  {
+    en: "Finance",
+    fa: "مالی",
+    codes: ["price.write"],
   },
   {
     en: "Vehicles",

@@ -225,6 +225,11 @@ export function HomePage() {
   const roleHintLine = inbox.data?.roleHintLine ?? "";
   const waitingReply = inbox.data?.waitingReply ?? 0;
   const approvals = inbox.data?.approvals ?? 0;
+  const pricing = useQuery({
+    queryKey: ["pricing-board", "home"],
+    queryFn: () => api.pricing.board(),
+    enabled: has("price.write") || has("campaign.read"),
+  });
   const loading = inbox.isLoading;
   const error = inbox.isError ? String((inbox.error as Error).message) : "";
 
@@ -336,14 +341,16 @@ export function HomePage() {
           value={loading ? "–" : atRisk}
           hint={<Bi en="past their deadline" fa="از مهلتشان گذشته" />}
         />
-        <StatCard
-          icon="layers"
-          tone="ok"
-          label={<Bi en="Active projects" fa="پروژه‌های در جریان" />}
-          value={loading ? "–" : sharedCount}
-          hint={<Bi en="team work you’re part of" fa="کارهای تیمی که در آن هستید" />}
-          to="/work-items"
-        />
+        {has("work_item.read") ? (
+          <StatCard
+            icon="layers"
+            tone="ok"
+            label={<Bi en="Active projects" fa="پروژه‌های در جریان" />}
+            value={loading ? "–" : sharedCount}
+            hint={<Bi en="team work you’re part of" fa="کارهای تیمی که در آن هستید" />}
+            to="/work-items"
+          />
+        ) : null}
         <StatCard
           icon="message"
           tone={waitingReply > 0 ? "warn" : "neutral"}
@@ -354,6 +361,37 @@ export function HomePage() {
         />
       </div>
 
+      {has("price.write") || has("campaign.read") ? (
+        <div className="kpi-row kpi-row--4">
+          {has("price.write") ? (
+            <StatCard
+              icon="megaphone"
+              tone={(pricing.data?.waiting ?? 0) > 0 ? "warn" : "ok"}
+              label={<Bi en="Prices waiting for you" fa="قیمت منتظر شماست" />}
+              value={pricing.isLoading ? "–" : pricing.data?.waiting ?? 0}
+              hint={<Bi en="posts that still need a confirmed price" fa="پست‌هایی که قیمت تأییدشده ندارند" />}
+              to="/pricing"
+            />
+          ) : null}
+          {has("campaign.read") ? (
+            <StatCard
+              icon="car"
+              tone="accent"
+              label={<Bi en="Today’s posts" fa="پست‌های امروز" />}
+              value={pricing.isLoading ? "–" : pricing.data?.today_total ?? 0}
+              hint={
+                pricing.data?.all_priced ? (
+                  <Bi en="every post has a price" fa="همه قیمت دارند" />
+                ) : (
+                  <Bi en="some posts still need a price" fa="بعضی پست‌ها هنوز قیمت ندارند" />
+                )
+              }
+              to="/pricing"
+            />
+          ) : null}
+        </div>
+      ) : null}
+
       {stories.length === 0 && !loading ? null : (
         <section className="home-main">
           <SectionHeader
@@ -361,9 +399,15 @@ export function HomePage() {
             title={<Bi en="Needs your attention" fa="نیاز به رسیدگی شما" />}
             count={loading ? undefined : stories.length}
             action={
-              <Button variant="ghost" to="/work-items">
-                <Bi en="All projects" fa="همه پروژه‌ها" />
-              </Button>
+              has("work_item.read") ? (
+                <Button variant="ghost" to="/work-items">
+                  <Bi en="All projects" fa="همه پروژه‌ها" />
+                </Button>
+              ) : (
+                <Button variant="ghost" to="/my-work">
+                  <Bi en="My work" fa="کارهای من" />
+                </Button>
+              )
             }
           />
 

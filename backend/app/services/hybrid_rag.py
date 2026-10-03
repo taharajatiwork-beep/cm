@@ -237,6 +237,26 @@ def reciprocal_rank_fusion(
     return scores
 
 
+def _domain_entity_types(perms: set[str]) -> set[str] | None:
+    """Entity types this person may ask about. None means no extra filter."""
+    if PermissionCode.ORG_ADMIN in perms:
+        return None
+    allowed: set[str] = set()
+    if PermissionCode.INVENTORY_READ in perms:
+        allowed.add("vehicle")
+    if PermissionCode.CASE_READ in perms:
+        allowed.add("case")
+    if PermissionCode.WORK_ITEM_READ in perms:
+        allowed.add("work_item")
+    if PermissionCode.USER_READ in perms:
+        allowed.add("user")
+    if PermissionCode.KB_READ in perms:
+        allowed.add("document")
+    if PermissionCode.CONVERSATION_READ in perms:
+        allowed.add("message")
+    return allowed
+
+
 class HybridRagService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -259,6 +279,21 @@ class HybridRagService:
         require_permission(actor_permissions, PermissionCode.RAG_READ)
         request_id = str(uuid.uuid4())
         analyzed = self.analyzer.analyze(query, entity_types)
+        allowed = _domain_entity_types(actor_permissions)
+        if allowed is not None:
+            analyzed.entity_types = [t for t in analyzed.entity_types if t in allowed]
+            if not analyzed.entity_types:
+                return HybridResult(
+                    request_id=request_id,
+                    query=analyzed,
+                    hits=[],
+                    context="",
+                    answer=(
+                        "این موضوع در بخش شما نیست. "
+                        "دستیار فقط همان اطلاعاتی را می‌بیند که اجازهٔ دیدنش را دارید."
+                    ),
+                    answer_mode="extractive",
+                )
 
         sql_hits: list[SearchHit] = []
         can_search = (

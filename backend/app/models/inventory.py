@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     DateTime,
     Enum,
     ForeignKey,
@@ -31,15 +32,20 @@ class Vehicle(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     stock_number: Mapped[str | None] = mapped_column(String(50))  # e.g. "124"
-    vin: Mapped[str] = mapped_column(String(32), nullable=False)
+    vin: Mapped[str | None] = mapped_column(String(32))
     brand: Mapped[str] = mapped_column(String(100), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     color: Mapped[str | None] = mapped_column(String(50))
     trim: Mapped[str | None] = mapped_column(String(100))
     mileage: Mapped[int | None] = mapped_column(Integer)
-    purchase_price: Mapped[int | None] = mapped_column(Integer)
-    sale_price: Mapped[int | None] = mapped_column(Integer)
+    purchase_price: Mapped[int | None] = mapped_column(BigInteger)
+    sale_price: Mapped[int | None] = mapped_column(BigInteger)
+    price_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    price_updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    stock_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stock_updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    delivery_note: Mapped[str | None] = mapped_column(String(255))
     currency: Mapped[str] = mapped_column(String(10), default="IRR")
     # Rich catalog details (ads, branch handoff, import)
     description: Mapped[str | None] = mapped_column(Text)
@@ -140,4 +146,18 @@ class VehiclePhoto(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(120), nullable=False)
     storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VehiclePrice(Base):
+    """تاریخچهٔ قیمت فروش. مبلغ به تومان ذخیره می‌شود."""
+
+    __tablename__ = "vehicle_prices"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    vehicle_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("vehicles.id"), nullable=False)
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    note: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

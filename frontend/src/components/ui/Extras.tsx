@@ -11,6 +11,7 @@ export function StatCard({
   hint,
   tone = "neutral",
   to,
+  onClick,
   onMore,
   moreLabel,
 }: {
@@ -20,6 +21,7 @@ export function StatCard({
   hint?: ReactNode;
   tone?: Tone;
   to?: string;
+  onClick?: () => void;
   onMore?: () => void;
   moreLabel?: ReactNode;
 }) {
@@ -43,13 +45,21 @@ export function StatCard({
     </>
   );
   const className = onMore ? "kpi kpi--stack" : "kpi";
-  return to ? (
-    <Link className={`${className} kpi--link`} to={to}>
-      {body}
-    </Link>
-  ) : (
-    <div className={className}>{body}</div>
-  );
+  if (to) {
+    return (
+      <Link className={`${className} kpi--link`} to={to}>
+        {body}
+      </Link>
+    );
+  }
+  if (onClick) {
+    return (
+      <button type="button" className={`${className} kpi--link`} onClick={onClick}>
+        {body}
+      </button>
+    );
+  }
+  return <div className={className}>{body}</div>;
 }
 
 export function Segmented<K extends string>({

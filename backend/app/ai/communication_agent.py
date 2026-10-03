@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.llm_planner import LLMPlanner
 from app.ai.tools import ToolContext, ToolExecutor
-from app.core.permissions import PermissionCode, require_permission
+from app.core.permissions import PermissionCode, require_any_permission
 from app.integrations.telegram.resolver import EntityResolver
 from app.models import User
 from app.services import get_user_permissions
@@ -154,7 +154,9 @@ class CommunicationAgent:
     async def run(self, *, user: User, text: str) -> AgentResult:
         request_id = str(uuid.uuid4())
         permissions = await get_user_permissions(self.db, user)
-        require_permission(permissions, PermissionCode.AGENT_RUN)
+        require_any_permission(
+            permissions, PermissionCode.AGENT_RUN, PermissionCode.WORK_ITEM_WRITE
+        )
 
         ctx = ToolContext(
             self.db,

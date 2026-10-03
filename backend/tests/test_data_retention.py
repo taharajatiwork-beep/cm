@@ -11,10 +11,11 @@ from app.models import (
     AuditLog,
     CommunicationCase,
     Conversation,
+    ConversationParticipant,
     Customer,
     WorkItem,
 )
-from app.models.enums import CaseType, Channel, WorkItemStatus
+from app.models.enums import CaseType, Channel, ParticipantRole, WorkItemStatus
 from app.services import OrgService
 from tests.conftest import auth, login, seeded  # noqa: F401
 
@@ -59,6 +60,18 @@ async def test_archive_uses_archived_at_and_keeps_topic(
         created_at=datetime.now(UTC) - timedelta(days=2),
     )
     db.add_all([old, fresh])
+    await db.flush()
+    reza = seeded["reza"]
+    db.add_all(
+        [
+            ConversationParticipant(
+                conversation_id=old.id, user_id=reza.id, role=ParticipantRole.MEMBER
+            ),
+            ConversationParticipant(
+                conversation_id=fresh.id, user_id=reza.id, role=ParticipantRole.MEMBER
+            ),
+        ]
+    )
     await db.commit()
     old_id, fresh_id = str(old.id), str(fresh.id)
 

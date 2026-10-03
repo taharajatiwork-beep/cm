@@ -33,6 +33,7 @@ class PermissionCode(StrEnum):
     CUSTOMER_WRITE = "customer.write"
     CAMPAIGN_READ = "campaign.read"
     CAMPAIGN_WRITE = "campaign.write"
+    PRICE_WRITE = "price.write"
 
 
 class DataScopeLevel(StrEnum):

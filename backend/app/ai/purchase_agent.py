@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.tools import ToolContext, ToolExecutor
 from app.core.config import get_settings
-from app.core.permissions import PermissionCode, require_permission
+from app.core.permissions import PermissionCode, require_any_permission
 from app.models import User
 from app.services import get_user_permissions
 
@@ -43,7 +43,9 @@ class PurchaseAgent:
     ) -> PurchaseAgentResult:
         request_id = str(uuid.uuid4())
         permissions = await get_user_permissions(self.db, user)
-        require_permission(permissions, PermissionCode.AGENT_RUN)
+        require_any_permission(
+            permissions, PermissionCode.AGENT_RUN, PermissionCode.CUSTOMER_READ
+        )
 
         settings = get_settings()
         days = stale_days if stale_days is not None else settings.purchase_stale_days
@@ -65,6 +67,8 @@ class PurchaseAgent:
             should_create = False
         if auto_create is not None:
             should_create = auto_create
+        if should_create and PermissionCode.CASE_WRITE not in permissions and PermissionCode.ORG_ADMIN not in permissions:
+            should_create = False
 
         ctx = ToolContext(
             self.db,

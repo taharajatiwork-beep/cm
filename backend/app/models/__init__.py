@@ -55,7 +55,9 @@ from app.models.inventory import (  # noqa: F401 — register metadata
     Vehicle,
     VehicleBranch,
     VehicleHistory,
+    VehiclePrice,
 )
+from app.models.pricing import PostSlot  # noqa: F401
 from app.models.knowledge import Document, DocumentChunk  # noqa: F401
 from app.models.telegram import (  # noqa: F401
     TelegramAccount,

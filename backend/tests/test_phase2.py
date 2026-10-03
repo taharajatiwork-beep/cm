@@ -76,6 +76,44 @@ async def test_vehicle_status_history_and_timeline(client: AsyncClient, seeded):
 
 
 @pytest.mark.asyncio
+async def test_update_and_delete_vehicle(client: AsyncClient, seeded):
+    token = await login(client, "ali@autoco.example")
+    created = await client.post(
+        "/inventory/vehicles",
+        headers=auth(token),
+        json={
+            "vin": "JTDBR32E720099077",
+            "brand": "Kia",
+            "model": "Sportage",
+            "year": 2022,
+            "stock_number": "977",
+            "branch_id": str(seeded["branch"].id),
+            "color": "white",
+        },
+    )
+    assert created.status_code == 200, created.text
+    vid = created.json()["id"]
+
+    updated = await client.patch(
+        f"/inventory/vehicles/{vid}",
+        headers=auth(token),
+        json={"color": "black", "plate_number": "12ب345"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["color"] == "black"
+    assert updated.json()["plate_number"] == "12ب345"
+
+    seller = await login(client, "reza@autoco.example")
+    denied = await client.delete(f"/inventory/vehicles/{vid}", headers=auth(seller))
+    assert denied.status_code == 403, denied.text
+
+    removed = await client.delete(f"/inventory/vehicles/{vid}", headers=auth(token))
+    assert removed.status_code == 204, removed.text
+    missing = await client.get(f"/inventory/vehicles/{vid}", headers=auth(token))
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_work_item_linked_to_vehicle_context(client: AsyncClient, seeded):
     token = await login(client, "ali@autoco.example")
     vehicle = await client.post(

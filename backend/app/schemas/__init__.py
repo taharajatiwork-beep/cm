@@ -370,7 +370,7 @@ class ProgressOut(BaseModel):
 
 
 class VehicleCreate(BaseModel):
-    vin: str
+    vin: str | None = None
     brand: str
     model: str
     year: int
@@ -397,13 +397,42 @@ class VehicleCreate(BaseModel):
     branch_id: UUID | None = None
     owner_id: UUID | None = None
     status: VehicleStatus = VehicleStatus.IN_STOCK
+    delivery_note: str | None = None
+
+
+class VehicleUpdate(BaseModel):
+    vin: str | None = None
+    brand: str | None = None
+    model: str | None = None
+    year: int | None = None
+    stock_number: str | None = None
+    color: str | None = None
+    trim: str | None = None
+    mileage: int | None = None
+    sale_price: int | None = None
+    purchase_price: int | None = None
+    status: VehicleStatus | None = None
+    branch_id: UUID | None = None
+    delivery_note: str | None = None
+    description: str | None = None
+    notes: str | None = None
+    body_type: str | None = None
+    transmission: str | None = None
+    fuel_type: str | None = None
+    engine: str | None = None
+    plate_number: str | None = None
+    doors: int | None = None
+    seats: int | None = None
+    options: str | None = None
+    exterior_condition: str | None = None
+    interior_condition: str | None = None
 
 
 class VehicleOut(BaseModel):
     id: UUID
     organization_id: UUID
     stock_number: str | None
-    vin: str
+    vin: str | None
     brand: str
     model: str
     year: int
@@ -429,6 +458,11 @@ class VehicleOut(BaseModel):
     branch_id: UUID | None
     owner_id: UUID | None
     status: VehicleStatus
+    delivery_note: str | None = None
+    price_updated_at: datetime | None = None
+    price_updated_by: UUID | None = None
+    stock_updated_at: datetime | None = None
+    stock_updated_by: UUID | None = None
 
     model_config = {"from_attributes": True}
 

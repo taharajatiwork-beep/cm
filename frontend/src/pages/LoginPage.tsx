@@ -53,8 +53,8 @@ export function LoginPage() {
         </p>
         <Muted className="login-demo-hint">
           <Bi
-            en="Demo: ali@autoco.example / password (manager)"
-            fa="دمو: ali@autoco.example / password (مدیر)"
+            en="Demo password for all: password. Site admin admin@, manager ali@, marketing sara@ or mina@, finance finance@"
+            fa="رمز همه: password. ادمین سایت admin@، مدیر علی ali@، مارکتینگ سارا sara@ یا مینا mina@، مالی finance@"
           />
         </Muted>
         <div className="field mt-4">

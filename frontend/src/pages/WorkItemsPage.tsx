@@ -57,6 +57,11 @@ export function WorkItemsPage() {
     queryFn: ({ pageParam }) => api.workItems.page(pageParam),
     getNextPageParam: (last) => nextCursor(last),
   });
+  const people = useQuery({
+    queryKey: ["people"],
+    enabled: canRead,
+    queryFn: () => api.people.list(),
+  });
   const rows = listQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const loading = listQuery.isLoading;
   const error = listQuery.isError ? String((listQuery.error as Error).message) : "";
@@ -67,8 +72,8 @@ export function WorkItemsPage() {
         title={<Bi en="Projects" fa="پروژه‌ها" />}
         description={
           <Bi
-            en="Shared jobs in your section. You also see a project from another section only when you are on it."
-            fa="کارهای مشترک بخش شما. پروژهٔ بخش دیگر را فقط وقتی می‌بینید که خودتان در آن باشید."
+            en="A section manager creates a project, stays its creator, chooses the members, and assigns every task to one of them."
+            fa="مدیر بخش پروژه را می‌سازد و سازندهٔ آن می‌ماند. اعضا را انتخاب می‌کند و هر وظیفه را به یکی از همان افراد می‌سپارد."
           />
         }
         actions={
@@ -112,6 +117,14 @@ export function WorkItemsPage() {
                   </Link>
                   <span className="row-meta">
                     <StatusLabel status={String(h.status)} />
+                    {h.owner_id ? (
+                      <span>
+                        <Bi en="Creator" fa="سازنده" />:{" "}
+                        {String(
+                          people.data?.find((person) => String(person.id) === String(h.owner_id))?.full_name || "—",
+                        )}
+                      </span>
+                    ) : null}
                   </span>
                 </div>
                 <Button variant="secondary" className="btn-sm" to={`/work-items/${String(h.id)}`}>
@@ -132,6 +145,7 @@ export function WorkItemDetailPage() {
   const bi = useBi();
   const [taskTitle, setTaskTitle] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
+  const [memberId, setMemberId] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState("");
   const qc = useQueryClient();
@@ -174,6 +188,7 @@ export function WorkItemDetailPage() {
     mutationFn: (body: Record<string, unknown>) => api.tasks.create(body),
     onSuccess: () => {
       setTaskTitle("");
+      setAssigneeId("");
       setShowAdd(false);
       invalidateDetail();
     },
@@ -182,12 +197,27 @@ export function WorkItemDetailPage() {
 
   function addTask(e: FormEvent) {
     e.preventDefault();
+    if (!assigneeId) return;
     addTaskMutation.mutate({
       title: taskTitle,
       work_item_id: id,
-      assignee_ids: assigneeId ? [assigneeId] : [],
+      assignee_ids: [assigneeId],
       priority: "HIGH",
     });
+  }
+
+  const addMemberMutation = useMutation({
+    mutationFn: (userId: string) => api.workItems.addParticipant(id, userId),
+    onSuccess: () => {
+      setMemberId("");
+      invalidateDetail();
+    },
+    onError: (e) => setError(String((e as Error).message)),
+  });
+
+  function addMember(e: FormEvent) {
+    e.preventDefault();
+    if (memberId) addMemberMutation.mutate(memberId);
   }
 
   function personName(uid: unknown) {
@@ -215,7 +245,10 @@ export function WorkItemDetailPage() {
           <span className="meta-line">
             <StatusLabel status={progress.status} />
             <span>
-              {openCount} <Bi en="to-dos left" fa="کار مانده" />
+              <Bi en="Creator" fa="سازنده" />: {personName(wi.owner_id)}
+            </span>
+            <span>
+              {openCount} <Bi en="to-dos left" fa="وظیفهٔ مانده" />
             </span>
             {(progress.overdue_tasks || 0) > 0 ? (
               <span className="danger-text">
@@ -283,13 +316,19 @@ export function WorkItemDetailPage() {
             <div className="card-bar">
               <SectionHeader
                 icon="check"
-                title={<Bi en="To-dos" fa="کارها" />}
+                title={<Bi en="Tasks" fa="وظایف" />}
+                hint={
+                  <Bi
+                    en="Every task has one person, and that person is a member of this project."
+                    fa="هر وظیفه یک مسئول دارد و آن مسئول یکی از اعضای همین پروژه است."
+                  />
+                }
                 count={progress.tasks.length}
               />
               {has("task.write") && !showAdd && (
                 <Button variant="secondary" className="btn-sm" onClick={() => setShowAdd(true)}>
                   <Icon name="plus" size={13} />
-                  <Bi en="Add a to-do" fa="افزودن کار" />
+                  <Bi en="Add a task" fa="افزودن وظیفه" />
                 </Button>
               )}
             </div>
@@ -299,18 +338,19 @@ export function WorkItemDetailPage() {
                   autoFocus
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
-                  placeholder={bi("What needs to be done?", "چه کاری باید انجام شود؟")}
+                  placeholder={bi("What exactly should be done?", "دقیقاً چه کاری باید انجام شود؟")}
                   required
                 />
-                <Select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-                  <option value="">{bi("Who? (unassigned)", "چه کسی؟ (بدون مسئول)")}</option>
-                  {people.map((p) => (
-                    <option key={String(p.id)} value={String(p.id)}>
-                      {String(p.full_name)}
+                <Select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} required>
+                  <option value="">{bi("Who does it?", "مسئول این وظیفه")}</option>
+                  {(progress?.participants || []).map((p) => (
+                    <option key={`${p.user_id}-${p.role}`} value={String(p.user_id)}>
+                      {personName(p.user_id)}
+                      {p.role === "OWNER" ? bi(" (creator)", " (سازنده)") : ""}
                     </option>
                   ))}
                 </Select>
-                <Button type="submit" className="btn-sm">
+                <Button type="submit" className="btn-sm" disabled={!taskTitle.trim() || !assigneeId}>
                   <Bi en="Add" fa="افزودن" />
                 </Button>
                 <IconButton icon="x" label={bi("Cancel", "انصراف")} onClick={() => setShowAdd(false)} />
@@ -318,10 +358,10 @@ export function WorkItemDetailPage() {
             )}
             {progress.tasks.length === 0 ? (
               <EmptyState
-                titleEn="No to-dos yet"
-                titleFa="هنوز کاری تعریف نشده"
-                bodyEn="Press “Add a to-do”, write a small step and choose who does it."
-                bodyFa="«افزودن کار» را بزنید، یک قدم کوچک بنویسید و مشخص کنید چه کسی انجامش دهد."
+                titleEn="No tasks yet"
+                titleFa="هنوز وظیفه‌ای نیست"
+                bodyEn="Add a task and choose which member does it. A task without a person is not allowed."
+                bodyFa="یک وظیفه اضافه کنید و مشخص کنید کدام عضو انجامش می‌دهد. وظیفه بدون مسئول ثبت نمی‌شود."
               />
             ) : (
               <ul className="rows">
@@ -359,7 +399,7 @@ export function WorkItemDetailPage() {
                         </span>
                         <span className="row-meta">
                           <Icon name="user" size={11} />
-                          {names || bi("Unassigned", "بدون مسئول")}
+                          <Bi en="Owner" fa="مسئول" />: {names || bi("Unassigned", "بدون مسئول")}
                           {!done && t.status !== "OPEN" ? <StatusLabel status={String(t.status)} /> : null}
                         </span>
                       </div>
@@ -375,7 +415,13 @@ export function WorkItemDetailPage() {
           <Card>
             <SectionHeader
               icon="users"
-              title={<Bi en="Who’s involved" fa="چه کسانی درگیرند" />}
+              title={<Bi en="Members" fa="اعضا" />}
+              hint={
+                <Bi
+                  en="The creator is always a member. Others join only when someone adds them."
+                  fa="سازنده همیشه عضو است. بقیه فقط وقتی عضو می‌شوند که اضافه شوند."
+                />
+              }
               count={(progress.participants || []).length}
             />
             {(progress.participants || []).length === 0 ? (
@@ -384,17 +430,43 @@ export function WorkItemDetailPage() {
               </Muted>
             ) : (
               <ul className="people-involved">
-                {(progress.participants || []).map((p) => (
+                {[...(progress.participants || [])]
+                  .sort((a, b) => Number(b.role === "OWNER") - Number(a.role === "OWNER"))
+                  .map((p) => (
                   <li key={`${p.user_id}-${p.role}`}>
                     <Avatar name={personName(p.user_id)} size={26} />
                     <strong>{personName(p.user_id)}</strong>
                     <span className="badge">
-                      {p.role === "OWNER" ? bi("In charge", "مسئول") : bi("Helping", "همکار")}
+                      {p.role === "OWNER" ? bi("Creator", "سازنده") : bi("Member", "عضو")}
                     </span>
                   </li>
                 ))}
               </ul>
             )}
+            {has("work_item.write") ? (
+              <form className="inline-form member-add" onSubmit={addMember}>
+                <Select
+                  value={memberId}
+                  onChange={(e) => setMemberId(e.target.value)}
+                  aria-label={bi("Add a member", "افزودن عضو")}
+                >
+                  <option value="">{bi("Add a member", "افزودن عضو")}</option>
+                  {people
+                    .filter(
+                      (person) =>
+                        !(progress.participants || []).some((p) => String(p.user_id) === String(person.id)),
+                    )
+                    .map((person) => (
+                      <option key={String(person.id)} value={String(person.id)}>
+                        {String(person.full_name)}
+                      </option>
+                    ))}
+                </Select>
+                <Button type="submit" className="btn-sm" disabled={!memberId || addMemberMutation.isPending}>
+                  <Bi en="Add" fa="افزودن" />
+                </Button>
+              </form>
+            ) : null}
           </Card>
 
           <Card>

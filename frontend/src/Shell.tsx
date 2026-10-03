@@ -15,6 +15,9 @@ type NavItem = {
   hintFa: string;
   end?: boolean;
   perm?: string;
+  permAny?: string[];
+  adminOnly?: boolean;
+  managerOnly?: boolean;
 };
 
 const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
@@ -24,30 +27,33 @@ const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
     items: [
       { to: "/", icon: "home", labelEn: "Home", labelFa: "خانه", hintEn: "What needs you today", hintFa: "امروز چه چیزی به شما نیاز دارد", end: true },
       { to: "/my-work", icon: "check", labelEn: "My Work", labelFa: "کارهای من", hintEn: "Things you need to do", hintFa: "کارهایی که باید انجام دهید" },
-      { to: "/communication", icon: "message", labelEn: "Messages", labelFa: "پیام‌ها", hintEn: "Talk with colleagues", hintFa: "گفتگو با همکاران" },
-      { to: "/vehicles", icon: "car", labelEn: "Vehicles", labelFa: "خودروها", hintEn: "Cars in stock and their details", hintFa: "خودروهای موجود و مشخصاتشان" },
-      { to: "/customers", icon: "user", labelEn: "Customers", labelFa: "مشتریان", hintEn: "Buyers and sellers", hintFa: "خریداران و فروشندگان" },
-      { to: "/agent", icon: "sparkles", labelEn: "Assistant", labelFa: "دستیار", hintEn: "Ask anything in plain words", hintFa: "هر سؤالی را ساده بپرسید" },
+      { to: "/pricing", icon: "megaphone", labelEn: "Price and posts", labelFa: "قیمت و پست‌ها", hintEn: "Confirm the price before a post goes out", hintFa: "قیمت را قبل از پست تأیید کنید", permAny: ["price.write", "campaign.read"] },
+      { to: "/communication", icon: "message", labelEn: "Messages", labelFa: "پیام‌ها", hintEn: "Talk with colleagues", hintFa: "گفتگو با همکاران", perm: "conversation.read" },
+      { to: "/vehicles", icon: "car", labelEn: "Vehicles", labelFa: "خودروها", hintEn: "Cars in stock and their details", hintFa: "خودروهای موجود و مشخصاتشان", perm: "inventory.read" },
+      { to: "/approvals", icon: "check", labelEn: "Approvals", labelFa: "تأییدها", hintEn: "Requests waiting for a decision", hintFa: "درخواست‌هایی که منتظر تصمیم‌اند", perm: "price.write" },
+      { to: "/customers", icon: "user", labelEn: "Customers", labelFa: "مشتریان", hintEn: "Buyers and sellers", hintFa: "خریداران و فروشندگان", adminOnly: true },
+      { to: "/agent", icon: "sparkles", labelEn: "Assistant", labelFa: "دستیار", hintEn: "Ask about your own work", hintFa: "درباره کار خودتان بپرسید" },
     ],
   },
   {
     en: "More",
     fa: "بیشتر",
     items: [
-      { to: "/people", icon: "users", labelEn: "Colleagues", labelFa: "همکاران", hintEn: "Who does what", hintFa: "چه کسی چه کاری می‌کند" },
-      { to: "/knowledge", icon: "book", labelEn: "Rules & guides", labelFa: "قوانین و راهنماها", hintEn: "Company rules and how-tos", hintFa: "قوانین شرکت و روش انجام کارها" },
-      { to: "/cases", icon: "briefcase", labelEn: "Cases", labelFa: "پرونده‌ها", hintEn: "Track one subject in your section", hintFa: "پیگیری یک موضوع در بخش شما", perm: "case.read" },
-      { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "KPIs", hintFa: "شاخص‌ها", perm: "event.read" },
+      { to: "/people", icon: "users", labelEn: "Colleagues", labelFa: "همکاران", hintEn: "Who does what", hintFa: "چه کسی چه کاری می‌کند", perm: "user.read", managerOnly: true },
+      { to: "/knowledge", icon: "book", labelEn: "Rules & guides", labelFa: "قوانین و راهنماها", hintEn: "Company rules and how-tos", hintFa: "قوانین شرکت و روش انجام کارها", adminOnly: true },
+      { to: "/cases", icon: "briefcase", labelEn: "Cases", labelFa: "پرونده‌ها", hintEn: "Track one subject in your section", hintFa: "پیگیری یک موضوع در بخش شما", perm: "case.read", adminOnly: true },
+      { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "KPIs", hintFa: "شاخص‌ها", perm: "event.read", adminOnly: true },
       { to: "/admin", icon: "settings", labelEn: "Admin", labelFa: "مدیریت", hintEn: "Overview, users, audit", hintFa: "نمای کلی، کاربران، ممیزی", perm: "org.admin" },
     ],
   },
 ];
 
 const roleFa: Record<string, string> = {
-  admin: "مدیر سیستم",
+  admin: "ادمین سایت",
   manager: "مدیر",
   seller: "فروشنده",
   marketing: "بازاریابی",
+  finance: "مالی",
   viewer: "بازدیدکننده",
 };
 
@@ -118,7 +124,12 @@ export function Shell() {
                   <Bi en={g.en} fa={g.fa} />
                 </div>
               ) : null}
-              {g.items.filter((l) => !l.perm || has(l.perm)).map((l) => (
+              {g.items.filter((l) => {
+                if (l.adminOnly && roleHint !== "admin") return false;
+                if (l.managerOnly && roleHint !== "manager" && roleHint !== "admin") return false;
+                if (l.permAny) return l.permAny.some((code) => has(code));
+                return !l.perm || has(l.perm);
+              }).map((l) => (
                 <NavLink key={l.to} to={l.to} end={l.end} title={bi(l.hintEn, l.hintFa)} onClick={() => setDrawer(false)}>
                   <Icon name={l.icon} />
                   <span>

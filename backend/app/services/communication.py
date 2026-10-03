@@ -48,7 +48,8 @@ class CommunicationService:
         )
         self.db.add(conv)
         await self.db.flush()
-        for uid in participant_ids:
+        people = list(dict.fromkeys([*participant_ids, *([actor_id] if actor_id else [])]))
+        for uid in people:
             self.db.add(
                 ConversationParticipant(
                     conversation_id=conv.id,
@@ -151,6 +152,7 @@ class CommunicationService:
         campaign_id: UUID | None = None,
         scope: DataScopeContext | None = None,
         archived: bool = False,
+        viewer_id: UUID | None = None,
     ) -> list[Conversation]:
         q = (
             select(Conversation)
@@ -159,6 +161,14 @@ class CommunicationService:
             .order_by(Conversation.created_at.desc())
         )
         q = apply_scope(q, Conversation, scope)
+        if viewer_id is not None:
+            q = q.where(
+                Conversation.id.in_(
+                    select(ConversationParticipant.conversation_id).where(
+                        ConversationParticipant.user_id == viewer_id
+                    )
+                )
+            )
         # گفتگوهای آرشیوشده در لیست عادی دیده نمی‌شوند، مگر اینکه صراحتاً archived خواسته شود.
         if archived:
             q = q.where(Conversation.archived_at.is_not(None))

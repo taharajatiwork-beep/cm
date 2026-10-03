@@ -37,6 +37,36 @@ from app.services import UNSET, CommunicationService, SlaService, TimelineServic
 router = APIRouter(tags=["work"])
 
 
+async def _is_site_admin(db: AsyncSession, ctx: AuthContext) -> bool:
+    """نقش ادمین سایت همه‌چیز را می‌بیند؛ مدیر فروش با org.admin این‌طور نیست."""
+    from app.models import Role
+
+    if not ctx.user.role_id:
+        return False
+    code = await db.scalar(select(Role.code).where(Role.id == ctx.user.role_id))
+    return code == "admin"
+
+
+async def _member_conversation(db: AsyncSession, ctx: AuthContext, conversation_id: UUID):
+    """چت فقط برای کسی که داخل آن است باز می‌شود. ادمین سایت استثناست."""
+    from app.models import Conversation, ConversationParticipant
+
+    row = await db.get(Conversation, conversation_id)
+    if not row or row.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Conversation not found")
+    if await _is_site_admin(db, ctx):
+        return row
+    member = await db.scalar(
+        select(ConversationParticipant.id).where(
+            ConversationParticipant.conversation_id == conversation_id,
+            ConversationParticipant.user_id == ctx.user.id,
+        )
+    )
+    if member is None:
+        raise HTTPException(404, "Conversation not found")
+    return row
+
+
 @router.post("/conversations", response_model=ConversationOut)
 async def create_conversation(
     body: ConversationCreate,
@@ -74,6 +104,7 @@ async def post_message(
         require_permission(ctx.permissions, PermissionCode.CONVERSATION_WRITE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
+    await _member_conversation(db, ctx, conversation_id)
     return await CommunicationService(db).post_message(
         organization_id=ctx.organization_id,
         conversation_id=conversation_id,
@@ -91,19 +122,11 @@ async def list_messages(
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models import Conversation
-
     try:
         require_permission(ctx.permissions, PermissionCode.CONVERSATION_READ)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    conv = await db.get(Conversation, conversation_id)
-    if not conv or conv.organization_id != ctx.organization_id:
-        raise HTTPException(404, "Conversation not found")
-    from app.core.scope import row_is_visible
-
-    if not await row_is_visible(db, Conversation, conversation_id, ctx.organization_id, ctx.scope):
-        raise HTTPException(404, "Conversation not found")
+    await _member_conversation(db, ctx, conversation_id)
     return await CommunicationService(db).list_messages(conversation_id)
 
 
@@ -218,7 +241,12 @@ async def list_work_items(
     )
     if envelope:
         dumped = [
-            {"id": str(item.id), "title": item.title, "status": getattr(item.status, "value", item.status)}
+            {
+                "id": str(item.id),
+                "title": item.title,
+                "status": getattr(item.status, "value", item.status),
+                "owner_id": str(item.owner_id),
+            }
             for item in items
         ]
         return JSONResponse(page(dumped, cursor=cursor, limit=limit))
@@ -271,6 +299,7 @@ async def list_conversations(
     except AuthorizationError as e:
         raise handle_authz(e) from e
     service = CommunicationService(db)
+    see_all = await _is_site_admin(db, ctx)
     rows = await service.list_conversations(
         ctx.organization_id,
         work_item_id=work_item_id,
@@ -278,19 +307,22 @@ async def list_conversations(
         campaign_id=campaign_id,
         scope=ctx.scope,
         archived=archived,
+        viewer_id=None if see_all else ctx.user.id,
     )
     latest = await service.last_messages([row.id for row in rows])
     listed = []
     for row in rows:
         text, sender_id, sent_at = latest.get(row.id, (None, None, None))
+        participant_ids = [p.user_id for p in row.participants]
+        in_chat = ctx.user.id in participant_ids
         listed.append(
             ConversationOut.model_validate(row).model_copy(
                 update={
-                    "participant_ids": [p.user_id for p in row.participants],
+                    "participant_ids": participant_ids,
                     "last_message_text": text,
                     "last_sender_id": sender_id,
                     "last_message_at": sent_at,
-                    "needs_reply": sender_id is not None and sender_id != ctx.user.id,
+                    "needs_reply": in_chat and sender_id is not None and sender_id != ctx.user.id,
                 }
             )
         )
@@ -679,15 +711,11 @@ async def archive_conversation(
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models import Conversation
-
     try:
         require_permission(ctx.permissions, PermissionCode.CONVERSATION_WRITE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    row = await db.get(Conversation, conversation_id)
-    if not row or row.organization_id != ctx.organization_id:
-        raise HTTPException(404, "Conversation not found")
+    row = await _member_conversation(db, ctx, conversation_id)
     row.archived_at = datetime.now(UTC)
     return {"id": str(row.id), "archived": True}
 
@@ -698,15 +726,11 @@ async def unarchive_conversation(
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models import Conversation
-
     try:
         require_permission(ctx.permissions, PermissionCode.CONVERSATION_WRITE)
     except AuthorizationError as e:
         raise handle_authz(e) from e
-    row = await db.get(Conversation, conversation_id)
-    if not row or row.organization_id != ctx.organization_id:
-        raise HTTPException(404, "Conversation not found")
+    row = await _member_conversation(db, ctx, conversation_id)
     row.archived_at = None
     return {"id": str(row.id), "archived": False}
 
@@ -720,6 +744,7 @@ async def add_conversation_participant(
 ):
     try:
         require_permission(ctx.permissions, PermissionCode.CONVERSATION_WRITE)
+        await _member_conversation(db, ctx, conversation_id)
         row = await CommunicationService(db).add_participant(
             organization_id=ctx.organization_id,
             conversation_id=conversation_id,

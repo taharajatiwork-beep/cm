@@ -16,6 +16,7 @@ import {
   SectionHeader,
   TextArea,
 } from "../components/ui";
+import { useAuth } from "../auth";
 import { Bi, useBi } from "../i18n";
 
 type Mode = "ask" | "communication" | "inventory" | "sales" | "purchase" | "divar";
@@ -23,8 +24,8 @@ type Mode = "ask" | "communication" | "inventory" | "sales" | "purchase" | "diva
 const MODE_META: Record<Mode, { icon: IconName; descEn: string; descFa: string }> = {
   ask: {
     icon: "sparkles",
-    descEn: "Ask about cars, work, colleagues or company rules",
-    descFa: "درباره خودروها، کارها، همکاران یا قوانین شرکت بپرسید",
+    descEn: "Ask about the records you are allowed to see",
+    descFa: "درباره همان اطلاعاتی بپرسید که در بخش خودتان می‌بینید",
   },
   communication: {
     icon: "users",
@@ -80,8 +81,18 @@ const ASK_STARTERS = [
   { en: "Is Elantra 2021 in stock?", fa: "النترا ۲۰۲۱ موجود داریم؟" },
 ];
 
+function modeVisible(key: Mode, has: (perm: string) => boolean): boolean {
+  if (key === "ask") return true;
+  if (key === "communication") return has("work_item.write");
+  if (key === "inventory") return has("inventory.read");
+  if (key === "sales" || key === "purchase") return has("customer.read");
+  if (key === "divar") return has("campaign.write");
+  return false;
+}
+
 export function AgentPage() {
   const bi = useBi();
+  const { has } = useAuth();
   const chatEnd = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>("ask");
   const [message, setMessage] = useState("");
@@ -121,6 +132,13 @@ export function AgentPage() {
 
   const [params, setParams] = useSearchParams();
   const urlAsked = useRef(false);
+  const visibleModes = modes.filter((m) => modeVisible(m.key, has));
+  const canCreate =
+    mode === "divar" ? has("task.write") : mode === "ask" ? false : has("case.write");
+
+  useEffect(() => {
+    if (!modeVisible(mode, has)) setMode("ask");
+  }, [mode, has]);
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -197,7 +215,7 @@ export function AgentPage() {
           await api.inventoryAgent({
             message: message || undefined,
             min_days: minDays,
-            auto_create: autoCreate,
+            auto_create: canCreate && autoCreate,
           }),
         );
       } else if (mode === "sales") {
@@ -205,7 +223,7 @@ export function AgentPage() {
           await api.salesAgent({
             message: message || undefined,
             stale_days: staleDays,
-            auto_create: autoCreate,
+            auto_create: canCreate && autoCreate,
           }),
         );
       } else if (mode === "purchase") {
@@ -213,14 +231,14 @@ export function AgentPage() {
           await api.purchaseAgent({
             message: message || undefined,
             stale_days: staleDays,
-            auto_create: autoCreate,
+            auto_create: canCreate && autoCreate,
           }),
         );
       } else {
         setDivarResult(
           await api.divarAgent({
             message: message || undefined,
-            auto_create: autoCreate,
+            auto_create: canCreate && autoCreate,
           }),
         );
       }
@@ -313,7 +331,7 @@ export function AgentPage() {
       : bi("Also create to-dos for what’s found", "برای موارد پیدا شده خودکار کار بساز");
 
   const curMeta = MODE_META[mode];
-  const curMode = modes.find((m) => m.key === mode)!;
+  const curMode = visibleModes.find((m) => m.key === mode) ?? modes[0];
 
   return (
     <>
@@ -321,8 +339,8 @@ export function AgentPage() {
         title={<Bi en="Assistant" fa="دستیار" />}
         description={
           <Bi
-            en="Type your question like you would ask a colleague. For other jobs, pick one from the list on the side."
-            fa="سؤالتان را همان‌طور که از یک همکار می‌پرسید بنویسید. برای کارهای دیگر، یکی را از فهرست کنار انتخاب کنید."
+            en="Ask about your own area. The assistant only uses the parts you are allowed to see."
+            fa="درباره حوزهٔ خودتان بپرسید. دستیار فقط همان بخش‌هایی را می‌بیند که اجازه دارید."
           />
         }
       />
@@ -464,14 +482,16 @@ export function AgentPage() {
                         />
                       </Field>
                     )}
-                    <label className="check-row check-row--tall">
-                      <input
-                        type="checkbox"
-                        checked={autoCreate}
-                        onChange={(e) => setAutoCreate(e.target.checked)}
-                      />
-                      {autoCreateLabel}
-                    </label>
+                    {canCreate ? (
+                      <label className="check-row check-row--tall">
+                        <input
+                          type="checkbox"
+                          checked={autoCreate}
+                          onChange={(e) => setAutoCreate(e.target.checked)}
+                        />
+                        {autoCreateLabel}
+                      </label>
+                    ) : null}
                   </div>
                   </details>
                 )}
@@ -542,7 +562,7 @@ export function AgentPage() {
           <Card>
             <SectionHeader title={<Bi en="What can I help with?" fa="چه کمکی از دستیار برمی‌آید؟" />} />
             <div className="mode-list">
-              {modes.map((m) => {
+              {visibleModes.map((m) => {
                 const meta = MODE_META[m.key];
                 return (
                   <button

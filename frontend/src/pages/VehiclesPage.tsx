@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { DateText } from "../components/DateText";
 import { useAuth } from "../auth";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 import {
   Button,
   Card,
@@ -13,6 +14,7 @@ import {
   Icon,
   Input,
   List,
+  Select,
   ListItem,
   LoadingState,
   Muted,
@@ -90,20 +92,177 @@ function strOrNull(v: string): string | null {
   return t || null;
 }
 
+function fieldText(value: unknown): string {
+  return value != null && value !== "" ? String(value) : "";
+}
+
+function formFromVehicle(v: Record<string, unknown>): VehicleForm {
+  return {
+    vin: fieldText(v.vin),
+    brand: fieldText(v.brand),
+    model: fieldText(v.model),
+    year: fieldText(v.year),
+    stock_number: fieldText(v.stock_number),
+    color: fieldText(v.color),
+    trim: fieldText(v.trim),
+    mileage: fieldText(v.mileage),
+    sale_price: fieldText(v.sale_price),
+    purchase_price: fieldText(v.purchase_price),
+    body_type: fieldText(v.body_type),
+    transmission: fieldText(v.transmission),
+    fuel_type: fieldText(v.fuel_type),
+    engine: fieldText(v.engine),
+    plate_number: fieldText(v.plate_number),
+    doors: fieldText(v.doors),
+    seats: fieldText(v.seats),
+    options: fieldText(v.options),
+    exterior_condition: fieldText(v.exterior_condition),
+    interior_condition: fieldText(v.interior_condition),
+    description: fieldText(v.description),
+    notes: fieldText(v.notes),
+  };
+}
+
+function formBody(form: VehicleForm, includePrice: boolean): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    vin: strOrNull(form.vin),
+    brand: form.brand.trim(),
+    model: form.model.trim(),
+    year: Number(form.year),
+    stock_number: strOrNull(form.stock_number),
+    color: strOrNull(form.color),
+    trim: strOrNull(form.trim),
+    mileage: numOrNull(form.mileage),
+    body_type: strOrNull(form.body_type),
+    transmission: strOrNull(form.transmission),
+    fuel_type: strOrNull(form.fuel_type),
+    engine: strOrNull(form.engine),
+    plate_number: strOrNull(form.plate_number),
+    doors: numOrNull(form.doors),
+    seats: numOrNull(form.seats),
+    options: strOrNull(form.options),
+    exterior_condition: strOrNull(form.exterior_condition),
+    interior_condition: strOrNull(form.interior_condition),
+    description: strOrNull(form.description),
+    notes: strOrNull(form.notes),
+  };
+  if (includePrice) {
+    const sale = numOrNull(form.sale_price);
+    if (sale != null) body.sale_price = sale;
+    body.purchase_price = numOrNull(form.purchase_price);
+  }
+  return body;
+}
+
+function QuickEditPop({
+  rows,
+  canPrice,
+  saving,
+  onClose,
+  onSave,
+}: {
+  rows: Array<Record<string, unknown>>;
+  canPrice: boolean;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (id: string, fields: Record<string, unknown>) => void;
+}) {
+  const bi = useBi();
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="detail-pop quick-edit-pop" role="dialog" aria-modal="true">
+      <button type="button" className="detail-pop-backdrop" onClick={onClose} aria-label={bi("Close", "بستن")} />
+      <div className="detail-pop-card">
+        <SectionHeader
+          title={<Bi en="Quick edit" fa="ویرایش سریع" />}
+          count={rows.length}
+          action={
+            <button type="button" className="kpi-more" onClick={onClose}>
+              <Bi en="Close" fa="بستن" />
+            </button>
+          }
+        />
+        <p className="help-text">
+          <Bi
+            en="Price is in million toman. Saving a price needs the finance permission; otherwise it stays unchanged."
+            fa="قیمت به میلیون تومان است. ثبت قیمت فقط با مجوز مالی انجام می‌شود."
+          />
+        </p>
+        <div className="quick-edit-list">
+          {rows.map((row) => {
+            const id = String(row.id);
+            return (
+              <form
+                key={id}
+                className="quick-edit-row"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const data = new FormData(e.currentTarget);
+                  const million = String(data.get("price") || "").trim();
+                  const fields: Record<string, unknown> = {
+                    status: String(data.get("status") || row.status),
+                    mileage: numOrNull(String(data.get("mileage") || "")),
+                    delivery_note: strOrNull(String(data.get("note") || "")),
+                  };
+                  if (million && canPrice) fields.sale_price = Number(million.replace(/,/g, "")) * 1_000_000;
+                  onSave(id, fields);
+                }}
+              >
+                <strong>
+                  {String(row.brand)} {String(row.model)}
+                </strong>
+                <Input name="price" defaultValue={row.sale_price != null ? String(Math.round(Number(row.sale_price) / 1_000_000)) : ""} placeholder={bi("Price, million", "قیمت، میلیون")} disabled={!canPrice} />
+                <Input name="mileage" defaultValue={row.mileage != null ? String(row.mileage) : ""} placeholder={bi("Mileage", "کارکرد")} />
+                <Input name="note" defaultValue={row.delivery_note != null ? String(row.delivery_note) : ""} placeholder={bi("Delivery note", "یادداشت تحویل")} />
+                <Select name="status" defaultValue={String(row.status)}>
+                  <option value="IN_STOCK">{bi("In stock", "موجود")}</option>
+                  <option value="RESERVED">{bi("Reserved", "رزرو")}</option>
+                  <option value="SOLD">{bi("Sold", "فروخته‌شده")}</option>
+                </Select>
+                <Button type="submit" variant="secondary" disabled={saving}>
+                  <Bi en="Save" fa="ثبت" />
+                </Button>
+              </form>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function VehiclesPage() {
   const { has } = useAuth();
   const bi = useBi();
   const toast = useToast();
+  const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [error, setError] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [preview, setPreview] = useState<{
+    rows: Array<Record<string, unknown>>;
+    missing: Array<Record<string, unknown>>;
+  } | null>(null);
+  const [quick, setQuick] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [form, setForm] = useState<VehicleForm>(emptyForm);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const canRead = has("inventory.read");
+  const canWrite = has("inventory.write");
+  const canPrice = has("price.write");
 
   // Filter text is part of the key: every search is its own cache entry.
   const listQuery = useInfiniteQuery({
@@ -125,43 +284,61 @@ export function VehiclesPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  const createMutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.vehicles.create(body),
-    onSuccess: (v) => {
+  const saveMutation = useMutation({
+    mutationFn: (input: { id: string | null; body: Record<string, unknown> }) =>
+      input.id ? api.vehicles.update(input.id, input.body) : api.vehicles.create(input.body),
+    onSuccess: (v, input) => {
       setShowAdd(false);
+      setEditingId(null);
       void invalidateVehicles();
-      navigate(`/vehicles/${v.id}`);
+      if (!input.id) navigate(`/vehicles/${v.id}`);
+      else toast(bi("Saved", "ثبت شد"));
+    },
+    onError: (err) => setError(String((err as Error).message)),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.vehicles.remove(id),
+    onSuccess: () => {
+      toast(bi("Vehicle deleted", "خودرو حذف شد"));
+      void invalidateVehicles();
     },
     onError: (err) => setError(String((err as Error).message)),
   });
 
-  function create(e: FormEvent) {
+  function openAdd() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setError("");
+    setShowAdd(true);
+  }
+
+  function openEdit(v: Record<string, unknown>) {
+    setEditingId(String(v.id));
+    setForm(formFromVehicle(v));
+    setError("");
+    setShowAdd(true);
+  }
+
+  function closeForm() {
+    setShowAdd(false);
+    setEditingId(null);
+  }
+
+  function save(e: FormEvent) {
     e.preventDefault();
     setError("");
-    createMutation.mutate({
-      vin: form.vin,
-      brand: form.brand,
-      model: form.model,
-      year: Number(form.year),
-      stock_number: strOrNull(form.stock_number),
-      color: strOrNull(form.color),
-      trim: strOrNull(form.trim),
-      mileage: numOrNull(form.mileage),
-      sale_price: numOrNull(form.sale_price),
-      purchase_price: numOrNull(form.purchase_price),
-      body_type: strOrNull(form.body_type),
-      transmission: strOrNull(form.transmission),
-      fuel_type: strOrNull(form.fuel_type),
-      engine: strOrNull(form.engine),
-      plate_number: strOrNull(form.plate_number),
-      doors: numOrNull(form.doors),
-      seats: numOrNull(form.seats),
-      options: strOrNull(form.options),
-      exterior_condition: strOrNull(form.exterior_condition),
-      interior_condition: strOrNull(form.interior_condition),
-      description: strOrNull(form.description),
-      notes: strOrNull(form.notes),
-    });
+    saveMutation.mutate({ id: editingId, body: formBody(form, !editingId || canPrice) });
+  }
+
+  async function removeVehicle(v: Record<string, unknown>) {
+    const name = `${String(v.brand)} ${String(v.model)}`.trim();
+    const ok = await confirm(
+      bi("Delete this vehicle?", "این خودرو حذف شود؟"),
+      bi(`${name} will be removed from the list.`, `${name} از فهرست حذف می‌شود.`),
+      bi("Delete", "حذف"),
+    );
+    if (!ok) return;
+    deleteMutation.mutate(String(v.id));
   }
 
   const importMutation = useMutation({
@@ -192,6 +369,56 @@ export function VehiclesPage() {
     importMutation.mutate(file);
   }
 
+  const pastePreview = useMutation({
+    mutationFn: () => api.vehicles.pastePreview(pasteText),
+    onSuccess: (result) => setPreview(result),
+    onError: (e) => setError(String((e as Error).message)),
+  });
+  const pasteApply = useMutation({
+    mutationFn: () => api.vehicles.pasteApply([...(preview?.rows ?? []), ...(preview?.missing ?? [])]),
+    onSuccess: (result) => {
+      toast(
+        bi(
+          `Added ${result.created}, prices updated ${result.updated}, sent to finance ${result.proposed}.`,
+          `${result.created} خودرو اضافه شد، ${result.updated} قیمت ثبت شد، ${result.proposed} مورد برای مالی رفت.`,
+        ),
+      );
+      setShowPaste(false);
+      setPreview(null);
+      void invalidateVehicles();
+    },
+    onError: (e) => setError(String((e as Error).message)),
+  });
+  const quickSave = useMutation({
+    mutationFn: (body: { id: string; fields: Record<string, unknown> }) => api.vehicles.update(body.id, body.fields),
+    onSuccess: () => {
+      toast(bi("Saved", "ثبت شد"));
+      void invalidateVehicles();
+    },
+    onError: (e) => setError(String((e as Error).message)),
+  });
+
+  function togglePreview(kind: "rows" | "missing", index: number) {
+    setPreview((current) => {
+      if (!current) return current;
+      const list = current[kind].map((row, i) => (i === index ? { ...row, apply: !row.apply } : row));
+      return { ...current, [kind]: list };
+    });
+  }
+
+  async function copyStockMessage() {
+    const lines = rows
+      .filter((row) => String(row.status) === "IN_STOCK")
+      .map((row) => {
+        const price =
+          row.sale_price != null ? Math.round(Number(row.sale_price) / 1_000_000).toLocaleString("fa-IR") : "—";
+        return `${String(row.brand)} ${String(row.model)}${row.color ? ` ${String(row.color)}` : ""} ${row.year} — ${price}`;
+      });
+    const text = [`موجودی خودرو`, ...lines].join("\n");
+    await navigator.clipboard.writeText(text);
+    toast(bi("Stock message copied", "پیام موجودی کپی شد"));
+  }
+
   const statusCounts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const r of rows) c[String(r.status)] = (c[String(r.status)] || 0) + 1;
@@ -208,7 +435,12 @@ export function VehiclesPage() {
     ["SOLD", "Sold", "فروخته‌شده"],
   ];
 
-  function text(key: keyof VehicleForm, en: string, fa: string, opts: { required?: boolean; span?: string; placeholder?: string } = {}) {
+  function text(
+    key: keyof VehicleForm,
+    en: string,
+    fa: string,
+    opts: { required?: boolean; span?: string; placeholder?: string; disabled?: boolean } = {},
+  ) {
     return (
       <Field
         label={
@@ -224,6 +456,7 @@ export function VehiclesPage() {
           onChange={(e) => setField(key, e.target.value)}
           required={opts.required}
           placeholder={opts.placeholder}
+          disabled={opts.disabled}
         />
       </Field>
     );
@@ -242,11 +475,20 @@ export function VehiclesPage() {
         actions={
           has("inventory.write") ? (
             <>
+              <Button variant="secondary" onClick={() => void copyStockMessage()}>
+                <Bi en="Copy stock message" fa="کپی پیام موجودی" />
+              </Button>
+              <Button variant="secondary" onClick={() => setQuick(true)}>
+                <Bi en="Quick edit" fa="ویرایش سریع" />
+              </Button>
+              <Button variant="secondary" onClick={() => { setPreview(null); setShowPaste(true); }}>
+                <Bi en="Paste stock message" fa="چسباندن پیام موجودی" />
+              </Button>
               <Button variant="secondary" onClick={() => setShowImport(true)}>
                 <Icon name="upload" size={14} />
                 <Bi en="Add from Excel" fa="افزودن از اکسل" />
               </Button>
-              <Button onClick={() => setShowAdd(true)}>
+              <Button onClick={openAdd}>
                 <Icon name="plus" size={14} />
                 <Bi en="Add vehicle" fa="افزودن خودرو" />
               </Button>
@@ -305,7 +547,7 @@ export function VehiclesPage() {
                 bodyFa="فیلتر را تغییر دهید یا خودرو اضافه / وارد کنید."
                 action={
                   has("inventory.write") ? (
-                    <Button variant="secondary" onClick={() => setShowAdd(true)}>
+                    <Button variant="secondary" onClick={openAdd}>
                       <Icon name="plus" size={14} />
                       <Bi en="Add vehicle" fa="افزودن خودرو" />
                     </Button>
@@ -374,27 +616,91 @@ export function VehiclesPage() {
                 header: <Bi en="Added" fa="ثبت" />,
                 render: (v) => <DateText value={v.created_at} />,
               },
+              ...(canWrite
+                ? [
+                    {
+                      key: "actions",
+                      header: "",
+                      className: "col-actions",
+                      render: (v: Record<string, unknown>) => (
+                        <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+                          <Button variant="secondary" className="btn-sm" onClick={() => openEdit(v)}>
+                            <Bi en="Edit" fa="ویرایش" />
+                          </Button>
+                          <Button
+                            variant="danger"
+                            className="btn-sm"
+                            disabled={deleteMutation.isPending}
+                            onClick={() => void removeVehicle(v)}
+                          >
+                            <Bi en="Delete" fa="حذف" />
+                          </Button>
+                        </div>
+                      ),
+                    },
+                  ]
+                : []),
             ]}
           />
         )}
       </Card>
 
+      {quick && has("inventory.write") ? <QuickEditPop rows={visible.slice(0, 30)} canPrice={has("price.write")} saving={quickSave.isPending} onClose={() => setQuick(false)} onSave={(id, fields) => quickSave.mutate({ id, fields })} /> : null}
+
       <Sheet
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        title={<Bi en="Add vehicle" fa="افزودن خودرو" />}
+        open={showPaste}
+        onClose={() => setShowPaste(false)}
+        title={<Bi en="Paste the stock message" fa="چسباندن پیام موجودی" />}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowAdd(false)}>
-              <Bi en="Cancel" fa="انصراف" />
+            <Button variant="secondary" onClick={() => pastePreview.mutate()} disabled={!pasteText.trim()}>
+              <Bi en="Preview" fa="پیش‌نمایش" />
             </Button>
-            <Button type="submit" form="vehicle-form">
-              <Bi en="Save vehicle" fa="ثبت خودرو" />
+            <Button onClick={() => pasteApply.mutate()} disabled={!preview}>
+              <Bi en="Apply selected" fa="اعمال موارد انتخاب‌شده" />
             </Button>
           </>
         }
       >
-        <form id="vehicle-form" className="form-grid" onSubmit={create}>
+        <TextArea rows={8} value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder={bi("Paste the manager’s stock message", "پیام موجودی مدیر فروش را اینجا بگذارید")} />
+        {preview ? (
+          <div className="stack">
+            {preview.rows.map((row, index) => (
+              <label key={`row-${index}`} className="check-row">
+                <input type="checkbox" checked={Boolean(row.apply)} onChange={() => togglePreview("rows", index)} />
+                <span>
+                  {String(row.action)} · {String(row.brand || "")} {String(row.model || "")} · {row.price_million != null ? String(row.price_million) : ""}
+                </span>
+              </label>
+            ))}
+            {preview.missing.map((row, index) => (
+              <label key={`miss-${index}`} className="check-row">
+                <input type="checkbox" checked={Boolean(row.apply)} onChange={() => togglePreview("missing", index)} />
+                <span>
+                  <Bi en="Missing from the list — mark sold" fa="در لیست نیست — فروخته‌شده" /> · {String(row.brand)} {String(row.model)}
+                </span>
+              </label>
+            ))}
+          </div>
+        ) : null}
+      </Sheet>
+
+      <Sheet
+        open={showAdd}
+        onClose={closeForm}
+        title={editingId ? <Bi en="Edit vehicle" fa="ویرایش خودرو" /> : <Bi en="Add vehicle" fa="افزودن خودرو" />}
+        footer={
+          <>
+            <Button variant="secondary" onClick={closeForm}>
+              <Bi en="Cancel" fa="انصراف" />
+            </Button>
+            <Button type="submit" form="vehicle-form" disabled={saveMutation.isPending}>
+              {editingId ? <Bi en="Save changes" fa="ثبت تغییرات" /> : <Bi en="Save vehicle" fa="ثبت خودرو" />}
+            </Button>
+          </>
+        }
+      >
+        <form id="vehicle-form" className="form-grid" onSubmit={save}>
           <p className="help-text span-all">
             <Bi
               en="Only the starred fields are required. You can add the rest later."
@@ -404,10 +710,10 @@ export function VehiclesPage() {
           {text("brand", "Brand", "برند", { required: true, placeholder: bi("e.g. Hyundai", "مثلاً هیوندای") })}
           {text("model", "Model", "مدل", { required: true, placeholder: bi("e.g. Elantra", "مثلاً النترا") })}
           {text("year", "Year", "سال ساخت", { required: true, placeholder: "2021" })}
-          {text("vin", "Chassis number (VIN)", "شماره شاسی", { required: true, span: "span-2" })}
+          {text("vin", "Chassis number (VIN)", "شماره شاسی", { required: !editingId, span: "span-2" })}
           {text("color", "Color", "رنگ")}
           {text("mileage", "Mileage (km)", "کارکرد (کیلومتر)")}
-          {text("sale_price", "Sale price", "قیمت فروش")}
+          {text("sale_price", "Sale price", "قیمت فروش", { disabled: Boolean(editingId) && !canPrice })}
           <Field label={<Bi en="Description" fa="توضیحات" />} className="span-all">
             <TextArea
               rows={3}
@@ -426,7 +732,7 @@ export function VehiclesPage() {
             </summary>
             <div className="advanced-body">
               <div className="form-grid">
-                {text("purchase_price", "Purchase price", "قیمت خرید")}
+                {text("purchase_price", "Purchase price", "قیمت خرید", { disabled: Boolean(editingId) && !canPrice })}
                 {text("plate_number", "Plate", "پلاک")}
                 {text("stock_number", "Stock #", "شماره انبار")}
                 {text("trim", "Trim", "تیپ")}

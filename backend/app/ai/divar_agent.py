@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.tools import ToolContext, ToolExecutor
 from app.core.config import get_settings
-from app.core.permissions import PermissionCode, require_permission
+from app.core.permissions import PermissionCode, require_any_permission
 from app.models import User
 from app.services import get_user_permissions
 
@@ -45,7 +45,9 @@ class DivarAgent:
     ) -> DivarAgentResult:
         request_id = str(uuid.uuid4())
         permissions = await get_user_permissions(self.db, user)
-        require_permission(permissions, PermissionCode.AGENT_RUN)
+        require_any_permission(
+            permissions, PermissionCode.AGENT_RUN, PermissionCode.CAMPAIGN_WRITE
+        )
 
         settings = get_settings()
         should_create = (

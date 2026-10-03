@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,7 @@ from app.api.pagination import page
 from app.core.permissions import AuthorizationError, PermissionCode, require_permission
 from app.db.session import get_db
 from app.models.enums import VehicleStatus
+from app.models.inventory import Vehicle
 from app.schemas import (
     InventoryRequestCreate,
     InventoryRequestOut,
@@ -16,6 +18,7 @@ from app.schemas import (
     VehicleContextOut,
     VehicleCreate,
     VehicleHistoryOut,
+    VehicleUpdate,
     VehicleImportResult,
     VehicleOut,
     VehicleStatusChange,
@@ -68,6 +71,7 @@ async def create_vehicle(
             branch_id=body.branch_id,
             owner_id=body.owner_id,
             status=body.status,
+            delivery_note=body.delivery_note,
         )
     except AuthorizationError as e:
         raise handle_authz(e) from e
@@ -150,6 +154,44 @@ async def import_vehicles(
     )
 
 
+class PasteIn(BaseModel):
+    text: str
+
+
+class PasteApplyIn(BaseModel):
+    rows: list[dict]
+
+
+@router.post("/vehicles/paste/preview")
+async def paste_preview(
+    body: PasteIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_permission(ctx.permissions, PermissionCode.INVENTORY_WRITE)
+    from app.services.vehicle_paste import build_preview
+
+    return await build_preview(db, ctx.organization_id, body.text)
+
+
+@router.post("/vehicles/paste/apply")
+async def paste_apply(
+    body: PasteApplyIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_permission(ctx.permissions, PermissionCode.INVENTORY_WRITE)
+    from app.services.vehicle_paste import apply_preview
+
+    return await apply_preview(
+        db,
+        organization_id=ctx.organization_id,
+        actor_id=ctx.user.id,
+        actor_permissions=ctx.permissions,
+        rows=body.rows,
+    )
+
+
 @router.get("/vehicles", response_model=list[VehicleOut])
 async def search_vehicles(
     brand: str | None = None,
@@ -199,6 +241,91 @@ async def get_vehicle(
     vehicle = await InventoryService(db).get_vehicle(vehicle_id)
     if not vehicle or vehicle.organization_id != ctx.organization_id:
         raise HTTPException(404, "Vehicle not found")
+    return vehicle
+
+
+class PriceIn(BaseModel):
+    amount: int
+    note: str | None = None
+
+
+@router.patch("/vehicles/{vehicle_id}", response_model=VehicleOut)
+async def update_vehicle(
+    vehicle_id: UUID,
+    body: VehicleUpdate,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    vehicle = await InventoryService(db).get_vehicle(vehicle_id)
+    if not vehicle or vehicle.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Vehicle not found")
+    fields = body.model_dump(exclude_unset=True)
+    try:
+        if "sale_price" in fields:
+            from app.services.pricing import PricingService
+
+            await PricingService(db).set_price(
+                organization_id=ctx.organization_id,
+                vehicle_id=vehicle.id,
+                amount=fields.pop("sale_price"),
+                actor_id=ctx.user.id,
+                actor_permissions=ctx.permissions,
+            )
+        if fields:
+            return await InventoryService(db).update_vehicle(
+                vehicle,
+                actor_id=ctx.user.id,
+                actor_permissions=ctx.permissions,
+                fields=fields,
+            )
+        await db.refresh(vehicle)
+        return vehicle
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+
+
+@router.delete("/vehicles/{vehicle_id}", status_code=204)
+async def delete_vehicle(
+    vehicle_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    vehicle = await db.get(Vehicle, vehicle_id)
+    if not vehicle or vehicle.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Vehicle not found")
+    try:
+        await InventoryService(db).delete_vehicle(
+            vehicle,
+            actor_id=ctx.user.id,
+            actor_permissions=ctx.permissions,
+        )
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    return Response(status_code=204)
+
+
+@router.post("/vehicles/{vehicle_id}/price", response_model=VehicleOut)
+async def set_vehicle_price(
+    vehicle_id: UUID,
+    body: PriceIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.pricing import PricingService
+
+    try:
+        vehicle = await PricingService(db).set_price(
+            organization_id=ctx.organization_id,
+            vehicle_id=vehicle_id,
+            amount=body.amount,
+            actor_id=ctx.user.id,
+            actor_permissions=ctx.permissions,
+            note=body.note,
+        )
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
     return vehicle
 
 

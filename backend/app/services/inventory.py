@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.permissions import PermissionCode, require_permission
+from app.core.permissions import AuthorizationError, PermissionCode, require_permission
 from app.models import CommunicationCase, Event, WorkItem
 from app.models.enums import (
     CaseStatus,
@@ -52,7 +52,7 @@ class InventoryService:
         self,
         *,
         organization_id: UUID,
-        vin: str,
+        vin: str | None,
         brand: str,
         model: str,
         year: int,
@@ -81,12 +81,14 @@ class InventoryService:
         branch_id: UUID | None = None,
         owner_id: UUID | None = None,
         status: VehicleStatus = VehicleStatus.IN_STOCK,
+        delivery_note: str | None = None,
     ) -> Vehicle:
         if actor_permissions is not None:
             require_permission(actor_permissions, PermissionCode.INVENTORY_WRITE)
+        now = datetime.now(UTC)
         vehicle = Vehicle(
             organization_id=organization_id,
-            vin=vin.upper(),
+            vin=vin.strip().upper() if vin else None,
             brand=brand,
             model=model,
             year=year,
@@ -113,6 +115,11 @@ class InventoryService:
             branch_id=branch_id,
             owner_id=owner_id or actor_id,
             status=status,
+            delivery_note=delivery_note,
+            stock_updated_at=now,
+            stock_updated_by=actor_id,
+            price_updated_at=now if sale_price is not None else None,
+            price_updated_by=actor_id if sale_price is not None else None,
         )
         self.db.add(vehicle)
         await self.db.flush()
@@ -145,6 +152,70 @@ class InventoryService:
             payload={"vin": vehicle.vin, "brand": brand, "model": model, "stock_number": stock_number},
         )
         return vehicle
+
+    async def update_vehicle(
+        self,
+        vehicle: Vehicle,
+        *,
+        actor_id: UUID,
+        actor_permissions: set[str],
+        fields: dict,
+    ) -> Vehicle:
+        require_permission(actor_permissions, PermissionCode.INVENTORY_WRITE)
+        price_fields = {"sale_price", "purchase_price"}
+        if price_fields & set(fields) and PermissionCode.PRICE_WRITE not in actor_permissions:
+            if PermissionCode.ORG_ADMIN not in actor_permissions:
+                raise AuthorizationError("Missing permission: price.write")
+        now = datetime.now(UTC)
+        for key, value in fields.items():
+            if key == "vin" and isinstance(value, str):
+                value = value.strip().upper()
+            setattr(vehicle, key, value)
+        if "sale_price" in fields or "purchase_price" in fields:
+            vehicle.price_updated_at = now
+            vehicle.price_updated_by = actor_id
+        stock_keys = {"status", "mileage", "delivery_note", "branch_id", "color", "model", "brand", "year"}
+        if stock_keys & set(fields):
+            vehicle.stock_updated_at = now
+            vehicle.stock_updated_by = actor_id
+        await self.db.flush()
+        return vehicle
+
+    async def delete_vehicle(
+        self,
+        vehicle: Vehicle,
+        *,
+        actor_id: UUID,
+        actor_permissions: set[str],
+    ) -> None:
+        require_permission(actor_permissions, PermissionCode.INVENTORY_WRITE)
+        from sqlalchemy import delete, update
+
+        from app.models import CommunicationCase, Conversation, WorkItem
+        from app.models.campaign import Campaign
+        from app.models.divar import DivarListing
+        from app.models.inventory import VehiclePhoto, VehiclePrice
+        from app.models.pricing import PostSlot
+
+        vid = vehicle.id
+        organization_id = vehicle.organization_id
+        brand = vehicle.brand
+        model_name = vehicle.model
+        for model in (VehicleHistory, VehicleBranch, VehiclePhoto, VehiclePrice, PostSlot, DivarListing):
+            await self.db.execute(delete(model).where(model.vehicle_id == vid))
+        for model in (InventoryRequest, Conversation, WorkItem, CommunicationCase, Campaign):
+            await self.db.execute(update(model).where(model.vehicle_id == vid).values(vehicle_id=None))
+        await self.db.execute(delete(Vehicle).where(Vehicle.id == vid))
+        await self.db.flush()
+        await _emit(
+            self.db,
+            organization_id=organization_id,
+            event_type="vehicle.deleted",
+            actor_id=actor_id,
+            entity_type="vehicle",
+            entity_id=vid,
+            payload={"brand": brand, "model": model_name},
+        )
 
     async def get_vehicle(self, vehicle_id: UUID) -> Vehicle | None:
         return await self.db.scalar(

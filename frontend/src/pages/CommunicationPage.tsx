@@ -120,7 +120,11 @@ export function CommunicationPage() {
   });
 
   const rows = board.data?.rows ?? emptyRows;
-  const campaigns = board.data?.campaigns ?? emptyRecords;
+  const allCampaigns = board.data?.campaigns ?? emptyRecords;
+  const campaigns =
+    roleHint === "admin"
+      ? allCampaigns
+      : allCampaigns.filter((camp) => rows.some((row) => String(row.campaign_id) === String(camp.id)));
   const branchCases = board.data?.branchCases ?? emptyRecords;
   const people = board.data?.people ?? emptyRecords;
   const peopleMap = board.data?.peopleMap ?? buildPersonMap([]);
@@ -305,10 +309,16 @@ export function CommunicationPage() {
     }
   }
 
-  const roleLine = bi(
-    "Messages in your section, plus any thread you were added to. Ads live under campaigns, not inside projects.",
-    "پیام‌های بخش شما، به‌اضافهٔ گفتگویی که خودتان در آن هستید. آگهی‌ها زیر کمپین است، نه داخل پروژه.",
-  );
+  const roleLine =
+    roleHint === "admin"
+      ? bi(
+          "You see every chat and the rest of the company’s information.",
+          "همهٔ گفتگوها و بقیهٔ اطلاعات شرکت را می‌بینید.",
+        )
+      : bi(
+          "Only chats you are in. A project or campaign thread shows up here after you are added.",
+          "فقط چت‌هایی که خودتان داخلشان هستید. گفتگوی پروژه یا کمپین وقتی دیده می‌شود که به آن اضافه شده باشید.",
+        );
 
   const visibleSections = sections.filter((s) => {
     if (s.key === "branch")
@@ -352,7 +362,7 @@ export function CommunicationPage() {
             </span>
             <div className="thread-row-tags">
               <StatusLabel status={String(c.status)} />
-              {c.work_item_id ? (
+              {c.work_item_id && has("work_item.read") ? (
                 <Button variant="ghost" to={`/work-items/${String(c.work_item_id)}`}>
                   <Bi en="Open project" fa="باز کردن پروژه" />
                 </Button>
@@ -453,7 +463,7 @@ export function CommunicationPage() {
                     <Bi en="Reply" fa="پاسخ" />
                   </Badge>
                 ) : null}
-                {c.work_item_id ? (
+                {c.work_item_id && has("work_item.read") ? (
                   <Badge>
                     <Icon name="layers" size={10} />
                     {workTitle(c.work_item_id) || bi("Project", "پروژه")}
@@ -683,7 +693,7 @@ export function CommunicationPage() {
                       {campaignTitle(current.campaign_id)}
                     </Badge>
                   ) : null}
-                  {current?.work_item_id ? (
+                  {current?.work_item_id && has("work_item.read") ? (
                     <Button
                       variant="secondary"
                       className="btn-sm"

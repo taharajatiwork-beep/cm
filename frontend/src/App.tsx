@@ -14,6 +14,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { MyWorkPage } from "./pages/MyWorkPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { PeoplePage } from "./pages/PeoplePage";
+import { PricingPage } from "./pages/PricingPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="people" element={<PeoplePage />} />
           <Route path="teams" element={<Navigate to="/settings" replace />} />
           <Route path="branches" element={<Navigate to="/settings" replace />} />
+          <Route path="pricing" element={<PricingPage />} />
           <Route path="vehicles" element={<VehiclesPage />} />
           <Route path="vehicles/:id" element={<VehicleDetailPage />} />
           <Route path="customers" element={<CustomersPage />} />

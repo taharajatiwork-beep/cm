@@ -136,6 +136,45 @@ async def test_conversation_list_linked_to_work_item(client: AsyncClient, seeded
     listed = await client.get(f"/conversations?work_item_id={wid}", headers=h)
     assert len(listed.json()) == 1
     assert listed.json()[0]["id"] == conv.json()["id"]
+    outsider = await login(client, "sara@autoco.example")
+    hidden = await client.get("/conversations", headers=auth(outsider))
+    assert conv.json()["id"] not in {row["id"] for row in hidden.json()}
+    denied = await client.get(
+        f"/conversations/{conv.json()['id']}/messages", headers=auth(outsider)
+    )
+    assert denied.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_site_admin_sees_chats_they_are_not_in(client: AsyncClient, seeded, db):
+    from app.services import OrgService
+
+    await OrgService(db).create_user(
+        organization_id=seeded["org"].id,
+        email="site-admin@autoco.example",
+        full_name="Site Admin",
+        password="password",
+        role_id=seeded["admin_role"].id,
+        branch_id=seeded["branch"].id,
+    )
+    await db.commit()
+    ali = await login(client, "ali@autoco.example")
+    conv = await client.post(
+        "/conversations",
+        headers=auth(ali),
+        json={
+            "topic": "Private sales chat",
+            "participant_ids": [str(seeded["ali"].id)],
+            "channel": "WEB",
+        },
+    )
+    assert conv.status_code == 200, conv.text
+    cid = conv.json()["id"]
+    admin = await login(client, "site-admin@autoco.example")
+    listed = await client.get("/conversations", headers=auth(admin))
+    assert cid in {row["id"] for row in listed.json()}
+    opened = await client.get(f"/conversations/{cid}/messages", headers=auth(admin))
+    assert opened.status_code == 200, opened.text
 
 
 @pytest.mark.asyncio
