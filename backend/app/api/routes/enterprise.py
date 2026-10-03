@@ -403,6 +403,24 @@ async def admin_overview(ctx: AuthContext = Depends(get_current_user), db: Async
     return data
 
 
+@router.get("/admin/analytics")
+async def admin_analytics(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """تحلیل‌های تفصیلی سازمان — فقط برای دارندگان org.admin."""
+    _admin(ctx)
+    data = await EnterpriseService(db).admin_analytics(ctx.organization_id)
+    data["as_of_jalali"] = format_jalali(datetime.now(UTC))
+    return data
+
+
+@router.get("/admin/monitoring")
+async def admin_monitoring(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """مانیتورینگ سلامت سیستم — فقط برای دارندگان org.admin."""
+    _admin(ctx)
+    data = await EnterpriseService(db).admin_monitoring(ctx.organization_id)
+    data["as_of_jalali"] = format_jalali(datetime.now(UTC))
+    return data
+
+
 @router.post("/reports/schedules")
 async def schedule_report(
     body: ReportScheduleIn,

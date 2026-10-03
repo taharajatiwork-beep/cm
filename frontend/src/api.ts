@@ -70,6 +70,50 @@ export interface AdminOverview {
   }>;
 }
 
+/** تحلیل‌های تفصیلی تب «تحلیل‌ها» (فقط org.admin). */
+export interface AdminAnalytics {
+  as_of_jalali: string;
+  tasks_weekly: Array<{ week: string; created: number; completed: number }>;
+  tasks_overdue: number;
+  avg_completion_hours: number | null;
+  tasks_by_priority: Record<string, number>;
+  cases_by_status: Record<string, number>;
+  cases_by_type: Record<string, number>;
+  avg_case_resolution_hours: number | null;
+  reply_buckets: { lt5: number; lt30: number; lt120: number; gt120: number; no_reply: number };
+  messages_daily: Array<{ day: string; count: number }>;
+  vehicles_aging: { lt7: number; lt30: number; lt90: number; gt90: number };
+  vehicles_value_by_status: Record<string, number>;
+  audit_daily_7d: Array<{ day: string; count: number }>;
+  top_actions: Array<{ action: string; count: number }>;
+  login_failed_7d: number;
+}
+
+/** مانیتورینگ سلامت سیستم تب «مانیتورینگ» (فقط org.admin). */
+export interface AdminMonitoring {
+  as_of_jalali: string;
+  database: {
+    size_bytes: number | null;
+    journal_mode: string | null;
+    table_counts: Record<string, number>;
+  };
+  outbox: {
+    by_status: Record<string, number>;
+    oldest_pending_minutes: number | null;
+    failed_samples: Array<{ provider: string; error: string; at: string }>;
+  };
+  job_locks: Array<{
+    name: string;
+    owner: string;
+    expires_at: string | null;
+    stale: boolean;
+  }>;
+  events_24h: Array<{ type: string; count: number }>;
+  auth_failed_24h: number;
+  audit_chain: { ok: boolean | null; rows_checked: number; broken_at: number | null; detail: string };
+  integrations: Record<string, unknown>;
+}
+
 export const api = {
   login: (organization_slug: string, email: string, password: string, totp?: string) =>
     request<{ access_token: string }>("/auth/login", {
@@ -316,6 +360,10 @@ export const api = {
       }),
     /** نمای کلی سازمان — فقط org.admin در بک‌اند مجاز است. */
     overview: () => request<AdminOverview>("/admin/overview"),
+    /** تحلیل‌های تفصیلی سازمان — فقط org.admin. */
+    analytics: () => request<AdminAnalytics>("/admin/analytics"),
+    /** مانیتورینگ سلامت سیستم — فقط org.admin. */
+    monitoring: () => request<AdminMonitoring>("/admin/monitoring"),
   },
   people: {
     list: (q?: string) =>
