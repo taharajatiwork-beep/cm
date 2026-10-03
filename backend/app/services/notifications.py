@@ -105,6 +105,6 @@ async def notify(
         )
     except Exception as exc:  # noqa: BLE001
         # Never break the core write path because of Telegram
-        _log.warning("telegram_enqueue_failed", event=event, error=str(exc))
+        _log.warning("telegram_enqueue_failed", notify_event=event, error=str(exc))
 
     return n

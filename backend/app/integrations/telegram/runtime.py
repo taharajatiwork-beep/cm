@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.core.timeutil import utc_now
+from app.core.timeutil import as_utc, utc_now
 from app.integrations.telegram.adapter import TelegramAdapter
 from app.integrations.telegram.callbacks import encode_callback
 from app.integrations.telegram.client import HttpTelegramClient, TelegramClient
@@ -180,7 +180,8 @@ async def _send_digests(db: AsyncSession) -> None:
         open_tasks = [t for t in tasks if t.status != TaskStatus.COMPLETED]
         late = 0
         for t in open_tasks:
-            if t.deadline and t.deadline < utc_now() and t.status != TaskStatus.COMPLETED:
+            deadline = as_utc(t.deadline)
+            if deadline is not None and deadline < utc_now() and t.status != TaskStatus.COMPLETED:
                 late += 1
         # Waiting messages approximate: skip heavy scan — use 0 if costly; light scan
         waiting = 0

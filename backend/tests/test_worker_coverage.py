@@ -381,3 +381,50 @@ class TestTelegramSetupAndDbLockDirect:
         owner = await try_acquire_db_lock("direct-db", 30)
         assert owner is not None
         await release_db_lock("direct-db", owner)
+
+
+class TestSlaAndDigest:
+    @pytest.mark.asyncio
+    async def test_digest_with_naive_deadline_does_not_crash(self, db_engine, seeded, monkeypatch):
+        """deadline بدون timezone (از SQLite) نباید حلقهٔ SLA/digest را بشکند.
+
+        رگرسیون: `_send_digests` زمانی `t.deadline < utc_now()` را مستقیم
+        مقایسه می‌کرد و با datetime ناآگاه TypeError می‌داد.
+        """
+        from datetime import datetime
+
+        from app.models import Task
+        from app.worker import run_sla_and_digest
+
+        session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
+        fake = FakeTelegramClient()
+        monkeypatch.setattr(
+            "app.integrations.telegram.runtime.build_clients", lambda: {"telegram": fake}
+        )
+        monkeypatch.setattr("app.worker.build_clients", lambda: {"telegram": fake})
+
+        ali = seeded["ali"]
+        async with session_factory() as db:
+            db.add(
+                TelegramAccount(
+                    organization_id=ali.organization_id,
+                    user_id=ali.id,
+                    provider="telegram",
+                    telegram_user_id=9002,
+                    telegram_chat_id=1002,
+                    digest_enabled=True,
+                )
+            )
+            db.add(
+                Task(
+                    organization_id=ali.organization_id,
+                    title="task with naive past deadline",
+                    owner_id=ali.id,
+                    deadline=datetime(2020, 1, 1, 12, 0),  # naive عمداً
+                )
+            )
+            await db.commit()
+
+        result = await run_sla_and_digest(session_factory)
+        assert result["digests_sent"] == 1
+        assert result["sla_evaluated"] >= 1
