@@ -119,7 +119,7 @@ export function PeoplePage() {
               <Bi en="Select a person." fa="یک نفر را انتخاب کنید." />
             </div>
           ) : (
-            <>
+            <div className="stack stack--roomy">
               <div className="person-head">
                 <Avatar name={String(selected.full_name)} size={46} />
                 <div className="grow">
@@ -220,7 +220,7 @@ export function PeoplePage() {
                   </div>
                 </>
               )}
-            </>
+            </div>
           )}
         </Card>
       </div>

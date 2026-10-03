@@ -49,8 +49,9 @@ _SCOPE_RANK = {"organization": 0, "branch": 1, "department": 2, "team": 3, "self
 
 
 async def load_data_scope(db: AsyncSession, user: User, permissions: set[str]) -> DataScopeContext:
+    del permissions  # admin permission does not widen the day-to-day scope
     level = "organization"
-    if PermissionCode.ORG_ADMIN not in permissions and user.role_id:
+    if user.role_id:
         rows = list(
             (
                 await db.execute(select(DataScope).where(DataScope.role_id == user.role_id))
@@ -64,7 +65,9 @@ async def load_data_scope(db: AsyncSession, user: User, permissions: set[str]) -
         branch_id=user.branch_id,
         department_id=user.department_id,
         team_id=user.team_id,
-        is_org_wide=level == "organization" or PermissionCode.ORG_ADMIN in permissions,
+        # org.admin opens the admin screens. Day-to-day lists still follow the
+        # role's data scope, so a sales manager does not see marketing work.
+        is_org_wide=level == "organization",
     )
 
 

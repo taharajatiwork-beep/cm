@@ -33,12 +33,12 @@ export function concept(en: "shared" | "followup" | "task" | "conversation" | "m
 export function ConceptHint({ kind }: { kind: "shared" | "followup" | "task" }) {
   const copy = {
     shared: {
-      en: "A project several people work on together.",
-      fa: "پروژه‌ای که چند نفر با هم جلو می‌برند.",
+      en: "A project is a shared job for several people in your section. A case tracks one subject. A campaign is only an ad.",
+      fa: "پروژه کار مشترکی است که چند نفر در بخش شما با هم جلو می‌برند. پرونده پیگیری یک موضوع است. کمپین فقط آگهی و تبلیغ است.",
     },
     followup: {
-      en: "A specific subject that needs tracking and an owner.",
-      fa: "موضوع مشخصی که باید پیگیری شود و مسئول داشته باشد.",
+      en: "A case tracks one subject — a customer, a branch request, a deadline. It is not the project and not the ad.",
+      fa: "پرونده پیگیری یک موضوع است: مشتری، درخواست شعبه، یا یک مهلت. پروژه نیست و آگهی هم نیست.",
     },
     task: {
       en: "One concrete action someone must finish.",

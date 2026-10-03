@@ -24,7 +24,7 @@ import { Bi, useBi } from "../i18n";
 import { nextCursor } from "../lib/pagination";
 import { queryKeys } from "../lib/queryKeys";
 import { DateText } from "../components/DateText";
-import { StatusLabel } from "../ux";
+import { ConceptHint, StatusLabel } from "../ux";
 
 const EVENT_LABELS: Record<string, [string, string]> = {
   "work_item.created": ["Project created", "پروژه ساخته شد"],
@@ -67,8 +67,8 @@ export function WorkItemsPage() {
         title={<Bi en="Projects" fa="پروژه‌ها" />}
         description={
           <Bi
-            en="Bigger jobs several people do together. Open one to see who does what and what’s next."
-            fa="کارهای بزرگ‌تری که چند نفر با هم انجام می‌دهند. یکی را باز کنید تا ببینید چه کسی چه می‌کند و قدم بعدی چیست."
+            en="Shared jobs in your section. You also see a project from another section only when you are on it."
+            fa="کارهای مشترک بخش شما. پروژهٔ بخش دیگر را فقط وقتی می‌بینید که خودتان در آن باشید."
           />
         }
         actions={
@@ -77,6 +77,7 @@ export function WorkItemsPage() {
           </Button>
         }
       />
+      <ConceptHint kind="shared" />
       <ErrorMessage error={error} />
       {listQuery.hasNextPage ? (
         <Button variant="secondary" onClick={() => void listQuery.fetchNextPage()}>

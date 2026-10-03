@@ -403,6 +403,40 @@ async def admin_overview(ctx: AuthContext = Depends(get_current_user), db: Async
     return data
 
 
+@router.get("/admin/messages")
+async def admin_messages(
+    days: int = 7,
+    q: str = "",
+    channel: str = "",
+    day: str = "",
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """فهرست پیام‌های اخیر برای پنجرهٔ جزئیات ادمین."""
+    _admin(ctx)
+    return await EnterpriseService(db).admin_messages(
+        ctx.organization_id, days=days, q=q, channel=channel, day=day
+    )
+
+
+@router.get("/admin/records")
+async def admin_records(
+    kind: str,
+    days: int = 7,
+    group: str = "",
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """ردیف‌های پشت کارت‌ها و نمودارهای ادمین."""
+    _admin(ctx)
+    try:
+        return await EnterpriseService(db).admin_records(
+            ctx.organization_id, kind=kind, days=days, group=group
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/admin/analytics")
 async def admin_analytics(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """تحلیل‌های تفصیلی سازمان — فقط برای دارندگان org.admin."""

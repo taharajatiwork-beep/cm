@@ -19,6 +19,7 @@ export type Me = {
   organization_id: string;
   role_id: string | null;
   branch_id: string | null;
+  department_id: string | null;
   team_id: string | null;
   permissions: string[];
   roleCode?: string;

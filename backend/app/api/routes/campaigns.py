@@ -103,6 +103,11 @@ async def get_campaign(
     row = await CampaignService(db).get(campaign_id)
     if not row or row.organization_id != ctx.organization_id:
         raise HTTPException(404, "Campaign not found")
+    from app.core.scope import row_is_visible
+    from app.models.campaign import Campaign
+
+    if not await row_is_visible(db, Campaign, campaign_id, ctx.organization_id, ctx.scope):
+        raise HTTPException(404, "Campaign not found")
     return row
 
 

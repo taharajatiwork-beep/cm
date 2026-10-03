@@ -1,7 +1,15 @@
 /**
  * نمودارهای سبک SVG/CSS — بدون وابستگی خارجی.
  * برای تب‌های «تحلیل‌ها» و «مانیتورینگ» صفحهٔ مدیریت.
+ * اگر یک نقطه `items` داشته باشد، نگه داشتن روی آن همان رکوردها را با لینک نشان می‌دهد.
  */
+import { Link } from "react-router-dom";
+
+export type ChartPoint = {
+  title: string;
+  href: string | null;
+  detail?: string;
+};
 
 const DONUT_COLORS = [
   "var(--accent)",
@@ -12,13 +20,31 @@ const DONUT_COLORS = [
   "#64748b",
 ];
 
+function PointPop({ items, series }: { items: ChartPoint[]; series?: string }) {
+  if (items.length === 0) return null;
+  return (
+    <span className="chart-tip-pop">
+      {series ? <span className="chart-tip-series">{series}</span> : null}
+      {items.map((item) =>
+        item.href ? (
+          <Link key={`${item.href}-${item.title}`} to={item.href} className="chart-tip-link">
+            {item.title}
+          </Link>
+        ) : (
+          <span key={item.title}>{item.title}</span>
+        ),
+      )}
+    </span>
+  );
+}
+
 /** نوارهای افقی — مناسب تفکیک‌ها (اولویت، وضعیت، نوع و…). RTL-دوست. */
 export function HBars({
   data,
   color = "var(--accent)",
   format,
 }: {
-  data: Array<{ label: string; value: number }>;
+  data: Array<{ label: string; value: number; items?: ChartPoint[] }>;
   color?: string;
   format?: (v: number) => string;
 }) {
@@ -29,7 +55,13 @@ export function HBars({
   return (
     <div className="chart-hbars">
       {data.map((d) => (
-        <div key={d.label} className="chart-hbar-row" title={`${d.label}: ${d.value}`}>
+        <div
+          key={d.label}
+          className={d.items && d.items.length > 0 ? "chart-hbar-row chart-tip" : "chart-hbar-row"}
+          tabIndex={d.items && d.items.length > 0 ? 0 : undefined}
+          title={d.items && d.items.length > 0 ? undefined : `${d.label}: ${d.value}`}
+        >
+          {d.items && d.items.length > 0 ? <PointPop items={d.items} /> : null}
           <span className="chart-hbar-label">{d.label}</span>
           <span className="chart-hbar-track">
             <span
@@ -54,7 +86,7 @@ export function GroupedBars({
   colors = ["var(--accent)", "var(--ok)"],
   height = 150,
 }: {
-  data: Array<{ label: string; values: number[] }>;
+  data: Array<{ label: string; values: number[]; items?: ChartPoint[][] }>;
   legend?: string[];
   colors?: string[];
   height?: number;
@@ -76,8 +108,35 @@ export function GroupedBars({
         </div>
       ) : null}
       <div className="chart-grouped-rows">
-        {data.map((d) => (
-          <div key={d.label} className="chart-col">
+        {data.map((d) => {
+          const groups = (d.items ?? []).map((rows, i) => ({
+            series: legend?.[i],
+            rows,
+          })).filter((group) => group.rows.length > 0);
+          return (
+          <div
+            key={d.label}
+            className={groups.length > 0 ? "chart-col chart-tip" : "chart-col"}
+            tabIndex={groups.length > 0 ? 0 : undefined}
+          >
+            {groups.length > 0 ? (
+              <span className="chart-tip-pop">
+                {groups.map((group) => (
+                  <span key={group.series ?? "all"} className="chart-tip-group">
+                    {group.series ? <span className="chart-tip-series">{group.series}</span> : null}
+                    {group.rows.map((item) =>
+                      item.href ? (
+                        <Link key={`${item.href}-${item.title}`} to={item.href} className="chart-tip-link">
+                          {item.title}
+                        </Link>
+                      ) : (
+                        <span key={item.title}>{item.title}</span>
+                      ),
+                    )}
+                  </span>
+                ))}
+              </span>
+            ) : null}
             <span className="chart-group">
               {d.values.map((v, i) => (
                 <span
@@ -93,7 +152,8 @@ export function GroupedBars({
             </span>
             <span className="chart-col-label mono">{d.label}</span>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -107,7 +167,7 @@ export function Donut({
   caption,
   format,
 }: {
-  data: Array<{ label: string; value: number }>;
+  data: Array<{ label: string; value: number; items?: ChartPoint[] }>;
   size?: number;
   centerLabel?: string;
   caption?: string;
@@ -152,9 +212,14 @@ export function Donut({
       </div>
       <ul className="chart-donut-legend">
         {data.map((d, i) => (
-          <li key={d.label}>
+          <li
+            key={d.label}
+            className={d.items && d.items.length > 0 ? "chart-tip" : undefined}
+            tabIndex={d.items && d.items.length > 0 ? 0 : undefined}
+          >
+            {d.items && d.items.length > 0 ? <PointPop items={d.items} /> : null}
             <i style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-            <span className="mono">{d.label}</span>
+            <span>{d.label}</span>
             <b>{format ? format(d.value) : d.value}</b>
           </li>
         ))}

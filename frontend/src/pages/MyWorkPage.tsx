@@ -63,8 +63,8 @@ export function MyWorkPage() {
   const pct = tasks.length ? Math.round((doneTasks / tasks.length) * 100) : 0;
 
   const description = bi(
-    "Everything you need to do, in one list. Finish one, tick the circle, move to the next.",
-    "همه کارهایی که باید انجام دهید در یک فهرست. هر کار را که تمام کردید، دایره‌اش را بزنید و سراغ بعدی بروید.",
+    "Your own jobs, and the projects of your section. Another section’s work stays there unless you are on it.",
+    "کارهای خودتان و پروژه‌های بخش شما. کار بخش دیگر را نمی‌بینید، مگر اینکه خودتان در آن باشید.",
   );
 
   function TaskRow({ t, late }: { t: Row; late?: boolean }) {

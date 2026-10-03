@@ -27,6 +27,7 @@ import {
   priorityLabel,
   slaStateLabel,
 } from "../labels";
+import { ConceptHint } from "../ux";
 
 /** ترتیب نمایش وضعیت‌ها — هر هشت مقدار CaseStatus در enums.py را پوشش می‌دهد. */
 const STATUS_ORDER = [
@@ -149,11 +150,12 @@ export function CasesPage() {
         title={<Bi en="Cases" fa="پرونده‌ها" />}
         description={
           <Bi
-            en="Follow-up records with deadlines and an audit timeline."
-            fa="پرونده‌های پیگیری با مهلت و تایم‌لاین ممیزی."
+            en="One subject to track in your section: a customer, a branch request, or a deadline. Not the project, and not an ad."
+            fa="یک موضوع برای پیگیری در بخش شما: مشتری، درخواست شعبه، یا یک مهلت. پروژه نیست و آگهی هم نیست."
           />
         }
       />
+      <ConceptHint kind="followup" />
 
       <ErrorMessage
         error={
@@ -290,7 +292,7 @@ export function CasesPage() {
               bodyFa="تایم‌لاین و جزئیات پروندهٔ انتخاب‌شده اینجا نمایش داده می‌شود."
             />
           ) : (
-            <>
+            <div className="stack stack--roomy">
               <SectionHeader
                 icon="briefcase"
                 title={<span className="row-title">{String(current?.subject ?? "…")}</span>}
@@ -390,7 +392,7 @@ export function CasesPage() {
                   ))}
                 </ul>
               )}
-            </>
+            </div>
           )}
         </Card>
       </div>

@@ -30,9 +30,15 @@ class CampaignService:
         vehicle_id: UUID | None = None,
         work_item_id: UUID | None = None,
         branch_id: UUID | None = None,
+        department_id: UUID | None = None,
         team_id: UUID | None = None,
     ) -> Campaign:
         require_permission(actor_permissions, PermissionCode.CAMPAIGN_WRITE)
+        if department_id is None:
+            from app.models import User
+
+            owner = await self.db.get(User, owner_id or actor_id)
+            department_id = owner.department_id if owner else None
         row = Campaign(
             organization_id=organization_id,
             title=title.strip(),
@@ -43,6 +49,7 @@ class CampaignService:
             vehicle_id=vehicle_id,
             work_item_id=work_item_id,
             branch_id=branch_id,
+            department_id=department_id,
             team_id=team_id,
             created_by=actor_id,
         )

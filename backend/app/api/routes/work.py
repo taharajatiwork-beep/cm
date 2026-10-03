@@ -100,6 +100,10 @@ async def list_messages(
     conv = await db.get(Conversation, conversation_id)
     if not conv or conv.organization_id != ctx.organization_id:
         raise HTTPException(404, "Conversation not found")
+    from app.core.scope import row_is_visible
+
+    if not await row_is_visible(db, Conversation, conversation_id, ctx.organization_id, ctx.scope):
+        raise HTTPException(404, "Conversation not found")
     return await CommunicationService(db).list_messages(conversation_id)
 
 
@@ -142,6 +146,10 @@ async def get_work_item(
     wi = await db.get(WorkItem, work_item_id)
     if not wi or wi.organization_id != ctx.organization_id:
         raise HTTPException(404, "Work item not found")
+    from app.core.scope import row_is_visible
+
+    if not await row_is_visible(db, WorkItem, work_item_id, ctx.organization_id, ctx.scope):
+        raise HTTPException(404, "Work item not found")
     return wi
 
 
@@ -159,6 +167,10 @@ async def work_item_progress(
 
     wi = await db.get(WorkItem, work_item_id)
     if not wi or wi.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Work item not found")
+    from app.core.scope import row_is_visible
+
+    if not await row_is_visible(db, WorkItem, work_item_id, ctx.organization_id, ctx.scope):
         raise HTTPException(404, "Work item not found")
     try:
         data = await WorkService(db).work_item_progress(work_item_id)

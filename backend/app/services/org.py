@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.permissions import PermissionCode
-from app.core.scope import DataScopeContext, apply_scope
+from app.core.scope import DataScopeContext
 from app.core.security import hash_password, validate_password, verify_password
 from app.models import (
     Branch,
@@ -270,13 +270,13 @@ class OrgService:
         q: str | None = None,
         scope: DataScopeContext | None = None,
     ) -> list[User]:
+        del scope  # names must resolve across sections; work lists stay scoped
         stmt = (
             select(User)
             .options(selectinload(User.role))
             .where(User.organization_id == organization_id, User.is_active.is_(True))
             .order_by(User.full_name)
         )
-        stmt = apply_scope(stmt, User, scope)
         if q:
             like = f"%{q}%"
             stmt = stmt.where((User.full_name.ilike(like)) | (User.email.ilike(like)))

@@ -53,6 +53,7 @@ async def test_admin_analytics_payload_for_admin(client: AsyncClient, seeded, db
         "audit_daily_7d",
         "top_actions",
         "login_failed_7d",
+        "needs_attention",
         "as_of_jalali",
     ):
         assert key in data, key
@@ -66,6 +67,51 @@ async def test_admin_analytics_payload_for_admin(client: AsyncClient, seeded, db
     assert all(set(d) == {"day", "count"} for d in data["messages_daily"])
     assert isinstance(data["tasks_by_priority"], dict)
     assert isinstance(data["cases_by_type"], dict)
+    assert isinstance(data["needs_attention"], list)
+    for item in data["needs_attention"]:
+        assert {"kind", "title", "entity_type", "entity_id"} <= set(item)
+
+
+@pytest.mark.asyncio
+async def test_admin_messages_requires_org_admin(client: AsyncClient, seeded, db):
+    token = await login(client, "ali@autoco.example")
+    r = await client.get("/admin/messages", headers=auth(token))
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_messages_for_admin(client: AsyncClient, seeded, db):
+    token = await _org_admin(client, seeded, db)
+    r = await client.get("/admin/messages?days=7&channel=WEB", headers=auth(token))
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert isinstance(rows, list)
+    for row in rows:
+        assert {"id", "text", "at", "channel", "conversation_id", "sender", "topic"} <= set(row)
+        assert row["channel"] == "WEB"
+    bad = await client.get("/admin/messages?channel=NOPE", headers=auth(token))
+    assert bad.status_code == 200
+    assert bad.json() == []
+
+
+@pytest.mark.asyncio
+async def test_admin_records_requires_org_admin(client: AsyncClient, seeded, db):
+    token = await login(client, "ali@autoco.example")
+    r = await client.get("/admin/records?kind=users", headers=auth(token))
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_records_for_admin(client: AsyncClient, seeded, db):
+    token = await _org_admin(client, seeded, db)
+    r = await client.get("/admin/records?kind=users", headers=auth(token))
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert isinstance(rows, list)
+    assert rows
+    assert {"title", "detail", "entity_type", "facets"} <= set(rows[0])
+    bad = await client.get("/admin/records?kind=nope", headers=auth(token))
+    assert bad.status_code == 400
 
 
 @pytest.mark.asyncio
@@ -88,6 +134,7 @@ async def test_admin_monitoring_payload_for_admin(client: AsyncClient, seeded, d
         "outbox",
         "job_locks",
         "events_24h",
+        "recent_events",
         "auth_failed_24h",
         "audit_chain",
         "integrations",

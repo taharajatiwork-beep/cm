@@ -306,8 +306,8 @@ export function CommunicationPage() {
   }
 
   const roleLine = bi(
-    "Talk with colleagues. Start with “Waiting for my reply”, pick a message on the list and answer it.",
-    "گفتگو با همکاران. از «منتظر جواب من» شروع کنید، یک پیام را از فهرست انتخاب کنید و جواب بدهید.",
+    "Messages in your section, plus any thread you were added to. Ads live under campaigns, not inside projects.",
+    "پیام‌های بخش شما، به‌اضافهٔ گفتگویی که خودتان در آن هستید. آگهی‌ها زیر کمپین است، نه داخل پروژه.",
   );
 
   const visibleSections = sections.filter((s) => {

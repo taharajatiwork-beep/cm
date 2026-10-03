@@ -40,6 +40,14 @@ class WorkService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def _department_for(self, user_id: UUID | None) -> UUID | None:
+        if not user_id:
+            return None
+        from app.models import User
+
+        user = await self.db.get(User, user_id)
+        return user.department_id if user else None
+
     async def create_work_item(
         self,
         *,
@@ -49,11 +57,14 @@ class WorkService:
         description: str | None = None,
         priority: Priority = Priority.MEDIUM,
         branch_id: UUID | None = None,
+        department_id: UUID | None = None,
         vehicle_id: UUID | None = None,
         customer_id: UUID | None = None,
         deadline: datetime | None = None,
         participant_ids: list[UUID] | None = None,
     ) -> WorkItem:
+        if department_id is None:
+            department_id = await self._department_for(owner_id)
         wi = WorkItem(
             organization_id=organization_id,
             title=title,
@@ -61,6 +72,7 @@ class WorkService:
             owner_id=owner_id,
             priority=priority,
             branch_id=branch_id,
+            department_id=department_id,
             vehicle_id=vehicle_id,
             customer_id=customer_id,
             deadline=deadline,
@@ -103,6 +115,7 @@ class WorkService:
         owner_id: UUID | None = None,
         priority: Priority = Priority.MEDIUM,
         branch_id: UUID | None = None,
+        department_id: UUID | None = None,
         vehicle_id: UUID | None = None,
         customer_id: UUID | None = None,
         deadline: datetime | None = None,
@@ -116,6 +129,11 @@ class WorkService:
             .where(CommunicationCase.organization_id == organization_id)
         )
         case_number = f"C-{(existing or 0) + 1:05d}"
+        if department_id is None and work_item_id:
+            parent = await self.db.get(WorkItem, work_item_id)
+            department_id = parent.department_id if parent else None
+        if department_id is None:
+            department_id = await self._department_for(owner_id or created_by)
         case = CommunicationCase(
             case_number=case_number,
             organization_id=organization_id,
@@ -127,6 +145,7 @@ class WorkService:
             created_by=created_by,
             owner_id=owner_id,
             branch_id=branch_id,
+            department_id=department_id,
             vehicle_id=vehicle_id,
             customer_id=customer_id,
             deadline=deadline,

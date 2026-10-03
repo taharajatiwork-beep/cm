@@ -10,7 +10,9 @@ Creates org + people if missing (same passwords as tests: password).
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -25,9 +27,11 @@ from app.models.campaign import Campaign
 from app.models.enums import (
     AssignmentTargetType,
     CampaignStatus,
+    CaseStatus,
     CaseType,
     Channel,
     Priority,
+    SlaState,
     RelationshipType,
     VehicleStatus,
 )
@@ -59,6 +63,14 @@ async def _ensure_schema() -> None:
                 cols = {c["name"] for c in insp.get_columns("conversations")}
                 if "campaign_id" not in cols:
                     sync_conn.execute(text("ALTER TABLE conversations ADD COLUMN campaign_id CHAR(36)"))
+
+            for table in ("work_items", "cases", "campaigns"):
+                if table in tables:
+                    cols = {c["name"] for c in insp.get_columns(table)}
+                    if "department_id" not in cols:
+                        sync_conn.execute(
+                            text(f"ALTER TABLE {table} ADD COLUMN department_id CHAR(36)")
+                        )
 
             if "vehicles" in tables:
                 vcols = {c["name"] for c in insp.get_columns("vehicles")}
@@ -129,13 +141,14 @@ async def _ensure_org(db) -> dict:
             return row
         return await svc.create_role(org.id, name, code, perms, scope)
 
-    branch = await get_or_create_branch("تهران / Tehran", "THR", "Tehran")
-    mashhad = await get_or_create_branch("مشهد / Mashhad", "MHD", "Mashhad")
-    sales_dept = await get_or_create_dept("فروش / Sales", "SALES")
-    mkt_dept = await get_or_create_dept("بازاریابی / Marketing", "MKT")
-    ops_dept = await get_or_create_dept("عملیات / Operations", "OPS")
-    sales_team = await get_or_create_team("تیم فروش الف", "SALES_T", sales_dept.id)
-    mkt_team = await get_or_create_team("تیم مارکتینگ", "MKT_T", mkt_dept.id)
+    branch = await get_or_create_branch("شعبهٔ تهران", "THR", "تهران")
+    mashhad = await get_or_create_branch("شعبهٔ مشهد", "MHD", "مشهد")
+    sales_dept = await get_or_create_dept("فروش", "SALES")
+    mkt_dept = await get_or_create_dept("بازاریابی", "MKT")
+    ops_dept = await get_or_create_dept("عملیات", "OPS")
+    await get_or_create_dept("مالی", "FIN")
+    sales_team = await get_or_create_team("تیم فروش تهران", "SALES_T", sales_dept.id)
+    mkt_team = await get_or_create_team("تیم بازاریابی", "MKT_T", mkt_dept.id)
 
     await get_or_create_role(
         "Admin", "admin", [p.value for p in PermissionCode], "organization"
@@ -144,6 +157,7 @@ async def _ensure_org(db) -> dict:
         "Manager",
         "manager",
         [
+            PC.ORG_ADMIN,
             PC.USER_READ,
             PC.USER_WRITE,
             PC.RELATIONSHIP_WRITE,
@@ -347,24 +361,24 @@ async def _ensure_campaigns(db, ctx) -> int:
     created = 0
     demos = [
         {
-            "title": "کمپین آگهی Tucson #440",
-            "description": "آگهی دیوار و اینستاگرام برای توسان انبار #440",
+            "title": "آگهی هیوندای توسان، شماره ۴۴۰",
+            "description": "آگهی دیوار و شبکهٔ اجتماعی برای توسان موجود در شعبهٔ تهران.",
             "status": CampaignStatus.ACTIVE,
             "channel": Channel.WEB,
-            "topic": "هماهنگی کمپین Tucson #440",
+            "topic": "هماهنگی آگهی هیوندای توسان",
             "messages": [
-                (ali.id, "سارا کمپین توسان رو شروع کن؛ عکس و کپشن فارسی لازم داریم."),
-                (sara.id, "لیست کمپین رو دیدم — پیش‌نویس آگهی تا فردا آماده می‌شه."),
+                (sara.id, "آگهی توسان را شروع می‌کنم. برای انتشار به عکس واضح و یک کپشن فارسی نیاز داریم."),
+                (sara.id, "فهرست را دیدم. پیش‌نویس آگهی را تا فردا آماده می‌کنم و برای تأیید می‌فرستم."),
             ],
         },
         {
-            "title": "کمپین نوروزی موجودی تهران",
-            "description": "پکیج تبلیغاتی نوروز برای خودروهای موجود شعبه تهران",
+            "title": "تبلیغات نوروزی موجودی شعبهٔ تهران",
+            "description": "برنامهٔ تبلیغاتی نوروز برای خودروهایی که همین حالا در شعبهٔ تهران موجودند.",
             "status": CampaignStatus.DRAFT,
             "channel": Channel.WEB,
-            "topic": "برنامه‌ریزی کمپین نوروزی",
+            "topic": "برنامهٔ تبلیغات نوروزی",
             "messages": [
-                (sara.id, "برای نوروز لیست کمپین‌ها رو مرور کنیم و بودجه را قطعی کنیم."),
+                (sara.id, "برای نوروز بهتر است اول موجودی تهران را مرور کنیم و بعد بودجهٔ تبلیغات را قطعی کنیم."),
             ],
         },
     ]
@@ -390,7 +404,7 @@ async def _ensure_campaigns(db, ctx) -> int:
             status=demo["status"],
             channel=demo["channel"],
             owner_id=sara.id,
-            vehicle_id=tucson.id if tucson and "Tucson" in demo["title"] else None,
+            vehicle_id=tucson.id if tucson and "توسان" in demo["title"] else None,
             branch_id=branch.id,
             team_id=mkt_team.id if mkt_team else None,
             actor_id=ali.id,
@@ -399,7 +413,7 @@ async def _ensure_campaigns(db, ctx) -> int:
         conv = await comm.create_conversation(
             organization_id=org.id,
             channel=Channel.WEB,
-            participant_ids=[ali.id, sara.id],
+            participant_ids=[sara.id],
             topic=demo["topic"],
             campaign_id=camp.id,
             vehicle_id=camp.vehicle_id,
@@ -419,6 +433,116 @@ async def _ensure_campaigns(db, ctx) -> int:
     return created
 
 
+def _marketing_title(title: str) -> bool:
+    text = title or ""
+    return "توسان" in text or "آگهی" in text or "تبلیغ" in text or "کمپین" in text
+
+
+async def _stamp_sections(db, ctx) -> int:
+    """Put each existing project, case and campaign in its department.
+
+    Marketing work stays with Sara. Everything else in this demo is sales.
+    Ali is removed from marketing items so the sales home does not list them.
+    """
+    from sqlalchemy import delete
+
+    from app.models import CommunicationCase, Conversation, Task, WorkItem, WorkItemParticipant
+    from app.models.campaign import Campaign
+
+    org = ctx["org"]
+    ali, sara = ctx["ali"], ctx["sara"]
+    sales_id = ali.department_id
+    mkt_id = sara.department_id
+    if not sales_id or not mkt_id:
+        return 0
+
+    work_items = list(
+        (
+            await db.scalars(select(WorkItem).where(WorkItem.organization_id == org.id))
+        ).all()
+    )
+    changed = 0
+    marketing_ids: set = set()
+    for wi in work_items:
+        if _marketing_title(wi.title):
+            marketing_ids.add(wi.id)
+            if wi.department_id != mkt_id or wi.owner_id != sara.id:
+                wi.department_id = mkt_id
+                wi.owner_id = sara.id
+                changed += 1
+        elif wi.department_id is None:
+            wi.department_id = sales_id
+            changed += 1
+
+    if marketing_ids:
+        await db.execute(
+            delete(WorkItemParticipant).where(
+                WorkItemParticipant.work_item_id.in_(marketing_ids),
+                WorkItemParticipant.user_id == ali.id,
+            )
+        )
+        tasks = list(
+            (
+                await db.scalars(select(Task).where(Task.work_item_id.in_(marketing_ids)))
+            ).all()
+        )
+        for task in tasks:
+            if task.owner_id == ali.id:
+                task.owner_id = sara.id
+                changed += 1
+
+    cases = list(
+        (
+            await db.scalars(
+                select(CommunicationCase).where(CommunicationCase.organization_id == org.id)
+            )
+        ).all()
+    )
+    work_by_id = {wi.id: wi for wi in work_items}
+    for case in cases:
+        parent = work_by_id.get(case.work_item_id) if case.work_item_id else None
+        target = parent.department_id if parent and parent.department_id else sales_id
+        if case.department_id != target:
+            case.department_id = target
+            changed += 1
+
+    campaigns = list(
+        (await db.scalars(select(Campaign).where(Campaign.organization_id == org.id))).all()
+    )
+    campaign_ids = []
+    for camp in campaigns:
+        campaign_ids.append(camp.id)
+        if camp.department_id != mkt_id or camp.owner_id != sara.id:
+            camp.department_id = mkt_id
+            camp.owner_id = sara.id
+            changed += 1
+
+    if campaign_ids or marketing_ids:
+        convs = list(
+            (
+                await db.scalars(
+                    select(Conversation).where(Conversation.organization_id == org.id)
+                )
+            ).all()
+        )
+        from app.models import ConversationParticipant
+
+        hide_ids = [
+            conv.id
+            for conv in convs
+            if conv.campaign_id in campaign_ids or conv.work_item_id in marketing_ids
+        ]
+        if hide_ids:
+            await db.execute(
+                delete(ConversationParticipant).where(
+                    ConversationParticipant.conversation_id.in_(hide_ids),
+                    ConversationParticipant.user_id == ali.id,
+                )
+            )
+    await db.flush()
+    return changed
+
+
 _VEHICLE_DETAIL_SEED: dict[str, dict] = {
     "124": {
         "trim": "LE",
@@ -434,10 +558,10 @@ _VEHICLE_DETAIL_SEED: dict[str, dict] = {
         "exterior_condition": "خوب — خط جزئی گلگیر",
         "interior_condition": "عالی",
         "description": (
-            "تویوتا کمری ۲۰۲۰ سفید، کارکرد ۴۵ هزار، سرویس منظم نمایندگی. "
-            "مناسب خانواده؛ آماده تحویل از شعبه تهران."
+            "تویوتا کمری ۲۰۲۰، سفید، کارکرد ۴۵ هزار کیلومتر. سرویس‌ها در نمایندگی انجام شده "
+            "و خودرو آمادهٔ تحویل از شعبهٔ تهران است. برای خانواده مناسب است."
         ),
-        "notes": "کلید یدک و دفترچه سرویس موجود است.",
+        "notes": "کلید یدک و دفترچهٔ سرویس همراه خودرو است.",
     },
     "210": {
         "trim": "Smart",
@@ -452,10 +576,10 @@ _VEHICLE_DETAIL_SEED: dict[str, dict] = {
         "exterior_condition": "عالی",
         "interior_condition": "خوب",
         "description": (
-            "هیوندای النترا ۲۰۲۱ نقره‌ای با کارکرد پایین. "
-            "مصرف اقتصادی؛ مناسب استفاده شهری و بین‌شهری."
+            "هیوندای النترا ۲۰۲۱، نقره‌ای، کارکرد پایین. مصرفش برای شهر و مسیر بین‌شهری مناسب است "
+            "و بدنه در وضعیت عالی است."
         ),
-        "notes": "یک بار رنگ گلگیر عقب.",
+        "notes": "گلگیر عقب یک بار رنگ شده است.",
     },
     "307": {
         "trim": "پانوراما",
@@ -471,10 +595,10 @@ _VEHICLE_DETAIL_SEED: dict[str, dict] = {
         "exterior_condition": "متوسط — خط درب راننده",
         "interior_condition": "خوب",
         "description": (
-            "پژو ۲۰۷ ۲۰۱۹ قرمز، سقف پانوراما. رزرو شده برای مشتری مشهد؛ "
-            "قبل از تحویل کارشناسی مجدد انجام شود."
+            "پژو ۲۰۷ مدل ۲۰۱۹، قرمز، با سقف پانوراما. برای مشتری شعبهٔ مشهد رزرو شده است. "
+            "پیش از تحویل باید دوباره کارشناسی شود."
         ),
-        "notes": "رزرو تا پایان هفته؛ هماهنگی با شعبه مشهد.",
+        "notes": "رزرو تا پایان هفته معتبر است. انتقال را با شعبهٔ مشهد هماهنگ کنید.",
     },
     "440": {
         "trim": "Premium",
@@ -489,10 +613,10 @@ _VEHICLE_DETAIL_SEED: dict[str, dict] = {
         "exterior_condition": "عالی",
         "interior_condition": "عالی",
         "description": (
-            "هیوندای توسان ۲۰۲۲ مشکی پرمیوم، کارکرد ۱۸ هزار. "
-            "آپشن کامل؛ مناسب نمایشگاه و مشتری سازمانی."
+            "هیوندای توسان ۲۰۲۲، مشکی، تیپ پرمیوم، کارکرد ۱۸ هزار کیلومتر. آپشن کامل است "
+            "و هم برای نمایشگاه و هم برای مشتری سازمانی مناسب است."
         ),
-        "notes": "گارانتی کارخانه تا ۱۴۰۵/۰۶.",
+        "notes": "گارانتی کارخانه تا شهریور ۱۴۰۵ برقرار است.",
     },
 }
 
@@ -516,7 +640,252 @@ async def _enrich_vehicle_details(db, organization_id) -> int:
     return updated
 
 
-async def seed() -> dict:
+async def _cover_operations(
+    db,
+    *,
+    org,
+    ali,
+    reza,
+    sara,
+    nima,
+    maryam,
+    viewer,
+    branch,
+    now,
+    perms,
+    work,
+    inv,
+    kb,
+    elantra,
+    case_mashhad,
+    t_done,
+    **_unused,
+) -> None:
+    """بخش‌هایی که در داستان اصلی نیستند: موجودی کهنه، پیگیری بسته‌شده، تأیید، دیوار و روند هفتگی."""
+    import json
+
+    from app.models.divar import DivarListing
+    from app.models.enterprise import KpiSnapshot
+    from app.models.enums import CaseStatus, CaseType, Priority, SlaState, VehicleStatus
+    from app.models.telegram import TelegramOutbox
+    from app.services import write_audit
+    from app.services.enterprise_ops import EnterpriseService
+
+    aged = await inv.create_vehicle(
+        organization_id=org.id,
+        vin="NAS11100000000090",
+        brand="سایپا",
+        model="ساینا",
+        year=2018,
+        actor_id=ali.id,
+        actor_permissions=perms,
+        stock_number="090",
+        color="سفید",
+        mileage=142000,
+        sale_price=420_000_000,
+        purchase_price=390_000_000,
+        branch_id=branch.id,
+        status=VehicleStatus.IN_STOCK,
+        body_type="هاچ‌بک",
+        transmission="دستی",
+        fuel_type="بنزین",
+        description=(
+            "سایپا ساینا ۱۳۹۷، سفید. بیش از سه ماه در انبار تهران مانده است "
+            "و برای فروش یا انتقال به شعبهٔ دیگر نیاز به تصمیم دارد."
+        ),
+        notes="کارکرد بالا است. پیش از آگهی، قیمت را دوباره بررسی کنید.",
+    )
+    aged.created_at = now - timedelta(days=120)
+
+    sold = await inv.create_vehicle(
+        organization_id=org.id,
+        vin="IRN55100000000551",
+        brand="ایران‌خودرو",
+        model="دنا پلاس",
+        year=2021,
+        actor_id=ali.id,
+        actor_permissions=perms,
+        stock_number="551",
+        color="مشکی",
+        mileage=61000,
+        sale_price=980_000_000,
+        purchase_price=910_000_000,
+        branch_id=branch.id,
+        status=VehicleStatus.SOLD,
+        body_type="سدان",
+        transmission="اتوماتیک",
+        fuel_type="بنزین",
+        description="ایران‌خودرو دنا پلاس ۱۴۰۰، مشکی. این خودرو فروخته شده و از انبار خارج شده است.",
+        notes="تحویل به خریدار انجام شده است.",
+    )
+    sold.created_at = now - timedelta(days=40)
+
+    follow = await work.create_case(
+        organization_id=org.id,
+        subject="پیگیری تست‌درایو هیوندای النترا برای فاطمه رضایی",
+        case_type=CaseType.FOLLOW_UP,
+        created_by=reza.id,
+        owner_id=reza.id,
+        priority=Priority.MEDIUM,
+        branch_id=branch.id,
+        vehicle_id=elantra.id,
+        customer_id=_unused.get("c2").id if _unused.get("c2") is not None else None,
+        deadline=now - timedelta(days=1),
+    )
+    await work.update_case(
+        organization_id=org.id,
+        case_id=follow.id,
+        actor_id=reza.id,
+        status=CaseStatus.COMPLETED,
+    )
+    follow.created_at = now - timedelta(days=6)
+    follow.closed_at = now - timedelta(days=2)
+
+    opportunity = await work.create_case(
+        organization_id=org.id,
+        subject="تصمیم دربارهٔ ساینا ۰۹۰ که در انبار مانده است",
+        case_type=CaseType.INVENTORY_OPPORTUNITY,
+        created_by=ali.id,
+        owner_id=nima.id,
+        priority=Priority.HIGH,
+        branch_id=branch.id,
+        vehicle_id=aged.id,
+        deadline=now - timedelta(days=3),
+    )
+    opportunity.sla_state = SlaState.BREACHED
+
+    case_mashhad.deadline = now - timedelta(days=1)
+    case_mashhad.sla_state = SlaState.BREACHED
+
+    if t_done.completed_at:
+        t_done.completed_at = now - timedelta(days=3)
+        t_done.created_at = now - timedelta(days=5)
+
+    await EnterpriseService(db).request_approval(
+        organization_id=org.id,
+        requester_id=reza.id,
+        kind="price_change",
+        title="تخفیف برای تویوتا کمری ۱۲۴",
+        payload={
+            "stock_number": "124",
+            "reason": "حسین احمدی برای قطعی کردن خرید، تخفیف محدود خواسته است.",
+        },
+        approver_ids=[ali.id],
+    )
+    if maryam is not None:
+        await EnterpriseService(db).request_approval(
+            organization_id=org.id,
+            requester_id=maryam.id,
+            kind="transfer",
+            title="انتقال پژو ۲۰۷ قرمز به شعبهٔ مشهد",
+            payload={
+                "stock_number": "307",
+                "reason": "مشتری شعبهٔ مشهد آمادهٔ تحویل است و خودرو باید از تهران منتقل شود.",
+            },
+            approver_ids=[ali.id],
+        )
+
+    from app.models.knowledge import DocumentCategory
+
+    await kb.upload(
+        organization_id=org.id,
+        uploaded_by=ali.id,
+        title="قاعدهٔ تغییر قیمت",
+        category=DocumentCategory.SALES_RULES,
+        content=(
+            "تغییر قیمت فروش\n"
+            "\n"
+            "۱. قیمت روی کارت خودرو، همان قیمتی است که به مشتری گفته می‌شود.\n"
+            "۲. تخفیف بیشتر از دو درصد فقط با تأیید مدیر ممکن است.\n"
+            "۳. درخواست تخفیف را در بخش تأییدها ثبت کنید و دلیل را همان‌جا بنویسید.\n"
+            "۴. تا پیش از تأیید، قیمت قبلی را به مشتری اعلام کنید.\n"
+        ),
+        filename="sales-price.txt",
+        content_type="text/plain",
+        actor_permissions=perms,
+    )
+    await kb.upload(
+        organization_id=org.id,
+        uploaded_by=ali.id,
+        title="قاعدهٔ انتقال بین شعب",
+        category=DocumentCategory.BRANCH_RULES,
+        content=(
+            "انتقال خودرو بین شعب\n"
+            "\n"
+            "۱. شعبهٔ درخواست‌کننده یک پیگیری با موضوع انتقال ثبت می‌کند.\n"
+            "۲. شعبهٔ مبدأ موجود بودن خودرو و وضعیت رزرو را بررسی می‌کند.\n"
+            "۳. انتقال فقط پس از تأیید مدیر انجام می‌شود.\n"
+            "۴. تا پیش از رسیدن خودرو، آن را فروخته‌شده ثبت نکنید.\n"
+        ),
+        filename="branch-transfer.txt",
+        content_type="text/plain",
+        actor_permissions=perms,
+    )
+
+    db.add(
+        DivarListing(
+            organization_id=org.id,
+            vehicle_id=elantra.id,
+            created_by=sara.id,
+            divar_product_id="demo-elantra-210",
+            title="آگهی هیوندای النترا، شماره ۲۱۰",
+            status="synced",
+            last_error="عکس اصلی آگهی بارگذاری نشد. تصویر را دوباره بفرستید و سپس آگهی را منتشر کنید.",
+        )
+    )
+    db.add(
+        TelegramOutbox(
+            organization_id=org.id,
+            user_id=reza.id,
+            provider="telegram",
+            event_type="task.assigned",
+            text="بررسی انتقال پژو ۲۰۷ به مشهد به شما سپرده شد.",
+            entity_type="task",
+            status="failed",
+            last_error="پیام به تلگرام نرسید، چون حساب رضا هنوز به ربات وصل نشده است.",
+            attempts=2,
+        )
+    )
+    for weeks_ago, open_tasks, vehicles, cases in (
+        (7, 4, 5, 2),
+        (6, 5, 5, 2),
+        (5, 5, 6, 3),
+        (4, 6, 6, 3),
+        (3, 6, 6, 4),
+        (2, 7, 6, 4),
+        (1, 7, 6, 5),
+        (0, 7, 6, 5),
+    ):
+        snap = KpiSnapshot(
+            organization_id=org.id,
+            payload_json=json.dumps(
+                {
+                    "open_tasks": open_tasks,
+                    "vehicles": vehicles,
+                    "cases": cases,
+                    "work_items": 4,
+                }
+            ),
+        )
+        snap.created_at = now - timedelta(days=7 * weeks_ago)
+        db.add(snap)
+
+    await write_audit(
+        db,
+        organization_id=org.id,
+        actor_id=viewer.id,
+        action="auth.login_failed",
+        entity_type="user",
+        entity_id=viewer.id,
+        details={"reason": "رمز عبور نادرست بود."},
+    )
+    await db.flush()
+
+
+async def seed(*, reset: bool = False) -> dict:
+    if reset:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
     await _ensure_schema()
     async with AsyncSessionLocal() as db:
         ctx = await _ensure_org(db)
@@ -534,6 +903,7 @@ async def seed() -> dict:
         if existing:
             camps = await _ensure_campaigns(db, ctx)
             enriched = await _enrich_vehicle_details(db, org.id)
+            stamped = await _stamp_sections(db, ctx)
             await db.commit()
             return {
                 "status": "already_seeded",
@@ -541,6 +911,7 @@ async def seed() -> dict:
                 "hint": "stock #124 exists",
                 "campaigns_added": camps,
                 "vehicles_enriched": enriched,
+                "sections_stamped": stamped,
             }
 
         inv = InventoryService(db)
@@ -554,10 +925,10 @@ async def seed() -> dict:
         # —— Customers ——
         c1 = await cust.create(
             organization_id=org.id,
-            full_name="حسین خریدار",
+            full_name="حسین احمدی",
             phone="09121234567",
             email="hossein@example.com",
-            notes="علاقه‌مند به کمری سفید؛ بودجه حدود ۲٫۵ میلیارد",
+            notes="خریدار تویوتا کمری سفید در شعبهٔ تهران. بودجه حدود ۲٫۵ میلیارد تومان است و بازدید حضوری هماهنگ شده.",
             actor_id=ali.id,
             actor_permissions=perms,
         )
@@ -565,15 +936,15 @@ async def seed() -> dict:
             organization_id=org.id,
             full_name="فاطمه رضایی",
             phone="09129876543",
-            notes="درخواست بازدید النترا — شعبه تهران",
+            notes="برای هیوندای النترا نقره‌ای درخواست بازدید داده و ترجیح می‌دهد تست‌درایو در شعبهٔ تهران باشد.",
             actor_id=reza.id,
             actor_permissions=perms,
         )
         await cust.create(
             organization_id=org.id,
-            full_name="کانون خودرو پارس (فروشنده)",
+            full_name="کانون خودرو پارس",
             phone="02188776655",
-            notes="پیشنهاد خرید پژو ۲۰۷ کارکرده",
+            notes="عرضه‌کننده است و یک پژو ۲۰۷ کارکرده برای خرید به شعبه پیشنهاد داده.",
             actor_id=ali.id,
             actor_permissions=perms,
         )
@@ -606,10 +977,10 @@ async def seed() -> dict:
             exterior_condition="خوب — خط جزئی گلگیر",
             interior_condition="عالی",
             description=(
-                "تویوتا کمری ۲۰۲۰ سفید، کارکرد ۴۵ هزار، سرویس منظم نمایندگی. "
-                "مناسب خانواده؛ آماده تحویل از شعبه تهران."
+                "تویوتا کمری ۲۰۲۰، سفید، کارکرد ۴۵ هزار کیلومتر. سرویس‌ها در نمایندگی انجام شده "
+                "و خودرو آمادهٔ تحویل از شعبهٔ تهران است. برای خانواده مناسب است."
             ),
-            notes="کلید یدک و دفترچه سرویس موجود است.",
+            notes="کلید یدک و دفترچهٔ سرویس همراه خودرو است.",
         )
         elantra = await inv.create_vehicle(
             organization_id=org.id,
@@ -636,10 +1007,10 @@ async def seed() -> dict:
             exterior_condition="عالی",
             interior_condition="خوب",
             description=(
-                "هیوندای النترا ۲۰۲۱ نقره‌ای با کارکرد پایین. "
-                "مصرف اقتصادی؛ مناسب استفاده شهری و بین‌شهری."
+                "هیوندای النترا ۲۰۲۱، نقره‌ای، کارکرد پایین. مصرفش برای شهر و مسیر بین‌شهری مناسب است "
+                "و بدنه در وضعیت عالی است."
             ),
-            notes="یک بار رنگ گلگیر عقب.",
+            notes="گلگیر عقب یک بار رنگ شده است.",
         )
         peugeot = await inv.create_vehicle(
             organization_id=org.id,
@@ -668,10 +1039,10 @@ async def seed() -> dict:
             exterior_condition="متوسط — خط درب راننده",
             interior_condition="خوب",
             description=(
-                "پژو ۲۰۷ ۲۰۱۹ قرمز، سقف پانوراما. رزرو شده برای مشتری مشهد؛ "
-                "قبل از تحویل کارشناسی مجدد انجام شود."
+                "پژو ۲۰۷ مدل ۲۰۱۹، قرمز، با سقف پانوراما. برای مشتری شعبهٔ مشهد رزرو شده است. "
+                "پیش از تحویل باید دوباره کارشناسی شود."
             ),
-            notes="رزرو تا پایان هفته؛ هماهنگی با شعبه مشهد.",
+            notes="رزرو تا پایان هفته معتبر است. انتقال را با شعبهٔ مشهد هماهنگ کنید.",
         )
         tucson = await inv.create_vehicle(
             organization_id=org.id,
@@ -698,16 +1069,16 @@ async def seed() -> dict:
             exterior_condition="عالی",
             interior_condition="عالی",
             description=(
-                "هیوندای توسان ۲۰۲۲ مشکی پرمیوم، کارکرد ۱۸ هزار. "
-                "آپشن کامل؛ مناسب نمایشگاه و مشتری سازمانی."
+                "هیوندای توسان ۲۰۲۲، مشکی، تیپ پرمیوم، کارکرد ۱۸ هزار کیلومتر. آپشن کامل است "
+                "و هم برای نمایشگاه و هم برای مشتری سازمانی مناسب است."
             ),
-            notes="گارانتی کارخانه تا ۱۴۰۵/۰۶.",
+            notes="گارانتی کارخانه تا شهریور ۱۴۰۵ برقرار است.",
         )
 
         # —— SLA ——
         policy = await sla.create_policy(
             organization_id=org.id,
-            name="پیگیری فروش فوری",
+            name="پیگیری فوری فروش",
             priority=Priority.HIGH,
             response_minutes=240,
             warning_minutes=120,
@@ -719,9 +1090,9 @@ async def seed() -> dict:
         # —— Shared work: Camry sell (main demo) ——
         wi_camry = await work.create_work_item(
             organization_id=org.id,
-            title="فروش Camry #124",
+            title="فروش تویوتا کمری، شماره ۱۲۴",
             owner_id=ali.id,
-            description="برای این کمری، رضا مشتری را پیگیری کند و سارا آگهی را آماده کند.",
+            description="رضا خریدار را تا بازدید همراهی کند و سارا پیش‌نویس آگهی را برای تأیید آماده کند.",
             priority=Priority.HIGH,
             branch_id=branch.id,
             vehicle_id=camry.id,
@@ -731,10 +1102,10 @@ async def seed() -> dict:
         )
         t_reza = await work.create_task(
             organization_id=org.id,
-            title="تماس و پیگیری با حسین خریدار",
+            title="هماهنگی بازدید با حسین احمدی",
             owner_id=ali.id,
             work_item_id=wi_camry.id,
-            description="هماهنگ کردن بازدید حضوری",
+            description="زمان بازدید حضوری کمری سفید را با خریدار قطعی کنید.",
             assignee_ids=[reza.id],
             priority=Priority.HIGH,
             deadline=now + timedelta(hours=4),
@@ -743,7 +1114,7 @@ async def seed() -> dict:
         )
         t_sara = await work.create_task(
             organization_id=org.id,
-            title="آماده‌سازی آگهی دیوار / مارکتینگ",
+            title="آماده‌سازی پیش‌نویس آگهی دیوار",
             owner_id=ali.id,
             work_item_id=wi_camry.id,
             assignee_ids=[sara.id],
@@ -755,7 +1126,7 @@ async def seed() -> dict:
         )
         t_ali = await work.create_task(
             organization_id=org.id,
-            title="بررسی نتیجه و تأیید قیمت",
+            title="بررسی نتیجهٔ بازدید و تأیید قیمت",
             owner_id=ali.id,
             work_item_id=wi_camry.id,
             assignee_ids=[ali.id],
@@ -768,7 +1139,7 @@ async def seed() -> dict:
 
         case_camry = await work.create_case(
             organization_id=org.id,
-            subject="علاقه حسین به Camry #124",
+            subject="علاقهٔ حسین احمدی به تویوتا کمری ۱۲۴",
             case_type=CaseType.CUSTOMER_INTEREST,
             created_by=ali.id,
             work_item_id=wi_camry.id,
@@ -784,7 +1155,7 @@ async def seed() -> dict:
         # —— Shared work: Elantra (partially done) ——
         wi_el = await work.create_work_item(
             organization_id=org.id,
-            title="پیگیری فروش Elantra #210",
+            title="پیگیری فروش هیوندای النترا، شماره ۲۱۰",
             owner_id=ali.id,
             priority=Priority.MEDIUM,
             branch_id=branch.id,
@@ -794,7 +1165,7 @@ async def seed() -> dict:
         )
         t_done = await work.create_task(
             organization_id=org.id,
-            title="ارسال مشخصات برای فاطمه",
+            title="ارسال مشخصات النترا برای فاطمه رضایی",
             owner_id=ali.id,
             work_item_id=wi_el.id,
             assignee_ids=[reza.id],
@@ -803,7 +1174,7 @@ async def seed() -> dict:
         await work.complete_task(t_done.id, reza.id)
         await work.create_task(
             organization_id=org.id,
-            title="هماهنگی تست‌درایو",
+            title="هماهنگی زمان تست‌درایو",
             owner_id=ali.id,
             work_item_id=wi_el.id,
             assignee_ids=[reza.id],
@@ -814,7 +1185,7 @@ async def seed() -> dict:
         # —— Overdue task for demo ——
         wi_old = await work.create_work_item(
             organization_id=org.id,
-            title="پاسخ به درخواست شعبه مشهد — Peugeot #307",
+            title="پاسخ به درخواست انتقال پژو ۲۰۷ به مشهد",
             owner_id=ali.id,
             priority=Priority.URGENT,
             branch_id=mashhad.id if mashhad else branch.id,
@@ -823,7 +1194,7 @@ async def seed() -> dict:
         )
         await work.create_task(
             organization_id=org.id,
-            title="تأیید امکان انتقال به مشهد",
+            title="بررسی و تأیید امکان انتقال به مشهد",
             owner_id=ali.id,
             work_item_id=wi_old.id,
             assignee_ids=[reza.id],
@@ -831,9 +1202,9 @@ async def seed() -> dict:
             priority=Priority.URGENT,
             actor_permissions=perms,
         )
-        await work.create_case(
+        case_mashhad = await work.create_case(
             organization_id=org.id,
-            subject="درخواست شعبه مشهد برای ۲۰۷ قرمز",
+            subject="درخواست شعبهٔ مشهد برای انتقال پژو ۲۰۷ قرمز",
             case_type=CaseType.BRANCH_REQUEST,
             created_by=maryam.id if maryam else ali.id,
             work_item_id=wi_old.id,
@@ -846,16 +1217,16 @@ async def seed() -> dict:
         # —— Marketing-only listing work ——
         wi_mkt = await work.create_work_item(
             organization_id=org.id,
-            title="کمپین آگهی Tucson #440",
-            owner_id=ali.id,
+            title="آماده‌سازی آگهی هیوندای توسان، شماره ۴۴۰",
+            owner_id=sara.id,
             priority=Priority.MEDIUM,
             vehicle_id=tucson.id,
-            participant_ids=[sara.id],
+            department_id=sara.department_id,
         )
         await work.create_task(
             organization_id=org.id,
-            title="عکس‌برداری و کپشن فارسی",
-            owner_id=ali.id,
+            title="عکس‌برداری از توسان و نوشتن متن آگهی",
+            owner_id=sara.id,
             work_item_id=wi_mkt.id,
             assignee_ids=[sara.id],
             assignment_target_type=AssignmentTargetType.TEAM,
@@ -872,7 +1243,7 @@ async def seed() -> dict:
             organization_id=org.id,
             channel=Channel.WEB,
             participant_ids=[ali.id, reza.id, sara.id],
-            topic="هماهنگی فروش Camry #124",
+            topic="هماهنگی فروش تویوتا کمری ۱۲۴",
             work_item_id=wi_camry.id,
             case_id=case_camry.id,
             vehicle_id=camry.id,
@@ -883,21 +1254,21 @@ async def seed() -> dict:
             organization_id=org.id,
             conversation_id=conv1.id,
             sender_id=ali.id,
-            text="رضا مشتری رو امروز پیگیری کن؛ سارا آگهی رو آماده کنه.",
+            text="رضا، امروز با حسین هماهنگ کن که فردا برای بازدید کمری به شعبه بیاید. سارا، پیش‌نویس آگهی را تا قبل از بازدید آماده کن.",
             channel=Channel.WEB,
         )
         await comm.post_message(
             organization_id=org.id,
             conversation_id=conv1.id,
             sender_id=reza.id,
-            text="با حسین هماهنگ کردم — فردا ساعت ۱۱ میاد بازدید.",
+            text="با حسین صحبت کردم. فردا ساعت ۱۱ برای بازدید کمری سفید به شعبهٔ تهران می‌آید.",
             channel=Channel.WEB,
         )
         await comm.post_message(
             organization_id=org.id,
             conversation_id=conv1.id,
             sender_id=sara.id,
-            text="پیش‌نویس آگهی آماده است؛ بعد از تأیید علی منتشر می‌کنم.",
+            text="پیش‌نویس آگهی آماده است. بعد از تأیید شما آن را منتشر می‌کنم.",
             channel=Channel.WEB,
         )
 
@@ -905,7 +1276,7 @@ async def seed() -> dict:
             organization_id=org.id,
             channel=Channel.WEB,
             participant_ids=[ali.id, maryam.id] if maryam else [ali.id, reza.id],
-            topic="درخواست شعبه مشهد",
+            topic="درخواست انتقال پژو ۲۰۷ به مشهد",
             work_item_id=wi_old.id,
             vehicle_id=peugeot.id,
             actor_id=maryam.id if maryam else ali.id,
@@ -914,7 +1285,7 @@ async def seed() -> dict:
             organization_id=org.id,
             conversation_id=conv2.id,
             sender_id=maryam.id if maryam else ali.id,
-            text="مشهد این ۲۰۷ رو می‌خواد — امکان انتقال هست؟",
+            text="شعبهٔ مشهد برای این پژو ۲۰۷ قرمز مشتری دارد. لطفاً امکان انتقال خودرو را بررسی کنید.",
             channel=Channel.WEB,
         )
 
@@ -924,17 +1295,46 @@ async def seed() -> dict:
         await kb.upload(
             organization_id=org.id,
             uploaded_by=ali.id,
-            title="دستورالعمل پیگیری مشتری",
+            title="دستور پیگیری مشتری",
             category=DocumentCategory.COMMUNICATION_RULES,
             content=(
-                "۱. هر علاقه مشتری باید ظرف ۲ ساعت پیگیری شود.\n"
-                "۲. کار مشترک برای فروش خودرو بسازید و وظایف را به فروش و بازاریابی بسپارید.\n"
-                "۳. بدون تأیید مدیر، قیمت را تغییر ندهید.\n"
-                "۴. درخواست شعبه را در پیگیری ثبت کنید و مسئول تعیین کنید.\n"
+                "پیگیری علاقهٔ مشتری\n"
+                "\n"
+                "۱. هر علاقهٔ تازه را حداکثر تا دو ساعت بعد پیگیری کنید.\n"
+                "۲. برای فروش هر خودرو یک پروژه بسازید و کار فروش و آگهی را جداگانه بسپارید.\n"
+                "۳. قیمت را بدون تأیید مدیر تغییر ندهید.\n"
+                "۴. درخواست شعبه را به‌صورت پیگیری ثبت کنید و یک مسئول مشخص برایش بگذارید.\n"
             ),
             filename="sop-followup.txt",
             content_type="text/plain",
             actor_permissions=perms,
+        )
+
+        await _cover_operations(
+            db,
+            org=org,
+            ali=ali,
+            reza=reza,
+            sara=sara,
+            nima=ctx["nima"],
+            maryam=maryam,
+            viewer=ctx["viewer"],
+            branch=branch,
+            mashhad=mashhad,
+            now=now,
+            perms=perms,
+            work=work,
+            inv=inv,
+            cust=cust,
+            kb=kb,
+            camry=camry,
+            elantra=elantra,
+            peugeot=peugeot,
+            tucson=tucson,
+            c1=c1,
+            c2=c2,
+            case_mashhad=case_mashhad,
+            t_done=t_done,
         )
 
         # —— Extra notifications for Home attention ——
@@ -942,8 +1342,8 @@ async def seed() -> dict:
             db,
             organization_id=org.id,
             user_id=ali.id,
-            title="۳ مورد نیازمند توجه",
-            body="یک وظیفه معوق و دو پیگیری باز دارید.",
+            title="انتقال پژو ۲۰۷ به مشهد هنوز باز است",
+            body="مهلت بررسی انتقال گذشته است. لطفاً امروز دربارهٔ امکان انتقال تصمیم بگیرید.",
             entity_type="work_item",
             entity_id=wi_old.id,
         )
@@ -951,17 +1351,18 @@ async def seed() -> dict:
             db,
             organization_id=org.id,
             user_id=reza.id,
-            title="بازدید فردا — Camry #124",
-            body="حسین ساعت ۱۱ می‌آید؛ آماده‌سازی خودرو را فراموش نکنید.",
+            title="بازدید فردا، تویوتا کمری ۱۲۴",
+            body="حسین احمدی ساعت ۱۱ به شعبهٔ تهران می‌آید. خودرو را برای بازدید آماده کنید.",
             entity_type="task",
             entity_id=t_reza.id,
         )
 
+        await _stamp_sections(db, ctx)
         await db.commit()
         return {
             "status": "ok",
             "org": org.slug,
-            "vehicles": 4,
+            "vehicles": 6,
             "customers": 3,
             "work_items": 4,
             "campaigns": 2,
@@ -976,7 +1377,9 @@ async def seed() -> dict:
 
 
 def main() -> None:
-    result = asyncio.run(seed())
+    import sys
+
+    result = asyncio.run(seed(reset="--reset" in sys.argv))
     print(result)
 
 

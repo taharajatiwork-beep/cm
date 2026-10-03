@@ -11,6 +11,8 @@ export function StatCard({
   hint,
   tone = "neutral",
   to,
+  onMore,
+  moreLabel,
 }: {
   icon: IconName;
   label: ReactNode;
@@ -18,25 +20,35 @@ export function StatCard({
   hint?: ReactNode;
   tone?: Tone;
   to?: string;
+  onMore?: () => void;
+  moreLabel?: ReactNode;
 }) {
   const body = (
     <>
-      <span className={`kpi-icon tone-${tone}`}>
-        <Icon name={icon} size={16} />
+      <span className="kpi-main">
+        <span className={`kpi-icon tone-${tone}`}>
+          <Icon name={icon} size={16} />
+        </span>
+        <span className="kpi-text">
+          <span className="kpi-label">{label}</span>
+          <span className="kpi-value">{value}</span>
+          {hint ? <span className="kpi-hint">{hint}</span> : null}
+        </span>
       </span>
-      <span className="kpi-text">
-        <span className="kpi-label">{label}</span>
-        <span className="kpi-value">{value}</span>
-        {hint ? <span className="kpi-hint">{hint}</span> : null}
-      </span>
+      {onMore ? (
+        <button type="button" className="kpi-more" onClick={onMore}>
+          {moreLabel}
+        </button>
+      ) : null}
     </>
   );
+  const className = onMore ? "kpi kpi--stack" : "kpi";
   return to ? (
-    <Link className="kpi kpi--link" to={to}>
+    <Link className={`${className} kpi--link`} to={to}>
       {body}
     </Link>
   ) : (
-    <div className="kpi">{body}</div>
+    <div className={className}>{body}</div>
   );
 }
 
@@ -141,19 +153,25 @@ export function SectionHeader({
   count,
   action,
   icon,
+  hint,
 }: {
   title: ReactNode;
   count?: number;
   action?: ReactNode;
   icon?: IconName;
+  /** یک خط توضیح: این بخش چیست و کاربر با آن چه کند. */
+  hint?: ReactNode;
 }) {
   return (
     <div className="section-head">
-      <h2>
-        {icon ? <Icon name={icon} size={15} /> : null}
-        {title}
-        {typeof count === "number" ? <span className="section-count">{count}</span> : null}
-      </h2>
+      <div className="section-head-main">
+        <h2>
+          {icon ? <Icon name={icon} size={15} /> : null}
+          {title}
+          {typeof count === "number" ? <span className="section-count">{count}</span> : null}
+        </h2>
+        {hint ? <p className="section-hint">{hint}</p> : null}
+      </div>
       {action ? <div className="section-action">{action}</div> : null}
     </div>
   );

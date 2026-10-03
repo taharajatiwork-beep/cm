@@ -36,7 +36,7 @@ const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
     items: [
       { to: "/people", icon: "users", labelEn: "Colleagues", labelFa: "همکاران", hintEn: "Who does what", hintFa: "چه کسی چه کاری می‌کند" },
       { to: "/knowledge", icon: "book", labelEn: "Rules & guides", labelFa: "قوانین و راهنماها", hintEn: "Company rules and how-tos", hintFa: "قوانین شرکت و روش انجام کارها" },
-      { to: "/cases", icon: "briefcase", labelEn: "Cases", labelFa: "پرونده‌ها", hintEn: "Follow-ups", hintFa: "پیگیری‌ها", perm: "case.read" },
+      { to: "/cases", icon: "briefcase", labelEn: "Cases", labelFa: "پرونده‌ها", hintEn: "Track one subject in your section", hintFa: "پیگیری یک موضوع در بخش شما", perm: "case.read" },
       { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "KPIs", hintFa: "شاخص‌ها", perm: "event.read" },
       { to: "/admin", icon: "settings", labelEn: "Admin", labelFa: "مدیریت", hintEn: "Overview, users, audit", hintFa: "نمای کلی، کاربران، ممیزی", perm: "org.admin" },
     ],
@@ -64,6 +64,14 @@ export function Shell() {
     queryFn: () => api.notifications(),
     refetchInterval: 30_000,
   });
+  const departments = useQuery({
+    queryKey: ["departments"],
+    queryFn: () => api.departments.list(),
+    enabled: Boolean(user?.id),
+  });
+  const sectionName = String(
+    (departments.data ?? []).find((row) => String(row.id) === String(user?.department_id))?.name ?? "",
+  );
   const noteCount = (notes.data ?? []).filter((row) => !row.is_read).length;
   const roleLabel = locale === "fa" ? roleFa[roleHint] || roleHint : roleHint;
 
@@ -133,7 +141,7 @@ export function Shell() {
             <Avatar name={user?.full_name || user?.email || "?"} size={30} />
             <div className="user-chip-text">
               <strong>{user?.full_name}</strong>
-              <span>{roleLabel}</span>
+              <span>{sectionName ? `${sectionName} · ${roleLabel}` : roleLabel}</span>
             </div>
             <button
               type="button"

@@ -70,6 +70,36 @@ export interface AdminOverview {
   }>;
 }
 
+export interface AdminRef {
+  title: string;
+  detail: string;
+  entity_type: string;
+  entity_id: string | null;
+  work_item_id: string | null;
+  conversation_id: string | null;
+}
+
+export interface AdminRecord {
+  title: string;
+  detail: string;
+  entity_type: string;
+  entity_id: string | null;
+  work_item_id: string | null;
+  conversation_id: string | null;
+  at: string;
+  facets: Record<string, string>;
+}
+
+export interface AdminMessage {
+  id: string;
+  text: string;
+  at: string;
+  channel: string;
+  conversation_id: string;
+  sender: string;
+  topic: string;
+}
+
 /** تحلیل‌های تفصیلی تب «تحلیل‌ها» (فقط org.admin). */
 export interface AdminAnalytics {
   as_of_jalali: string;
@@ -87,6 +117,25 @@ export interface AdminAnalytics {
   audit_daily_7d: Array<{ day: string; count: number }>;
   top_actions: Array<{ action: string; count: number }>;
   login_failed_7d: number;
+  drilldown?: {
+    tasks_week: Record<string, { created: AdminRef[]; completed: AdminRef[] }>;
+    priority: Record<string, AdminRef[]>;
+    reply: Record<string, AdminRef[]>;
+    case_status: Record<string, AdminRef[]>;
+    case_type: Record<string, AdminRef[]>;
+    aging: Record<string, AdminRef[]>;
+    messages_day: Record<string, AdminRef[]>;
+  };
+  needs_attention: Array<{
+    kind: string;
+    title: string;
+    detail: string;
+    context: string;
+    entity_type: string;
+    entity_id: string;
+    work_item_id: string | null;
+    conversation_id: string | null;
+  }>;
 }
 
 /** مانیتورینگ سلامت سیستم تب «مانیتورینگ» (فقط org.admin). */
@@ -100,7 +149,19 @@ export interface AdminMonitoring {
   outbox: {
     by_status: Record<string, number>;
     oldest_pending_minutes: number | null;
-    failed_samples: Array<{ provider: string; error: string; at: string }>;
+    failed_samples: Array<{
+      provider: string;
+      error: string;
+      at: string;
+      event_type: string;
+      preview: string;
+      title: string;
+      entity_type: string | null;
+      entity_id: string | null;
+      conversation_id: string | null;
+      work_item_id: string | null;
+      recipient: string;
+    }>;
   };
   job_locks: Array<{
     name: string;
@@ -109,6 +170,14 @@ export interface AdminMonitoring {
     stale: boolean;
   }>;
   events_24h: Array<{ type: string; count: number }>;
+  recent_events: Array<{
+    type: string;
+    entity_type: string;
+    entity_id: string;
+    title: string;
+    work_item_id: string | null;
+    at: string;
+  }>;
   auth_failed_24h: number;
   audit_chain: { ok: boolean | null; rows_checked: number; broken_at: number | null; detail: string };
   integrations: Record<string, unknown>;
@@ -132,6 +201,7 @@ export const api = {
       organization_id: string;
       role_id: string | null;
       branch_id: string | null;
+      department_id: string | null;
       team_id: string | null;
       permissions: string[];
     }>("/auth/me"),
@@ -360,6 +430,22 @@ export const api = {
       }),
     /** نمای کلی سازمان — فقط org.admin در بک‌اند مجاز است. */
     overview: () => request<AdminOverview>("/admin/overview"),
+    records: (params: { kind: string; days?: number; group?: string }) => {
+      const sp = new URLSearchParams();
+      sp.set("kind", params.kind);
+      if (params.days) sp.set("days", String(params.days));
+      if (params.group) sp.set("group", params.group);
+      return request<AdminRecord[]>(`/admin/records?${sp.toString()}`);
+    },
+    messages: (params?: { days?: number; q?: string; channel?: string; day?: string }) => {
+      const sp = new URLSearchParams();
+      if (params?.days) sp.set("days", String(params.days));
+      if (params?.q) sp.set("q", params.q);
+      if (params?.channel) sp.set("channel", params.channel);
+      if (params?.day) sp.set("day", params.day);
+      const q = sp.toString();
+      return request<AdminMessage[]>(`/admin/messages${q ? `?${q}` : ""}`);
+    },
     /** تحلیل‌های تفصیلی سازمان — فقط org.admin. */
     analytics: () => request<AdminAnalytics>("/admin/analytics"),
     /** مانیتورینگ سلامت سیستم — فقط org.admin. */

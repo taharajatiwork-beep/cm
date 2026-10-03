@@ -575,6 +575,21 @@ html[lang="fa"] .ui-page-header h1 {
   padding: 0;
 }
 
+/* عنوان کارت بدون پدینگ باید با سلول اول جدول هم‌خط باشد */
+.ui-card--flush > .section-head {
+  padding: var(--space-3) var(--space-4) 0;
+  margin-bottom: var(--space-2);
+}
+
+.ui-card--flush > .control {
+  width: calc(100% - 2 * var(--space-4));
+  margin: 0 var(--space-4) var(--space-3);
+}
+
+.ui-card--flush > .form-grid {
+  padding: 0 var(--space-4) var(--space-4);
+}
+
 /* Empty cards render as stray borders — collapse them entirely */
 .ui-card:empty {
   display: none;
@@ -598,11 +613,26 @@ html[lang="fa"] .ui-page-header h1 {
 
 .section-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
   min-height: 2rem;
   margin-bottom: var(--space-2);
+}
+
+.section-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.section-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.45;
 }
 
 .section-head h2 {
@@ -992,6 +1022,81 @@ textarea.control,
   box-shadow: var(--shadow-sm);
 }
 
+.kpi-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  flex: 1;
+}
+
+.kpi--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.kpi-more {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kpi-more:hover {
+  text-decoration: underline;
+}
+
+.detail-pop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+
+.detail-pop-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(16, 24, 40, 0.45);
+  cursor: pointer;
+}
+
+.detail-pop-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(52rem, 100%);
+  max-height: min(36rem, calc(100vh - 2rem));
+  padding: var(--space-4);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.detail-pop-card .ui-table-wrap {
+  overflow: auto;
+}
+
+.detail-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.detail-filters .control {
+  width: auto;
+  flex: 1 1 9rem;
+}
+
 .kpi--link {
   transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
 }
@@ -1233,6 +1338,9 @@ html[dir="rtl"] .work-list > li.is-warn {
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
+.stack > .case-actions {
+  margin-top: 0;
+}
 .case-actions .control {
   width: auto;
   flex: 1 1 9rem;
@@ -1412,6 +1520,37 @@ a.row-title:hover {
   font-size: 0.82rem;
 }
 
+/* ستون‌های کوتاه کنار هم می‌مانند؛ فضای خالی فقط تهٔ آخرین ستون است */
+.table.table-fit th,
+.table.table-fit td {
+  width: 1px;
+  white-space: nowrap;
+}
+
+.table.table-fit th:last-child,
+.table.table-fit td:last-child {
+  width: auto;
+}
+
+.record-link {
+  color: var(--accent-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.record-link:hover {
+  text-decoration: underline;
+}
+
+.cell-clip {
+  display: inline-block;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 .table th {
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--line);
@@ -1459,6 +1598,13 @@ a.row-title:hover {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -2664,6 +2810,10 @@ html[dir="rtl"] .thread-row.needs {
   margin-bottom: var(--space-3);
 }
 
+.stack > .person-head {
+  margin-bottom: 0;
+}
+
 .person-head h2 {
   font-size: 1rem;
   font-weight: 600;
@@ -2721,6 +2871,38 @@ html[dir="rtl"] .thread-row.needs {
 
 html[dir="rtl"] .tag-list li {
   padding: 3px 3px 3px 10px;
+}
+
+.perm-group {
+  margin-top: var(--space-4);
+}
+
+.perm-group-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.92rem;
+}
+
+.perm-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.perm-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.perm-item input {
+  margin-top: 0.25rem;
 }
 
 /* ---------- Agent / chat ---------- */
@@ -3415,4 +3597,37 @@ html[dir="rtl"] .tag-list li {
   margin-inline-start: auto;
   color: var(--ink);
   direction: ltr;
+}
+
+/* نوار راهنمای صفحه مدیریت: قدم بعدی، بدون کارت اضافه */
+.admin-guide {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.admin-guide-link,
+.admin-guide-note {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.admin-guide-link {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  text-decoration: none;
+}
+
+.admin-guide-link:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.admin-guide-note {
+  background: var(--warn-soft);
+  color: var(--warn);
 }

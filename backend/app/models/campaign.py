@@ -35,6 +35,7 @@ class Campaign(Base):
     vehicle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("vehicles.id"))
     work_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("work_items.id"))
     branch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"))
+    department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id"))
     team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teams.id"))
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
