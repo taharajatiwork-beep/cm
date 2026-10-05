@@ -20,6 +20,7 @@ import {
 } from "../components/ui";
 import { useToast } from "../components/ui/Toast";
 import { DateText } from "../components/DateText";
+import { SheetsSyncCard } from "../components/SheetsSyncCard";
 import { Bi, useBi } from "../i18n";
 
 type Slot = {
@@ -210,6 +211,7 @@ export function PricingPage() {
           />
         }
       />
+      <SheetsSyncCard />
       <ErrorMessage
         error={[board.error, request.error, confirm.error, posted.error]
           .filter(Boolean)

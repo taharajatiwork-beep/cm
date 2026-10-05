@@ -17,6 +17,7 @@ from app.api.routes import (
     inventory,
     knowledge,
     org,
+    perf_sheets,
     pricing,
     rag,
     search,
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
         customers.router,
         campaigns.router,
         enterprise.router,
+        perf_sheets.router,
     ]
     for r in routers:
         app.include_router(r)
