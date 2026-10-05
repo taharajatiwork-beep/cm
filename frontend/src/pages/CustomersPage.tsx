@@ -20,6 +20,7 @@ import {
   Table,
   TextArea,
 } from "../components/ui";
+import { SheetsSyncCard } from "../components/SheetsSyncCard";
 import { Bi, useBi } from "../i18n";
 import { nextCursor } from "../lib/pagination";
 import { queryKeys } from "../lib/queryKeys";
@@ -96,6 +97,7 @@ export function CustomersPage() {
           </Button>
         }
       />
+      <SheetsSyncCard />
       <ErrorMessage error={error || listError} />
 
       <div className="split">

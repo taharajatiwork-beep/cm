@@ -44,3 +44,7 @@ backend/cov_run.txt
 *.log
 server.err
 .cursor/
+
+# Google service-account keys. Never commit these.
+secrets/
+**/perf-sheets.json

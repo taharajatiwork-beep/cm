@@ -114,6 +114,15 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "taha"
 
+    # Performance-marketing Google Sheets. Same service-account JSON for every workbook.
+    # Settings reads process env, then `.env`, then `../.env` (repo root when cwd is backend/).
+    # Docker Compose injects the repo-root `.env` via env_file, so a second backend/.env is optional.
+    perf_sheets_spreadsheet_id: str = ""
+    perf_sheets_cost_tracking_id: str = ""
+    perf_sheets_register_campaign_id: str = ""
+    perf_sheets_reporter_id: str = ""
+    perf_sheets_credentials_file: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

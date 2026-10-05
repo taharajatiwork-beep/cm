@@ -11,6 +11,7 @@ import {
   SectionHeader,
   StatCard,
 } from "../components/ui";
+import { SheetsSyncCard } from "../components/SheetsSyncCard";
 import { Bi, useBi } from "../i18n";
 
 type Kpis = Record<string, number | string>;
@@ -60,6 +61,7 @@ export function ReportsPage() {
           />
         }
       />
+      <SheetsSyncCard />
       <ErrorMessage error={error} />
       {stats.length === 0 ? (
         <Card>
