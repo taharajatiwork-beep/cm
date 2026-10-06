@@ -9,6 +9,18 @@ os.environ["APP_ENV"] = "development"
 os.environ["TELEGRAM_MODE"] = "off"
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["BALE_MODE"] = "off"
+# Never touch real outside systems from tests (Google Sheets, Mizito).
+# Without this, the repo-root .env is read and tests write to the live sheets.
+for _name in (
+    "PERF_SHEETS_SPREADSHEET_ID",
+    "PERF_SHEETS_CREDENTIALS_FILE",
+    "PERF_SHEETS_COST_TRACKING_ID",
+    "PERF_SHEETS_REGISTER_CAMPAIGN_ID",
+    "PERF_SHEETS_REPORTER_ID",
+    "PERF_SHEETS_WEBHOOK",
+    "PERF_MIZITO_TOKEN",
+):
+    os.environ[_name] = ""
 
 import pytest
 import pytest_asyncio

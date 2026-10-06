@@ -800,6 +800,23 @@ export const api = {
         body: JSON.stringify({ code }),
       }),
   },
+  perfSheets: {
+    sync: () =>
+      request<{
+        ok: boolean;
+        targets: Array<{
+          key: string;
+          env: string;
+          spreadsheet_id: string;
+          updated: boolean;
+          tabs: string[];
+          created_tabs: string[];
+          rows: Record<string, number>;
+          error: string;
+        }>;
+        skipped: Array<{ key: string; env: string; reason: string }>;
+      }>("/perf/sheets/sync", { method: "POST" }),
+  },
   reports: {
     kpis: () =>
       request<Record<string, number | string>>("/reports/kpis"),
