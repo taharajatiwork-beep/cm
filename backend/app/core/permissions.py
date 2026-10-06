@@ -34,6 +34,9 @@ class PermissionCode(StrEnum):
     CAMPAIGN_READ = "campaign.read"
     CAMPAIGN_WRITE = "campaign.write"
     PRICE_WRITE = "price.write"
+    PERF_READ = "perf.read"
+    PERF_WRITE = "perf.write"
+    PERF_APPROVE = "perf.approve"
 
 
 class DataScopeLevel(StrEnum):

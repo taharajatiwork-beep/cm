@@ -103,6 +103,18 @@ async def _ensure_schema() -> None:
                     if name not in vcols:
                         sync_conn.execute(text(f"ALTER TABLE vehicles ADD COLUMN {name} {col_type}"))
 
+            if "pm_lead" in tables:
+                cols = {c["name"] for c in insp.get_columns("pm_lead")}
+                if "quantity" not in cols:
+                    sync_conn.execute(text("ALTER TABLE pm_lead ADD COLUMN quantity INTEGER DEFAULT 1"))
+
+            if "pm_story" in tables:
+                cols = {c["name"] for c in insp.get_columns("pm_story")}
+                if "kind" not in cols:
+                    sync_conn.execute(text("ALTER TABLE pm_story ADD COLUMN kind VARCHAR(20) DEFAULT 'story'"))
+                if "status" not in cols:
+                    sync_conn.execute(text("ALTER TABLE pm_story ADD COLUMN status VARCHAR(20) DEFAULT 'published'"))
+
         await conn.run_sync(_patch_columns)
 
 
@@ -251,6 +263,46 @@ async def _ensure_org(db) -> dict:
         ],
         "team",
     )
+    mkt_mgr_role = await get_or_create_role(
+        "مدیر مارکتینگ",
+        "marketing_manager",
+        [
+            PC.CONVERSATION_READ,
+            PC.CONVERSATION_WRITE,
+            PC.WORK_ITEM_READ,
+            PC.CASE_READ,
+            PC.TASK_READ,
+            PC.TASK_WRITE,
+            PC.NOTIFICATION_READ,
+            PC.INVENTORY_READ,
+            PC.SEARCH,
+            PC.RAG_READ,
+            PC.KB_READ,
+            PC.EVENT_READ,
+            PC.CAMPAIGN_READ,
+            PC.CAMPAIGN_WRITE,
+            PC.PERF_READ,
+            PC.PERF_WRITE,
+            PC.PERF_APPROVE,
+        ],
+        "team",
+    )
+    perf_role = await get_or_create_role(
+        "پرفورمنس مارکتینگ",
+        "performance_marketing",
+        [
+            PC.CONVERSATION_READ,
+            PC.CONVERSATION_WRITE,
+            PC.NOTIFICATION_READ,
+            PC.INVENTORY_READ,
+            PC.SEARCH,
+            PC.RAG_READ,
+            PC.KB_READ,
+            PC.PERF_READ,
+            PC.PERF_WRITE,
+        ],
+        "organization",
+    )
     viewer_role = await get_or_create_role(
         "Viewer",
         "viewer",
@@ -269,6 +321,7 @@ async def _ensure_org(db) -> dict:
             PC.USER_READ,
             PC.CAMPAIGN_READ,
             PC.RAG_READ,
+            PC.PERF_READ,
         ],
         "organization",
     )
@@ -362,11 +415,22 @@ async def _ensure_org(db) -> dict:
     mina = await get_or_create_user(
         "mina@autoco.example",
         "مینا مدیر مارکتینگ",
-        mkt_role.id,
+        mkt_mgr_role.id,
         branch_id=branch.id,
         department_id=mkt_dept.id,
         team_id=mkt_team.id,
         manager_id=ali.id,
+    )
+    if mina.role_id != mkt_mgr_role.id:
+        mina.role_id = mkt_mgr_role.id
+    nadia = await get_or_create_user(
+        "nadia@autoco.example",
+        "نادیا پرفورمنس",
+        perf_role.id,
+        branch_id=branch.id,
+        department_id=mkt_dept.id,
+        team_id=mkt_team.id,
+        manager_id=mina.id,
     )
 
     # Relationships (ignore duplicates via try/existing check)
@@ -389,6 +453,9 @@ async def _ensure_org(db) -> dict:
     await ensure_rel(reza, sara, RelationshipType.COLLABORATES_WITH)
     await ensure_rel(ali, sara, RelationshipType.MANAGES)
     await ensure_rel(ali, nima, RelationshipType.MANAGES)
+    await _ensure_perf_panels(db, org.id)
+    await _ensure_perf_demo(db, org.id, nadia, mina, branch.id)
+    await _ensure_social_formats(db, org.id, nadia.id)
 
     return {
         "org": org,
@@ -406,12 +473,326 @@ async def _ensure_org(db) -> dict:
         "viewer": viewer,
         "finance": finance,
         "mina": mina,
+        "nadia": nadia,
         "site_admin": site_admin,
         "marzdaran": marzdaran,
         "kashani": kashani,
         "iranmall": iranmall,
         "created": created_org,
     }
+
+
+async def _ensure_perf_panels(db, organization_id) -> None:
+    from app.perf.models import PmPanel
+
+    specs = (
+        ("isms", "آی‌اس‌ام‌اس", "50002100304010", 166),
+        ("pishgam", "پیشگامان رایان", "5000302137682", 200),
+    )
+    for code, name, line, tariff in specs:
+        row = await db.scalar(
+            select(PmPanel).where(PmPanel.organization_id == organization_id, PmPanel.code == code)
+        )
+        if row:
+            continue
+        db.add(
+            PmPanel(
+                organization_id=organization_id,
+                code=code,
+                name=name,
+                sender_line=line,
+                tariff_toman=tariff,
+                balance_toman=1_000_000,
+                low_balance_toman=200_000,
+            )
+        )
+
+
+async def _ensure_perf_demo(db, organization_id, nadia, mina, branch_id) -> None:
+    """نمونه‌های واقعی‌نما از پنل پیامک، شیت هزینه و استوری. اگر باشد، دوباره ساخته نمی‌شود."""
+    from datetime import date
+
+    from app.perf.models import (
+        PmCampaign,
+        PmCarRequest,
+        PmCost,
+        PmPage,
+        PmPanel,
+        PmPaymentRequest,
+        PmRecipient,
+        PmRecipientList,
+        PmSmsSend,
+        PmStory,
+    )
+    from app.services import CommunicationService
+
+    marked = await db.scalar(
+        select(PmPage).where(PmPage.organization_id == organization_id, PmPage.name == "خودرو بانک")
+    )
+    if marked:
+        return
+
+    panels = {
+        row.code: row
+        for row in (
+            await db.scalars(select(PmPanel).where(PmPanel.organization_id == organization_id))
+        ).all()
+    }
+    isms = panels.get("isms")
+    if isms and isms.balance_toman == 1_000_000:
+        isms.balance_toman = 4_250_000
+
+    async def campaign(code: str, title: str, brand: str, channels: str, budget: int, start: date, end: date):
+        row = await db.scalar(
+            select(PmCampaign).where(PmCampaign.organization_id == organization_id, PmCampaign.code == code)
+        )
+        if row:
+            return row
+        row = PmCampaign(
+            organization_id=organization_id,
+            code=code,
+            title=title,
+            brand=brand,
+            goal="ورودی فروش",
+            starts_on=start,
+            ends_on=end,
+            budget_toman=budget,
+            status="active",
+            channels=channels,
+            created_by=nadia.id,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    s84 = await campaign("S84", "فونیکس، تحویل فوری", "فونیکس", "sms,ig_story", 80_000_000, date(2026, 9, 1), date(2026, 9, 30))
+    u85 = await campaign("U85", "ماموت خودرو U85", "ماموت", "sms,ig_story", 45_000_000, date(2026, 8, 20), date(2026, 9, 20))
+    s90 = await db.scalar(
+        select(PmCampaign).where(PmCampaign.organization_id == organization_id, PmCampaign.code == "S90")
+    )
+    if s90 and not s90.brand:
+        s90.brand = "فونیکس"
+        s90.channels = "sms,ig_story"
+        s90.budget_toman = s90.budget_toman or 25_000_000
+
+    page_specs = (
+        ("خودرو بانک", 186_000, "خودرو", 2_400_000),
+        ("ماشین‌بازها", 240_000, "بازار خودرو", 2_000_000),
+        ("ستوده مگ", 92_000, "برند ستوده", 1_500_000),
+        ("کارکرده ستوده", 74_000, "اقساط و کارکرده", 1_800_000),
+    )
+    pages: dict[str, PmPage] = {}
+    for name, followers, topic, price in page_specs:
+        row = PmPage(
+            organization_id=organization_id,
+            name=name,
+            followers=followers,
+            topic=topic,
+            price_toman=price,
+        )
+        db.add(row)
+        pages[name] = row
+    await db.flush()
+
+    stories = [
+        (s84, pages["خودرو بانک"], date(2026, 9, 12), 2_400_000, 62_000, 51_000, 1_140, 41, 4_800),
+        (s84, pages["ماشین‌بازها"], date(2026, 9, 14), 2_000_000, 48_500, 40_200, 860, 29, 3_100),
+        (u85, pages["ستوده مگ"], date(2026, 9, 8), 1_500_000, 21_000, 18_400, 310, 12, 1_600),
+        (s90, pages["کارکرده ستوده"], date(2026, 9, 28), 1_800_000, 33_000, 27_500, 540, 18, 2_200) if s90 else None,
+    ]
+    for item in stories:
+        if not item or not item[0]:
+            continue
+        camp, page, day, cost, views, reach, clicks, leads, exited = item
+        db.add(
+            PmStory(
+                organization_id=organization_id,
+                campaign_id=camp.id,
+                page_id=page.id,
+                status="published",
+                published_on=day,
+                cost_toman=cost,
+                views=views,
+                reach=reach,
+                link_clicks=clicks,
+                replies=18,
+                shares=7,
+                exited=exited,
+                leads=leads,
+                created_by=nadia.id,
+            )
+        )
+
+    sms_rows = []
+    if isms:
+        sms_rows.append((s84, 18_650, 2, 18_650 * 2 * isms.tariff_toman, 14_200, 86, date(2026, 9, 16)))
+        sms_rows.append((u85, 9_400, 1, 9_400 * isms.tariff_toman, 7_100, 34, date(2026, 9, 6)))
+        if s90:
+            sms_rows.append((s90, 4_200, 2, 4_200 * 2 * isms.tariff_toman, 3_050, 19, date(2026, 9, 27)))
+    for camp, count, pages_n, cost, delivered, leads, day in sms_rows:
+        if not camp:
+            continue
+        db.add(
+            PmSmsSend(
+                organization_id=organization_id,
+                campaign_id=camp.id,
+                panel_id=isms.id if isms else None,
+                sender_line=isms.sender_line if isms else "",
+                body=f"{camp.brand} — {camp.title}. تحویل فوری. تماس ۰۲۱۴۷۶۷۷۷۷۷ لغو11",
+                pages=pages_n,
+                recipient_count=count,
+                sent_at=datetime(day.year, day.month, day.day, 11, 0, tzinfo=UTC),
+                cost_toman=cost,
+                delivered_count=delivered,
+                calls=leads // 2,
+                leads=leads,
+                created_by=nadia.id,
+            )
+        )
+
+    numbers = [
+        (s84, "فونیکس", "پیامک و استوری S84", 18_650 * 2 * (isms.tariff_toman if isms else 166) + 4_400_000, date(2026, 9, 16)),
+        (u85, "ماموت", "پیامک و استوری U85", 9_400 * (isms.tariff_toman if isms else 166) + 1_500_000, date(2026, 9, 8)),
+    ]
+    for index, (camp, brand, detail, amount, day) in enumerate(numbers, start=120):
+        db.add(
+            PmCost(
+                organization_id=organization_id,
+                cost_number=index,
+                spent_on=day,
+                amount_toman=amount,
+                kind="تبلیغ",
+                detail=detail,
+                brand=brand,
+                campaign_code=camp.code,
+                cost_center="پرفورمنس",
+                description="ثبت‌شده در شیت هزینه",
+                counts_for_cpl=True,
+            )
+        )
+    if isms:
+        db.add(
+            PmPaymentRequest(
+                organization_id=organization_id,
+                kind="panel_charge",
+                amount_toman=5_000_000,
+                beneficiary="آی‌اس‌ام‌اس",
+                iban="IR820120000000000000000000",
+                panel_id=isms.id,
+                cost_center="پرفورمنس",
+                status="requested",
+                note="شارژ آنلاین پنل پیامکی آی‌اس‌ام‌اس",
+                requester_id=nadia.id,
+            )
+        )
+
+    ready = PmRecipientList(
+        organization_id=organization_id,
+        campaign_id=s84.id,
+        name="دیدار S84",
+        source_filename="didar-s84.xlsx",
+        raw_count=21_040,
+        duplicate_count=980,
+        blacklist_count=140,
+        recent_count=1_180,
+        invalid_count=90,
+        final_count=18_650,
+        created_by=nadia.id,
+    )
+    db.add(ready)
+    await db.flush()
+    for phone in ("989121001001", "989122002002", "989123003003", "989124004004", "989125005005"):
+        db.add(PmRecipient(organization_id=organization_id, list_id=ready.id, phone=phone))
+
+    db.add(
+        PmCarRequest(
+            organization_id=organization_id,
+            raw_text="برای تیگو ۸ تحویل فوری، استوری روی پیج کارکرده و خودرو بانک لازم است.",
+            brand="فونیکس",
+            summary="استوری تیگو ۸، تحویل فوری",
+            source="panel",
+            status="planned",
+            campaign_id=s84.id,
+            created_by=mina.id,
+        )
+    )
+    db.add(
+        PmCarRequest(
+            organization_id=organization_id,
+            raw_text="کمپین U85 ماموت: دو استوری و یک پیامک روی لیست دیدار.",
+            brand="ماموت",
+            summary="برنامه U85 ماموت",
+            source="panel",
+            status="new",
+            campaign_id=u85.id,
+            created_by=nadia.id,
+        )
+    )
+
+    comm = CommunicationService(db)
+    conv = await comm.create_conversation(
+        organization_id=organization_id,
+        channel=Channel.WEB,
+        participant_ids=[nadia.id, mina.id],
+        topic="درخواست استوری تیگو ۸",
+        branch_id=branch_id,
+        actor_id=mina.id,
+    )
+    await comm.post_message(
+        organization_id=organization_id,
+        conversation_id=conv.id,
+        sender_id=mina.id,
+        text="تیگو ۸ موجود است. برای استوری، پیج کارکرده و خودرو بانک را با بودجه حدود ۴ میلیون در نظر بگیر.",
+        channel=Channel.WEB,
+    )
+    await db.flush()
+
+
+async def _ensure_social_formats(db, organization_id, nadia_id) -> None:
+    """پست و بنر کنار استوری، داخل همان کمپین‌ها."""
+    from datetime import date
+
+    from app.perf.models import PmCampaign, PmPage, PmStory
+
+    campaign = await db.scalar(
+        select(PmCampaign).where(PmCampaign.organization_id == organization_id, PmCampaign.code == "S84")
+    )
+    if not campaign:
+        return
+    pages = {
+        row.name: row
+        for row in (await db.scalars(select(PmPage).where(PmPage.organization_id == organization_id))).all()
+    }
+    have = {
+        row.kind
+        for row in (
+            await db.scalars(select(PmStory).where(PmStory.organization_id == organization_id, PmStory.campaign_id == campaign.id))
+        ).all()
+    }
+    samples = (
+        ("post", "ستوده مگ", date(2026, 9, 18), 1_800_000, 22_000, 18_000, 640, 11),
+        ("banner", "خودرو بانک", date(2026, 9, 20), 3_200_000, 90_000, 70_000, 2_400, 22),
+    )
+    for kind, page_name, day, cost, views, reach, clicks, leads in samples:
+        if kind in have or page_name not in pages:
+            continue
+        db.add(
+            PmStory(
+                organization_id=organization_id,
+                campaign_id=campaign.id,
+                page_id=pages[page_name].id,
+                kind=kind,
+                status="published",
+                published_on=day,
+                cost_toman=cost,
+                views=views,
+                reach=reach,
+                link_clicks=clicks,
+                leads=leads,
+                created_by=nadia_id,
+            )
+        )
+    await db.flush()
 
 
 async def _ensure_campaigns(db, ctx) -> int:
@@ -1536,6 +1917,7 @@ def _demo_logins() -> dict:
         "seller": "reza@autoco.example / password",
         "marketing": "sara@autoco.example / password",
         "marketing_manager": "mina@autoco.example / password",
+        "performance": "nadia@autoco.example / password",
         "finance": "finance@autoco.example / password",
         "mashhad": "maryam@autoco.example / password",
     }

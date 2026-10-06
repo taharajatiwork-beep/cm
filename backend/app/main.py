@@ -23,6 +23,7 @@ from app.api.routes import (
     telegram,
     work,
 )
+from app.perf.routes import router as perf_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.core.metrics import async_timed_request, record_request, render_metrics
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
         customers.router,
         campaigns.router,
         enterprise.router,
+        perf_router,
     ]
     for r in routers:
         app.include_router(r)

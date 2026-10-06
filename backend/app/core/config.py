@@ -114,6 +114,23 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "taha"
 
+    # Performance marketing. External calls stay off until a panel or webhook is set.
+    isms_send_url: str = "https://panel.isms.ir/sendWS"
+    pishgam_send_path: str = "/send"
+    pishgam_balance_path: str = "/balance"
+    pishgam_report_path: str = "/report"
+    perf_sheets_webhook: str = ""
+    # Google Sheet. Both are required before a write. The id is the /d/{id}/ part of the URL.
+    perf_sheets_spreadsheet_id: str = ""
+    perf_sheets_credentials_file: str = ""
+    # Copies of the three source workbooks. Rows are appended; existing rows stay.
+    perf_sheets_register_campaign_id: str = ""
+    perf_sheets_cost_tracking_id: str = ""
+    perf_sheets_reporter_id: str = ""
+    # Mizito session. Empty token means no network call. Read-only.
+    perf_mizito_base: str = "https://app.mizito.ir"
+    perf_mizito_token: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

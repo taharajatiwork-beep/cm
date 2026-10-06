@@ -1076,10 +1076,17 @@ textarea.control,
   gap: var(--space-3);
   width: min(52rem, 100%);
   max-height: min(36rem, calc(100vh - 2rem));
+  overflow: auto;
   padding: var(--space-4);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
+}
+
+/* ساخت و ویرایش کوتاه در پنجره باز می‌شود، نه به‌صورت فرم کشیده روی صفحه. */
+.form-pop .detail-pop-card {
+  width: min(24rem, 100%);
+  max-height: none;
 }
 
 .detail-pop-card .ui-table-wrap {
@@ -1153,6 +1160,11 @@ button.kpi {
   min-width: 0;
 }
 
+.price-ask {
+  position: relative;
+  z-index: 4;
+}
+
 .price-ask-form {
   display: flex;
   flex-wrap: wrap;
@@ -1219,6 +1231,67 @@ button.kpi {
 
 .price-ask-form > .btn {
   height: var(--control-h);
+}
+
+.price-ask-cars {
+  position: relative;
+}
+
+.price-ask-cars-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: start;
+  cursor: pointer;
+}
+
+.price-ask-cars-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  inset-inline: 0;
+  max-height: 16rem;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.price-ask-cars-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.price-ask-car {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.price-ask-car.is-on {
+  background: var(--accent-soft);
+}
+
+.price-ask-car input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
 }
 
 .kpi--link:hover {
@@ -1300,6 +1373,14 @@ button.kpi {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* چند کارت کنار هم باید ردیف را پر کنند. عرض ثابت نگذار که یک طرف صفحه خالی بماند. */
+.fill-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--space-3);
+  align-items: stretch;
+}
+
 .split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 20rem;
@@ -1332,7 +1413,7 @@ button.kpi {
 .side-stack .search-field {
   max-width: none;
 }
-}
+
 
 /* ---------- Lists ---------- */
 
@@ -2663,6 +2744,10 @@ html[dir="rtl"] .thread-row.needs {
   font-size: 0.84rem;
 }
 
+.msg-actions {
+  margin-top: 6px;
+}
+
 .msg.mine .msg-body {
   border-color: transparent;
   background: var(--accent);
@@ -2829,6 +2914,7 @@ html[dir="rtl"] .thread-row.needs {
   display: flex;
   flex-direction: column;
   align-items: center;
+  width: 100%;
   gap: var(--space-2);
   padding: var(--space-5);
   border: 1.5px dashed var(--line-strong);
@@ -3605,6 +3691,31 @@ html[dir="rtl"] .tag-list li {
     align-items: center;
     padding: 0;
     border: 0;
+  }
+
+  .nav-open .nav {
+    flex-direction: column;
+    align-items: stretch;
+    height: 100vh;
+    overflow: auto;
+  }
+
+  .nav-open .brand-text,
+  .nav-open .nav-group-label,
+  .nav-open .user-chip-text {
+    display: flex;
+  }
+
+  .nav-open .nav-primary,
+  .nav-open .nav-group,
+  .nav-open .nav-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .nav-open .nav-primary a span,
+  .nav-open .nav-settings span {
+    display: inline;
   }
 
   .user-chip {

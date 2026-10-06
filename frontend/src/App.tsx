@@ -20,6 +20,7 @@ import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { VehiclesPage, VehicleDetailPage } from "./pages/VehiclesPage";
 import { WorkItemDetailPage, WorkItemsPage } from "./pages/WorkItemsPage";
+import { PerfRoutes } from "./perf/PerfRoutes";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -32,6 +33,12 @@ function Protected({ children }: { children: React.ReactNode }) {
 function SearchRoute() {
   const [params] = useSearchParams();
   return <SearchPage initialQuery={params.get("q") || ""} />;
+}
+
+function HomeRoute() {
+  const { user } = useAuth();
+  if (user?.roleCode === "performance_marketing") return <Navigate to="/perf" replace />;
+  return <HomePage />;
 }
 
 export default function App() {
@@ -47,7 +54,7 @@ export default function App() {
             </Protected>
           }
         >
-          <Route index element={<HomePage />} />
+          <Route index element={<HomeRoute />} />
           <Route path="my-work" element={<MyWorkPage />} />
           <Route path="tasks" element={<Navigate to="/my-work" replace />} />
           <Route path="work-items" element={<WorkItemsPage />} />
@@ -69,6 +76,7 @@ export default function App() {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="agent" element={<AgentPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="perf/*" element={<PerfRoutes />} />
         </Route>
       </Routes>
     </AuthProvider>

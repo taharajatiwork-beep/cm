@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { Avatar, Icon, type IconName } from "./components/ui";
@@ -36,6 +36,19 @@ const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
     ],
   },
   {
+    en: "Performance",
+    fa: "پرفورمنس",
+    items: [
+      { to: "/perf", icon: "activity", labelEn: "Performance home", labelFa: "خانه پرفورمنس", hintEn: "Today's campaigns and balances", hintFa: "کمپین و موجودی امروز", end: true, permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
+      { to: "/perf/campaigns", icon: "megaphone", labelEn: "Campaigns", labelFa: "کمپین‌ها", hintEn: "Cost, leads and CPL", hintFa: "هزینه، ورودی و هزینه هر ورودی", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
+      { to: "/perf/sms", icon: "message", labelEn: "SMS", labelFa: "پیامک", hintEn: "Write, lists and sends", hintFa: "نوشتن، لیست و ثبت ارسال", permAny: ["perf.read", "perf.write"] },
+      { to: "/perf/social", icon: "flag", labelEn: "Social", labelFa: "سوشال", hintEn: "Cars, budget, then pages", hintFa: "ماشین، بودجه، بعد پیج", permAny: ["perf.read", "perf.write"] },
+      { to: "/perf/money", icon: "briefcase", labelEn: "Money", labelFa: "پول", hintEn: "Charges and payments", hintFa: "شارژ و پرداخت", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
+      { to: "/perf/sheet", icon: "book", labelEn: "Sheet", labelFa: "شیت", hintEn: "The live cost and result sheet", hintFa: "شیت زنده هزینه و نتیجه", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
+      { to: "/perf/connections", icon: "settings", labelEn: "Connections", labelFa: "اتصالات", hintEn: "Sheets, Mizito and the rest", hintFa: "شیت، میزیتو و بقیه", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
+    ],
+  },
+  {
     en: "More",
     fa: "بیشتر",
     items: [
@@ -55,6 +68,8 @@ const roleFa: Record<string, string> = {
   marketing: "بازاریابی",
   finance: "مالی",
   viewer: "بازدیدکننده",
+  performance_marketing: "پرفورمنس",
+  marketing_manager: "مدیر مارکتینگ",
 };
 
 export function Shell() {
@@ -62,6 +77,7 @@ export function Shell() {
   const bi = useBi();
   const { locale } = useLocale();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const searchRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [drawer, setDrawer] = useState(false);
@@ -79,7 +95,18 @@ export function Shell() {
     (departments.data ?? []).find((row) => String(row.id) === String(user?.department_id))?.name ?? "",
   );
   const noteCount = (notes.data ?? []).filter((row) => !row.is_read).length;
-  const roleLabel = locale === "fa" ? roleFa[roleHint] || roleHint : roleHint;
+  const roleLabel =
+    locale === "fa"
+      ? roleFa[user?.roleCode || ""] || roleFa[roleHint] || roleHint
+      : user?.roleCode || roleHint;
+  const orderedGroups =
+    user?.roleCode === "performance_marketing"
+      ? [...navGroups].sort((a, b) => Number(b.en === "Performance") - Number(a.en === "Performance"))
+      : navGroups;
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -117,28 +144,32 @@ export function Shell() {
         </Link>
 
         <nav className="nav-primary">
-          {navGroups.map((g) => (
-            <div className="nav-group" key={g.en || "main"}>
-              {g.en ? (
-                <div className="nav-group-label">
-                  <Bi en={g.en} fa={g.fa} />
-                </div>
-              ) : null}
-              {g.items.filter((l) => {
-                if (l.adminOnly && roleHint !== "admin") return false;
-                if (l.managerOnly && roleHint !== "manager" && roleHint !== "admin") return false;
-                if (l.permAny) return l.permAny.some((code) => has(code));
-                return !l.perm || has(l.perm);
-              }).map((l) => (
-                <NavLink key={l.to} to={l.to} end={l.end} title={bi(l.hintEn, l.hintFa)} onClick={() => setDrawer(false)}>
-                  <Icon name={l.icon} />
-                  <span>
-                    <Bi en={l.labelEn} fa={l.labelFa} />
-                  </span>
-                </NavLink>
-              ))}
-            </div>
-          ))}
+          {orderedGroups.map((g) => {
+            const items = g.items.filter((l) => {
+              if (l.adminOnly && roleHint !== "admin") return false;
+              if (l.managerOnly && roleHint !== "manager" && roleHint !== "admin") return false;
+              if (l.permAny) return l.permAny.some((code) => has(code));
+              return !l.perm || has(l.perm);
+            });
+            if (items.length === 0) return null;
+            return (
+              <div className="nav-group" key={g.en || "main"}>
+                {g.en ? (
+                  <div className="nav-group-label">
+                    <Bi en={g.en} fa={g.fa} />
+                  </div>
+                ) : null}
+                {items.map((l) => (
+                  <NavLink key={l.to} to={l.to} end={l.end} title={bi(l.hintEn, l.hintFa)} onClick={() => setDrawer(false)}>
+                    <Icon name={l.icon} />
+                    <span>
+                      <Bi en={l.labelEn} fa={l.labelFa} />
+                    </span>
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="nav-footer">

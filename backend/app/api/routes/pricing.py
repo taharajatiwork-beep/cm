@@ -18,10 +18,18 @@ router = APIRouter(prefix="/pricing", tags=["pricing"])
 
 
 class SlotIn(BaseModel):
-    vehicle_id: UUID
+    vehicle_id: UUID | None = None
+    vehicle_ids: list[UUID] = []
     post_at: datetime
     slot_type: str = "video"
     channel: str | None = None
+
+    def chosen(self) -> list[UUID]:
+        ids: list[UUID] = []
+        for vid in [*self.vehicle_ids, self.vehicle_id]:
+            if vid and vid not in ids:
+                ids.append(vid)
+        return ids
 
 
 class ConfirmIn(BaseModel):
@@ -115,22 +123,29 @@ async def request_slot(
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    ids = body.chosen()
+    if not ids:
+        raise HTTPException(422, "یک خودرو انتخاب کنید")
     try:
-        slot = await PricingService(db).request_slot(
-            organization_id=ctx.organization_id,
-            vehicle_id=body.vehicle_id,
-            post_at=body.post_at,
-            requester_id=ctx.user.id,
-            actor_permissions=ctx.permissions,
-            slot_type=body.slot_type,
-            channel=body.channel,
-        )
+        slots = [
+            await PricingService(db).request_slot(
+                organization_id=ctx.organization_id,
+                vehicle_id=vehicle_id,
+                post_at=body.post_at,
+                requester_id=ctx.user.id,
+                actor_permissions=ctx.permissions,
+                slot_type=body.slot_type,
+                channel=body.channel,
+            )
+            for vehicle_id in ids
+        ]
     except AuthorizationError as e:
         raise handle_authz(e) from e
     except ValueError as e:
         raise HTTPException(404, str(e)) from e
-    vehicle = await db.get(Vehicle, slot.vehicle_id)
-    return _slot_out(slot, vehicle)
+    if body.vehicle_ids:
+        return [_slot_out(slot, await db.get(Vehicle, slot.vehicle_id)) for slot in slots]
+    return _slot_out(slots[0], await db.get(Vehicle, slots[0].vehicle_id))
 
 
 @router.post("/slots/{slot_id}/confirm")

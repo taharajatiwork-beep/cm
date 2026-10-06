@@ -143,3 +143,30 @@ async def test_price_reminder_fires_once(db, seeded):
     assert first >= 1
     second = await svc.remind_due(now=datetime.now(UTC))
     assert second == 0
+
+
+@pytest.mark.asyncio
+async def test_request_price_for_several_vehicles(client, seeded):
+    ali = await login(client, "ali@autoco.example")
+    ids = []
+    for vin, model in (("MULTI-A", "One"), ("MULTI-B", "Two")):
+        created = await client.post(
+            "/inventory/vehicles",
+            headers=auth(ali),
+            json={"vin": vin, "brand": "Test", "model": model, "year": 2024},
+        )
+        assert created.status_code == 200, created.text
+        ids.append(created.json()["id"])
+
+    sara = await login(client, "sara@autoco.example")
+    when = (datetime.now(UTC) + timedelta(hours=4)).isoformat()
+    slots = await client.post(
+        "/pricing/slots",
+        headers=auth(sara),
+        json={"vehicle_ids": ids, "post_at": when, "slot_type": "video"},
+    )
+    assert slots.status_code == 200, slots.text
+    body = slots.json()
+    assert len(body) == 2
+    assert {row["vehicle_id"] for row in body} == set(ids)
+    assert {row["status"] for row in body} == {"requested"}

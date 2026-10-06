@@ -258,8 +258,14 @@ export const api = {
         all_priced: boolean;
         vehicles: Array<Record<string, unknown>>;
       }>("/pricing/board"),
-    requestSlot: (body: { vehicle_id: string; post_at: string; slot_type?: string; channel?: string }) =>
-      request<Record<string, unknown>>("/pricing/slots", {
+    requestSlot: (body: {
+      vehicle_id?: string;
+      vehicle_ids?: string[];
+      post_at: string;
+      slot_type?: string;
+      channel?: string;
+    }) =>
+      request<Record<string, unknown> | Array<Record<string, unknown>>>("/pricing/slots", {
         method: "POST",
         body: JSON.stringify(body),
       }),

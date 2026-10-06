@@ -156,6 +156,18 @@ const PERM_COPY: Record<string, [string, string]> = {
     "Confirm the sale price of a car, including the price used in a scheduled post.",
     "قیمت فروش خودرو را ثبت کند، از جمله قیمتی که برای یک پست زمان‌دار استفاده می‌شود.",
   ],
+  "perf.read": [
+    "See performance campaigns, SMS, stories and payments.",
+    "کمپین، پیامک، استوری و پرداخت پرفورمنس را ببیند.",
+  ],
+  "perf.write": [
+    "Create campaigns, SMS lists and payment requests.",
+    "کمپین، لیست پیامک و درخواست پرداخت بسازد.",
+  ],
+  "perf.approve": [
+    "Approve a performance payment before finance.",
+    "درخواست پرداخت پرفورمنس را قبل از مالی تأیید کند.",
+  ],
 };
 
 const PERM_GROUPS: Array<{ en: string; fa: string; codes: string[] }> = [
@@ -178,6 +190,11 @@ const PERM_GROUPS: Array<{ en: string; fa: string; codes: string[] }> = [
     en: "Marketing",
     fa: "بازاریابی",
     codes: ["campaign.read", "campaign.write"],
+  },
+  {
+    en: "Performance",
+    fa: "پرفورمنس",
+    codes: ["perf.read", "perf.write", "perf.approve"],
   },
   {
     en: "Finance",

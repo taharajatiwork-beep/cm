@@ -31,5 +31,9 @@ export function DateText({
     );
   }
   const text = withTime ? formatJalaliDateTime(value) : formatJalali(value);
-  return text ? <span className={className}>{text}</span> : null;
+  return text ? <span className={className}>{faDigits(text)}</span> : null;
+}
+
+function faDigits(text: string): string {
+  return text.replace(/\d/g, (digit) => "۰۱۲۳۴۵۶۷۸۹"[Number(digit)]);
 }

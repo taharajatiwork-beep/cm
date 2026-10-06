@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
@@ -14,7 +14,6 @@ import {
   LoadingState,
   PageHeader,
   SectionHeader,
-  Select,
   StatCard,
   Table,
 } from "../components/ui";
@@ -106,6 +105,11 @@ function tomanFromMillionInput(raw: string): number | null {
   return million * 1_000_000;
 }
 
+function carLabel(car?: { brand: string; model: string; color?: string | null }): string {
+  if (!car) return "";
+  return `${car.brand} ${car.model}${car.color ? ` ${car.color}` : ""}`;
+}
+
 function waitingStatus(status: string): boolean {
   return status === "requested" || status === "needs_recheck";
 }
@@ -119,7 +123,9 @@ export function PricingPage() {
   const canPrice = has("price.write");
   const canRequest = has("campaign.write");
   const canPeople = has("user.read");
-  const [vehicleId, setVehicleId] = useState("");
+  const [vehicleIds, setVehicleIds] = useState<string[]>([]);
+  const [carsOpen, setCarsOpen] = useState(false);
+  const carsRef = useRef<HTMLDivElement>(null);
   const [hour, setHour] = useState("16");
   const [minute, setMinute] = useState("00");
   const [fresh, setFresh] = useState<Record<string, string>>({});
@@ -150,11 +156,22 @@ export function PricingPage() {
     mutationFn: () => {
       const when = new Date();
       when.setHours(Number(padClock(hour, 23)), Number(padClock(minute, 59)), 0, 0);
-      return api.pricing.requestSlot({ vehicle_id: vehicleId, post_at: when.toISOString(), slot_type: "video" });
+      return api.pricing.requestSlot({
+        vehicle_ids: vehicleIds,
+        post_at: when.toISOString(),
+        slot_type: "video",
+      });
     },
-    onSuccess: () => {
-      toast(bi("Request sent to finance", "درخواست برای مالی فرستاده شد"));
-      setVehicleId("");
+    onSuccess: (result) => {
+      const count = Array.isArray(result) ? result.length : 1;
+      toast(
+        bi(
+          count === 1 ? "Request sent to finance" : `${count} requests sent to finance`,
+          count === 1 ? "درخواست برای مالی فرستاده شد" : `${count.toLocaleString("fa-IR")} درخواست برای مالی فرستاده شد`,
+        ),
+      );
+      setVehicleIds([]);
+      setCarsOpen(false);
       refresh();
     },
   });
@@ -165,6 +182,15 @@ export function PricingPage() {
       refresh();
     },
   });
+  useEffect(() => {
+    if (!carsOpen) return;
+    const onPointer = (event: MouseEvent) => {
+      if (!carsRef.current?.contains(event.target as Node)) setCarsOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, [carsOpen]);
+
   const posted = useMutation({
     mutationFn: (id: string) => api.pricing.posted(id),
     onSuccess: () => {
@@ -176,6 +202,10 @@ export function PricingPage() {
   const data = board.data;
   const slots = ((data?.slots ?? []) as Slot[]).slice().sort((a, b) => String(a.post_at).localeCompare(String(b.post_at)));
   const stock = (data?.vehicles ?? []) as Stock[];
+  const inStock = stock
+    .filter((car) => car.status === "IN_STOCK")
+    .slice()
+    .sort((a, b) => carLabel(a).localeCompare(carLabel(b), "fa"));
   const waiting = slots.filter((slot) => waitingStatus(slot.status));
   const ready = slots.filter((slot) => slot.status === "confirmed" || slot.status === "posted");
   const staleCars = stock.filter((car) => car.status === "IN_STOCK" && stale(car.price_updated_at));
@@ -254,8 +284,8 @@ export function PricingPage() {
                 title={<Bi en="Ask for a price" fa="درخواست قیمت" />}
                 hint={
                   <Bi
-                    en="Choose the car and the post time. Finance confirms the price, then you can publish."
-                    fa="خودرو و ساعت پست را انتخاب کنید. مالی قیمت را تأیید می‌کند و بعد می‌توانید منتشر کنید."
+                    en="Choose one or more cars and the post time. Finance confirms each price, then you can publish."
+                    fa="یک یا چند خودرو و ساعت پست را انتخاب کنید. مالی قیمت هر کدام را تأیید می‌کند و بعد می‌توانید منتشر کنید."
                   />
                 }
               />
@@ -263,21 +293,69 @@ export function PricingPage() {
                 className="price-ask-form"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (vehicleId) request.mutate();
+                  if (vehicleIds.length) request.mutate();
                 }}
               >
-                <Field label={<Bi en="Vehicle" fa="خودرو" />}>
-                  <Select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} required>
-                    <option value="">{bi("Choose a car", "یک خودرو انتخاب کنید")}</option>
-                    {stock
-                      .filter((car) => car.status === "IN_STOCK")
-                      .map((car) => (
-                        <option key={car.id} value={car.id}>
-                          {car.brand} {car.model}
-                          {car.color ? ` ${car.color}` : ""}
-                        </option>
-                      ))}
-                  </Select>
+                <Field
+                  label={
+                    <>
+                      <Bi en="Vehicles" fa="خودروها" />
+                      {vehicleIds.length > 0 ? (
+                        <span className="muted"> · {vehicleIds.length.toLocaleString("fa-IR")}</span>
+                      ) : null}
+                    </>
+                  }
+                >
+                  <div className="price-ask-cars" ref={carsRef}>
+                    <button
+                      type="button"
+                      className="control price-ask-cars-btn"
+                      aria-expanded={carsOpen}
+                      onClick={() => setCarsOpen((open) => !open)}
+                    >
+                      {vehicleIds.length === 0
+                        ? bi("Choose one or more cars", "یک یا چند خودرو")
+                        : vehicleIds.length === 1
+                          ? carLabel(stock.find((car) => car.id === vehicleIds[0]))
+                          : bi(
+                              `${vehicleIds.length} cars`,
+                              `${vehicleIds.length.toLocaleString("fa-IR")} خودرو`,
+                            )}
+                    </button>
+                    {carsOpen ? (
+                      <div className="price-ask-cars-panel">
+                        {inStock.length === 0 ? (
+                          <p className="help-text">
+                            <Bi en="No car is in stock." fa="خودروی موجودی نیست." />
+                          </p>
+                        ) : (
+                          <ul className="price-ask-cars-list">
+                            {inStock.map((car) => {
+                              const on = vehicleIds.includes(car.id);
+                              return (
+                                <li key={car.id}>
+                                  <label className={`price-ask-car${on ? " is-on" : ""}`}>
+                                    <input
+                                      type="checkbox"
+                                      checked={on}
+                                      onChange={() =>
+                                        setVehicleIds((current) =>
+                                          current.includes(car.id)
+                                            ? current.filter((id) => id !== car.id)
+                                            : [...current, car.id],
+                                        )
+                                      }
+                                    />
+                                    <span>{carLabel(car)}</span>
+                                  </label>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 </Field>
                 <Field className="price-ask-clock" label={<Bi en="Post time" fa="ساعت پست" />}>
                   <span className="price-ask-time">
@@ -313,7 +391,7 @@ export function PricingPage() {
                     </span>
                   </span>
                 </Field>
-                <Button type="submit" disabled={!vehicleId || request.isPending}>
+                <Button type="submit" disabled={vehicleIds.length === 0 || request.isPending}>
                   <Bi en="Send to finance" fa="بفرست برای مالی" />
                 </Button>
               </form>

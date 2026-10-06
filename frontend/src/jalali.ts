@@ -51,28 +51,51 @@ function toDate(value: unknown): Date | null {
   return d;
 }
 
-/** "1405/03/21" — Persian (Jalali) calendar date. */
-export function formatJalali(value: unknown): string | null {
+/**
+ * Some sheet dates are already Jalali, stored as `1405-06-10`.
+ * `new Date` reads that year as Gregorian and the conversion goes negative.
+ * Years 1200–1600 in this shape are Jalali; real Gregorian rows in this app are 1900+.
+ */
+function alreadyJalali(value: unknown): { year: number; month: number; day: number } | null {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1200 || year > 1600 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return { year, month, day };
+}
+
+function jalaliParts(value: unknown): [number, number, number] | null {
+  const ready = alreadyJalali(value);
+  if (ready) return [ready.year, ready.month, ready.day];
   const d = toDate(value);
   if (!d) return null;
-  const [y, m, day] = gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  return gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+}
+
+/** "1405/03/21" — Persian (Jalali) calendar date. */
+export function formatJalali(value: unknown): string | null {
+  const parts = jalaliParts(value);
+  if (!parts) return null;
+  const [y, m, day] = parts;
   return `${String(y).padStart(4, "0")}/${String(m).padStart(2, "0")}/${String(day).padStart(2, "0")}`;
 }
 
 /** "21 خرداد 1405" — long Persian date, used where space allows. */
 export function formatJalaliLong(value: unknown): string | null {
-  const d = toDate(value);
-  if (!d) return null;
-  const [y, m, day] = gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  const parts = jalaliParts(value);
+  if (!parts) return null;
+  const [y, m, day] = parts;
   return `${day} ${PERSIAN_MONTHS[m - 1]} ${y}`;
 }
 
 /** "21 خرداد" — short Persian date (day + month, no year), for tight rows. */
 export function formatJalaliShort(value: unknown): string | null {
-  const d = toDate(value);
-  if (!d) return null;
-  const [y, m, day] = gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
-  void y;
+  const parts = jalaliParts(value);
+  if (!parts) return null;
+  const [, m, day] = parts;
   return `${day} ${PERSIAN_MONTHS[m - 1]}`;
 }
 

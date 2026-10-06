@@ -44,3 +44,9 @@ backend/cov_run.txt
 *.log
 server.err
 .cursor/
+
+# Secrets (service-account keys)
+secrets/
+
+# Company data (Sotoudeh exports, sheets, SMS panel dumps) - keep local only
+assets/

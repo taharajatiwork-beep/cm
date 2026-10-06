@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import {
@@ -22,6 +22,8 @@ import { Bi, useBi, useLocale } from "../i18n";
 import { formatJalaliShort } from "../jalali";
 import { buildPersonMap, personName } from "../lib/collaboration";
 import { queryKeys } from "../lib/queryKeys";
+import { perfApi } from "../perf/api";
+import { campaignFromText } from "../perf/fromMessage";
 import { StatusLabel } from "../ux";
 
 type CommSection = "needs_me" | "threads" | "branch" | "campaigns";
@@ -60,6 +62,8 @@ export function CommunicationPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [making, setMaking] = useState("");
 
   const [section, setSection] = useState<CommSection>("needs_me");
   const selected = params.get("c");
@@ -330,6 +334,20 @@ export function CommunicationPage() {
   const current = rows.find((r) => String(r.id) === selected) ?? null;
   const currentSection = sections.find((s) => s.key === section)!;
 
+  async function makeCampaign(id: string, source: string) {
+    const brief = source.trim();
+    if (!brief || making) return;
+    setMaking(id);
+    try {
+      const row = await perfApi.createCampaign(campaignFromText(brief));
+      toast("کمپین از همین درخواست ساخته شد");
+      navigate(`/perf/campaigns/${row.id}`);
+    } catch (err) {
+      toast(String((err as Error).message));
+      setMaking("");
+    }
+  }
+
   function withWhom(row: ConvRow): string {
     const ids = Array.isArray(row.participant_ids) ? row.participant_ids.map(String) : [];
     return ids
@@ -365,6 +383,17 @@ export function CommunicationPage() {
               {c.work_item_id && has("work_item.read") ? (
                 <Button variant="ghost" to={`/work-items/${String(c.work_item_id)}`}>
                   <Bi en="Open project" fa="باز کردن پروژه" />
+                </Button>
+              ) : null}
+              {has("perf.write") ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="btn-sm"
+                  disabled={making === String(c.id)}
+                  onClick={() => void makeCampaign(String(c.id), String(c.subject || ""))}
+                >
+                  <Bi en="Make a campaign" fa="کمپین کن" />
                 </Button>
               ) : null}
             </div>
@@ -751,6 +780,19 @@ export function CommunicationPage() {
                             <span>{shortTime(m.created_at, locale)}</span>
                           </div>
                           <div>{String(m.text)}</div>
+                          {has("perf.write") && String(m.text || "").trim() ? (
+                            <div className="msg-actions">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="btn-sm"
+                                disabled={making === String(m.id)}
+                                onClick={() => void makeCampaign(String(m.id), String(m.text))}
+                              >
+                                <Bi en="Make a campaign" fa="کمپین کن" />
+                              </Button>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     );
