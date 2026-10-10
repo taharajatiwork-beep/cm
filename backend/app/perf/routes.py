@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -17,6 +18,7 @@ from app.core.files import UploadRejected, save_upload
 from app.core.permissions import AuthorizationError, PermissionCode, require_any_permission, require_permission
 from app.db.session import get_db
 from app.models import User
+from app.requests.models import WorkProject
 from app.perf.campaign_register import LEGACY, NUMBERS, TAGS, next_code, next_number, tag_brand
 from app.perf.models import (
     PmBlacklist,
@@ -50,7 +52,9 @@ from app.perf.schemas import (
     PaymentPatch,
     PaymentIn,
     PishgamSendIn,
+    PishgamDeliveryIn,
     SheetSyncIn,
+    MizitoRequestApprove,
     MizitoTokenIn,
     SmsCheckIn,
     SmsDraftIn,
@@ -60,6 +64,7 @@ from app.perf.schemas import (
     StoryPatch,
     StoryPublish,
 )
+from app.perf.services.brief import draft_brief, parse_brief
 from app.perf.services.common import PerfError, as_date, iso, next_cost_number, now, users_with
 from app.perf.services.queue import next_steps
 from app.perf.services.excel import (
@@ -73,16 +78,21 @@ from app.perf.services.excel import (
 )
 from app.perf.services.integrations import (
     count_delivered,
+    delivery_text,
     pick_send,
     pishgam_call,
+    pishgam_delivered_count,
     push_sheet,
     read_insight_image,
     send_isms_service,
     sheet_day,
 )
 from app.perf.services.lists import clean_numbers, normalize_phone, phones_from_xlsx, workbook_chunks
-from app.perf.services.mizito import refresh_mizito, saved_mizito
-from app.perf.services.connections import connection_status, save_mizito_token
+from app.perf.services.mizito import mizito_missing, refresh_mizito, saved_mizito
+from app.perf.services.mizito_finance import mizito_finance
+from app.perf.services import mizito_requests as mizito_inbox
+from app.perf.services.mizito_triage import mizito_triage
+from app.perf.services.connections import _panel_auth, connection_status, save_mizito_token
 from app.perf.services.payments import advance, notify_requested
 from app.perf.services.remove import drop_campaign, drop_list, drop_page, drop_payment, drop_send, drop_story
 from app.perf.services.reports import booked_cost, build_report, load_settlement, placement_live, story_rates
@@ -171,6 +181,8 @@ def _campaign_out(row: PmCampaign) -> dict:
         "vehicle_ids": [part for part in (row.vehicle_ids or "").split(",") if part],
         "channels": [part for part in (row.channels or "").split(",") if part],
         "lead_stages": [part for part in (row.lead_stages or "").split(",") if part],
+        "brief": parse_brief(row),
+        "project_id": str(row.project_id) if row.project_id else None,
         "created_at": iso(row.created_at),
     }
 
@@ -320,6 +332,10 @@ async def create_campaign(
         code = next_code(tag, codes)
         if not brand:
             brand = tag_brand(tag)
+    if body.project_id:
+        project = await db.get(WorkProject, body.project_id)
+        if not project or project.organization_id != ctx.organization_id:
+            raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
     row = PmCampaign(
         organization_id=ctx.organization_id,
         code=code,
@@ -333,6 +349,7 @@ async def create_campaign(
         vehicle_ids=",".join(str(item) for item in body.vehicle_ids),
         channels=_channels(body.channels),
         lead_stages=",".join(part.strip() for part in body.lead_stages if part.strip()),
+        project_id=body.project_id,
         created_by=ctx.user.id,
     )
     db.add(row)
@@ -390,10 +407,31 @@ async def patch_campaign(
         row.vehicle_ids = ",".join(str(item) for item in data.pop("vehicle_ids"))
     if "lead_stages" in data and data["lead_stages"] is not None:
         row.lead_stages = ",".join(part.strip() for part in data.pop("lead_stages") if part.strip())
+    if "brief" in data and data["brief"] is not None:
+        from app.perf.services.brief import normalize_brief
+
+        row.brief = json.dumps(normalize_brief(data.pop("brief"), row), ensure_ascii=False)
+    if data.get("project_id"):
+        project = await db.get(WorkProject, data["project_id"])
+        if not project or project.organization_id != ctx.organization_id:
+            raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
     for key, value in data.items():
         setattr(row, key, value)
     await db.flush()
     return _campaign_out(row)
+
+
+@router.post("/campaigns/{campaign_id}/brief/draft")
+async def draft_campaign_brief(
+    campaign_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """پیش‌نویس بریف از مشخصات کمپین؛ ذخیره نمی‌شود. با LLM و در نبودش با قالب."""
+    _read(ctx)
+    row = await _campaign(db, ctx, campaign_id)
+    brief, source = await draft_brief(row)
+    return {"brief": brief, "source": source}
 
 
 @router.delete("/campaigns/{campaign_id}", status_code=204)
@@ -585,6 +623,7 @@ async def create_send(
         delivered_count=body.delivered_count,
         calls=body.calls,
         leads=body.leads,
+        pishgam_message_id=body.pishgam_message_id,
         created_by=ctx.user.id,
     )
     db.add(row)
@@ -717,6 +756,67 @@ async def import_delivery(
     row.delivered_count = count_delivered(cells)
     await db.flush()
     return {"delivered_count": row.delivered_count, "send_id": str(row.id)}
+
+
+@router.post("/sms/sends/{send_id}/pishgam-delivery")
+async def pishgam_send_delivery(
+    send_id: UUID,
+    body: PishgamDeliveryIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """دلیوری ارسال پیشگام با شناسهٔ ذخیره‌شده خوانده و روی همان رکورد ارسال می‌نشیند."""
+    _write(ctx)
+    row = await db.get(PmSmsSend, send_id)
+    if not row or row.organization_id != ctx.organization_id:
+        raise HTTPException(status_code=404, detail="ارسال پیدا نشد")
+    message_id = body.message_id or row.pishgam_message_id
+    if not message_id:
+        raise HTTPException(status_code=422, detail="شناسهٔ ارسال پیشگام روی این رکورد ذخیره نشده است")
+    recipients = [str(number).strip() for number in body.recipients if str(number).strip()]
+    if not recipients:
+        raise HTTPException(status_code=422, detail="شمارهٔ گیرنده‌ای وارد نشده است")
+    if len(recipients) > 100:
+        raise HTTPException(status_code=422, detail="حداکثر ۱۰۰ گیرنده در هر درخواست پذیرفته می‌شود")
+    if not row.panel_id:
+        raise HTTPException(status_code=422, detail="این ارسال به پنلی وصل نیست")
+    panel = await _panel(db, ctx, row.panel_id)
+    if panel.code != "pishgam":
+        raise HTTPException(status_code=422, detail="دلیوری API فقط برای پنل پیشگام است")
+    from app.core.config import get_settings
+
+    try:
+        api_base, api_token = _panel_auth(panel)
+        result = await pishgam_call(
+            api_base=api_base,
+            token=api_token,
+            path=get_settings().pishgam_report_path,
+            method="POST",
+            payload={"messageId": int(message_id), "recipientNumbers": recipients},
+        )
+    except PerfError as exc:
+        _fail(exc)
+    try:
+        data = json.loads(result["body"]) if result["status_code"] == 200 else {}
+    except ValueError:
+        data = {}
+    if int(data.get("statusCode") or 0) != 0:
+        from app.perf.services.connections import pishgam_reason
+
+        return {"ok": False, "reason": pishgam_reason(int(data.get("statusCode") or 0)), "rows": [], "delivered_count": 0}
+    rows = [
+        {
+            "to_number": str(item.get("toNumber") or ""),
+            "status": item.get("deliveryStatus"),
+            "text": delivery_text(item.get("deliveryStatus")),
+        }
+        for item in data.get("numberDeliveryStatus") or []
+    ]
+    delivered = pishgam_delivered_count([item["status"] for item in rows])
+    row.pishgam_message_id = int(message_id)
+    row.delivered_count = delivered
+    await db.flush()
+    return {"ok": True, "reason": "", "rows": rows, "delivered_count": delivered, "send_id": str(row.id)}
 
 
 @router.post("/sms/delivery")
@@ -951,6 +1051,9 @@ async def create_payment(
         mizito_url=body.mizito_url,
         note=body.note,
         requester_id=ctx.user.id,
+        project_id=body.project_id,
+        request_id=body.request_id,
+        team_id=body.team_id,
         status="requested",
     )
     db.add(row)
@@ -1017,7 +1120,7 @@ async def advance_payment(
     if not row or row.organization_id != ctx.organization_id:
         raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
     try:
-        await advance(db, row, body.action, ctx.permissions, ctx.user.id)
+        await advance(db, row, body.action, ctx.permissions, ctx.user.id, body.seen_amount_toman)
     except PerfError as exc:
         _fail(exc)
     return _payment_out(row)
@@ -1616,9 +1719,10 @@ async def pishgam_send(
     from app.core.config import get_settings
 
     try:
+        api_base, api_token = _panel_auth(panel)
         return await pishgam_call(
-            api_base=panel.api_base,
-            token=panel.api_token,
+            api_base=api_base,
+            token=api_token,
             path=get_settings().pishgam_send_path,
             method="POST",
             payload={"sender": panel.sender_line, "body": body.body, "mobiles": body.mobiles},
@@ -1638,13 +1742,69 @@ async def pishgam_balance(
     from app.core.config import get_settings
 
     try:
+        api_base, api_token = _panel_auth(panel)
         return await pishgam_call(
-            api_base=panel.api_base,
-            token=panel.api_token,
+            api_base=api_base,
+            token=api_token,
             path=get_settings().pishgam_balance_path,
         )
     except PerfError as exc:
         _fail(exc)
+
+
+@router.post("/integrations/pishgam/delivery")
+async def pishgam_delivery(
+    body: PishgamDeliveryIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """وضعیت دلیوری پیامک پیشگام با شناسهٔ ارسال در پنل خوانده می‌شود؛ فقط خواندن."""
+    _read(ctx)
+    panel = await _panel(db, ctx, body.panel_id) if body.panel_id else None
+    if panel is None:
+        raise HTTPException(status_code=422, detail="پنل انتخاب نشده است")
+    from app.core.config import get_settings
+
+    recipients = [str(number).strip() for number in body.recipients if str(number).strip()]
+    if not body.message_id:
+        raise HTTPException(status_code=422, detail="شناسهٔ ارسال را وارد کنید")
+    if not recipients:
+        raise HTTPException(status_code=422, detail="شمارهٔ گیرنده‌ای وارد نشده است")
+    if len(recipients) > 100:
+        raise HTTPException(status_code=422, detail="حداکثر ۱۰۰ گیرنده در هر درخواست پذیرفته می‌شود")
+    try:
+        api_base, api_token = _panel_auth(panel)
+        result = await pishgam_call(
+            api_base=api_base,
+            token=api_token,
+            path=get_settings().pishgam_report_path,
+            method="POST",
+            payload={"messageId": body.message_id, "recipientNumbers": recipients},
+        )
+    except PerfError as exc:
+        _fail(exc)
+    try:
+        data = json.loads(result["body"]) if result["status_code"] == 200 else {}
+    except ValueError:
+        data = {}
+    if int(data.get("statusCode") or 0) != 0:
+        from app.perf.services.connections import pishgam_reason
+
+        return {"ok": False, "reason": pishgam_reason(int(data.get("statusCode") or 0)), "rows": [], "delivered_count": 0}
+    rows = [
+        {
+            "to_number": str(item.get("toNumber") or ""),
+            "status": item.get("deliveryStatus"),
+            "text": delivery_text(item.get("deliveryStatus")),
+        }
+        for item in data.get("numberDeliveryStatus") or []
+    ]
+    return {
+        "ok": True,
+        "reason": "",
+        "rows": rows,
+        "delivered_count": pishgam_delivered_count([row["status"] for row in rows]),
+    }
 
 
 @router.get("/connections")
@@ -1676,6 +1836,118 @@ async def read_mizito(
     """آخرین لیست ذخیره‌شده. با باز شدن صفحه به میزیتو وصل نمی‌شود."""
     _read(ctx)
     return await saved_mizito(db, ctx.organization_id)
+
+
+@router.get("/integrations/mizito/missing")
+async def read_mizito_missing(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """کدهای کمپینِ کارت‌های میزیتو که در پنل نیستند. فقط از لیست ذخیره‌شده؛ به میزیتو وصل نمی‌شود."""
+    _read(ctx)
+    return await mizito_missing(db, ctx.organization_id)
+
+
+@router.get("/integrations/mizito/finance")
+async def read_mizito_finance(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """پرداخت‌های پروژهٔ مالی میزیتو کنار Cost Tracking پنل. فقط خواندنی؛ تطبیق پیشنهادی است و هزینه‌ای ساخته نمی‌شود."""
+    _read(ctx)
+    return await mizito_finance(db, ctx.organization_id)
+
+
+@router.get("/integrations/mizito/triage")
+async def read_mizito_triage(
+    days: int | None = Query(default=None),
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """کارت‌های فعالی که رسیدگی می‌خواهند. فقط از لیست ذخیره‌شده؛ days بین ۱ و ۳۶۵ محدود می‌شود."""
+    _read(ctx)
+    return await mizito_triage(db, ctx.organization_id, days)
+
+
+@router.get("/integrations/mizito/requests")
+async def read_mizito_requests(
+    status: str = Query(default="new"),
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """پیش‌نویس‌های کمپین از درخواست‌های میزیتو (فقط از پایگاه دادهٔ پنل)."""
+    _read(ctx)
+    return await mizito_inbox.list_requests(db, ctx.organization_id, status)
+
+
+@router.post("/integrations/mizito/requests/check")
+async def check_mizito_requests(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """«بررسی دوباره»: فقط خواندن از میزیتو (همان دسترسی «به‌روز از میزیتو»)؛ چیزی در میزیتو نوشته نمی‌شود."""
+    _read(ctx)
+    return await mizito_inbox.check_requests(db, ctx.organization_id)
+
+
+async def _open_mizito_request(db: AsyncSession, ctx: AuthContext, request_id: UUID):
+    row = await mizito_inbox.get_request(db, ctx.organization_id, request_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
+    if row.status not in ("new", "duplicate"):
+        raise HTTPException(status_code=409, detail="این درخواست قبلاً بررسی شده است")
+    return row
+
+
+@router.post("/integrations/mizito/requests/{request_id}/approve")
+async def approve_mizito_request(
+    request_id: UUID,
+    body: MizitoRequestApprove,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """کمپین واقعی با کد بعدی دفتر، از همان مسیر «کمپین تازه». فقط با تایید کاربر."""
+    _write(ctx)
+    row = await _open_mizito_request(db, ctx, request_id)
+    if row.kind == "stop":
+        raise HTTPException(status_code=422, detail="درخواست توقف کمپین تازه نمی‌سازد")
+    draft = await mizito_inbox.one_out(db, row)
+    hint = mizito_inbox.suggest(draft["fields"], row.kind)
+    if hint["tag"] not in {item["tag"] for item in TAGS}:
+        hint["tag"] = ""
+    campaign = await create_campaign(
+        CampaignIn(
+            title=body.title.strip() or hint["title"] or "کمپین از درخواست میزیتو",
+            tag=body.tag.strip() or hint["tag"],
+            brand=body.brand.strip() or hint["brand"],
+            goal=mizito_inbox.offer_summary(draft["fields"]),
+            channels=body.channels or hint["channels"],
+            status="active",
+        ),
+        ctx,
+        db,
+    )
+    row.status = "approved"
+    row.campaign_id = UUID(campaign["id"])
+    row.decided_by = ctx.user.id
+    row.decided_at = now()
+    await db.flush()
+    return {"request": await mizito_inbox.one_out(db, row), "campaign": campaign}
+
+
+@router.post("/integrations/mizito/requests/{request_id}/reject")
+async def reject_mizito_request(
+    request_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _write(ctx)
+    row = await _open_mizito_request(db, ctx, request_id)
+    row.status = "rejected"
+    row.decided_by = ctx.user.id
+    row.decided_at = now()
+    await db.flush()
+    return await mizito_inbox.one_out(db, row)
 
 
 @router.post("/integrations/mizito/refresh")
@@ -1730,6 +2002,7 @@ def _send_out(row: PmSmsSend, code: str, panel_name: str = "") -> dict:
         "delivered_count": row.delivered_count,
         "calls": row.calls,
         "leads": row.leads,
+        "pishgam_message_id": row.pishgam_message_id,
     }
 
 
@@ -1767,6 +2040,9 @@ def _payment_out(row: PmPaymentRequest, requester_name: str = "") -> dict:
         "note": row.note,
         "requester_id": str(row.requester_id) if row.requester_id else None,
         "requester_name": requester_name,
+        "project_id": str(row.project_id) if row.project_id else None,
+        "request_id": str(row.request_id) if row.request_id else None,
+        "team_id": str(row.team_id) if row.team_id else None,
         "created_at": iso(row.created_at),
     }
 
@@ -1887,3 +2163,5 @@ def _cost_dict(row: PmCost) -> dict:
         "cost_center": row.cost_center,
         "description": row.description,
     }
+
+

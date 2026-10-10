@@ -27,7 +27,6 @@ import {
   priorityLabel,
   slaStateLabel,
 } from "../labels";
-import { ConceptHint } from "../ux";
 
 /** ترتیب نمایش وضعیت‌ها — هر هشت مقدار CaseStatus در enums.py را پوشش می‌دهد. */
 const STATUS_ORDER = [
@@ -155,8 +154,6 @@ export function CasesPage() {
           />
         }
       />
-      <ConceptHint kind="followup" />
-
       <ErrorMessage
         error={
           list.isError

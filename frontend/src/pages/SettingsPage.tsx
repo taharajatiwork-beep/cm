@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import {
@@ -17,6 +18,7 @@ import {
 } from "../components/ui";
 import { useToast } from "../components/ui/Toast";
 import { Bi, LangSwitch, useBi } from "../i18n";
+import { useAuth } from "../auth";
 import { queryKeys } from "../lib/queryKeys";
 
 type Section = "org" | "knowledge" | "language" | "telegram";
@@ -44,6 +46,8 @@ const DEFAULT_PREFS: Record<string, boolean> = {
 
 export function SettingsPage() {
   const bi = useBi();
+  const { has } = useAuth();
+  const canOpenTeam = has("request.triage") || has("request.manage");
   const [section, setSection] = useState<Section>("telegram");
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
 
@@ -56,11 +60,13 @@ export function SettingsPage() {
     enabled: Boolean(selectedTeam),
     queryFn: () => api.teams.members(String(selectedTeam)),
   });
+  const rolesQuery = useQuery({ queryKey: ["roles"], queryFn: () => api.roles() });
   const branches = branchesQuery.data ?? [];
   const teams = teamsQuery.data ?? [];
   const depts = deptsQuery.data ?? [];
   const docs = docsQuery.data ?? [];
   const members = membersQuery.data ?? [];
+  const roleName = new Map((rolesQuery.data ?? []).map((r) => [r.id, r.name]));
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [tgBusy, setTgBusy] = useState(false);
@@ -372,7 +378,7 @@ export function SettingsPage() {
             <List>
               {teams.map((t) => (
                 <ListItem key={String(t.id)}>
-                  <span>{String(t.name)}</span>
+                  {canOpenTeam ? <Link to={`/teams/${String(t.id)}`}>{String(t.name)}</Link> : <span>{String(t.name)}</span>}
                   <Button variant="secondary" type="button" onClick={() => void openTeam(String(t.id))}>
                     <Bi en="Members" fa="اعضا" />
                   </Button>
@@ -386,7 +392,12 @@ export function SettingsPage() {
                 </strong>
                 <ul>
                   {members.map((m) => (
-                    <li key={String(m.id)}>{String(m.full_name)}</li>
+                    <li key={String(m.id)}>
+                      {String(m.full_name)}
+                      {m.role_id && roleName.get(String(m.role_id))
+                        ? ` · ${roleName.get(String(m.role_id))}`
+                        : ""}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -440,25 +451,33 @@ export function SettingsPage() {
         </Card>
       )}
 
-      <details className="advanced">
-        <summary>
-          <Bi en="Test accounts (for trying the system)" fa="حساب‌های آزمایشی (برای امتحان سیستم)" />
-        </summary>
-        <div className="advanced-body">
-          <ul className="muted muted-list">
-            <li>admin@autoco.example — {bi("Site admin", "ادمین سایت")}</li>
-            <li>ali@autoco.example — {bi("Sales manager", "مدیر فروش")}</li>
-            <li>reza@autoco.example — {bi("Seller", "فروشنده")}</li>
-            <li>sara@autoco.example — {bi("Marketing", "مارکتینگ")}</li>
-            <li>mina@autoco.example — {bi("Marketing manager", "مدیر مارکتینگ")}</li>
-            <li>finance@autoco.example — {bi("Finance", "مالی")}</li>
-            <li>maryam@autoco.example — {bi("Mashhad branch", "شعبه مشهد")}</li>
-          </ul>
-          <p className="muted help-text">
-            {bi("Password for all:", "رمز همه:")} <code>password</code>
-          </p>
-        </div>
-      </details>
+      {/* حساب‌ها و رمز نمایشی فقط در حالت توسعه؛ در build تولید از باندل حذف می‌شود. */}
+      {import.meta.env.DEV ? (
+        <details className="advanced">
+          <summary>
+            <Bi en="Test accounts (for trying the system)" fa="حساب‌های آزمایشی (برای امتحان سیستم)" />
+          </summary>
+          <div className="advanced-body">
+            <ul className="muted muted-list">
+              <li>admin@autoco.example — {bi("Site admin", "ادمین سایت")}</li>
+              <li>ali@autoco.example — {bi("Ali, sales manager", "علی مدیر · مدیر")}</li>
+              <li>maryam@autoco.example — {bi("Maryam, Mashhad", "مریم · مدیر شعبه مشهد")}</li>
+              <li>reza@autoco.example — {bi("Reza, seller", "رضا فروشنده · عضو")}</li>
+              <li>mina@autoco.example — {bi("Mina, marketing lead", "مینا · سرپرست مارکتینگ")}</li>
+              <li>sara@autoco.example — {bi("Sara, marketing", "سارا بازاریابی · عضو")}</li>
+              <li>nadia@autoco.example — {bi("Nadia, performance marketing", "نادیا · پرفورمنس مارکتینگ")}</li>
+              <li>leila@autoco.example — {bi("Leila, design", "لیلا طراح · عضو")}</li>
+              <li>kamran@autoco.example — {bi("Kamran, filming", "کامران فیلم‌بردار · عضو")}</li>
+              <li>finance@autoco.example — {bi("Neda, finance", "ندا مالی · سرپرست")}</li>
+              <li>nima@autoco.example — {bi("Nima, operations", "نیما عملیات · عضو")}</li>
+              <li>viewer@autoco.example — {bi("Limited viewer", "بازدیدکننده")}</li>
+            </ul>
+            <p className="muted help-text">
+              {bi("Password for all:", "رمز همه:")} <code>password</code>
+            </p>
+          </div>
+        </details>
+      ) : null}
     </>
   );
 }

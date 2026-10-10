@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>فلوچارت بخش پرفورمنس — CM Ops</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --line: #e4e7ec;
+    --ink: #1c2430;
+    --muted: #667085;
+    --accent: #3b6fd8;
+    --accent-soft: #e8effc;
+    --ok: #12805c;
+    --ok-soft: #e3f4ed;
+    --warn: #b25e09;
+    --warn-soft: #fdf0e0;
+    --danger: #b42318;
+    --danger-soft: #fdecea;
+    --violet: #6941c6;
+    --violet-soft: #f0ebfa;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.page {
+    background: linear-gradient(135deg, #1c2430, #2c3a4f);
+    color: #fff;
+    border-radius: var(--radius);
+    padding: 22px 26px;
+    margin-bottom: 22px;
+  }
+  header.page h1 { margin: 0 0 6px; font-size: 20px; }
+  header.page p { margin: 0; color: #c6d0de; font-size: 13px; }
+  h2.section {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 16px; margin: 34px 0 4px;
+  }
+  h2.section .num {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; flex: 0 0 auto;
+  }
+  .section-sub { color: var(--muted); font-size: 12.5px; margin: 0 0 14px 36px; }
+
+  /* ---- flow rows ---- */
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; }
+  .node {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    min-width: 170px;
+    max-width: 250px;
+    flex: 1 1 170px;
+    position: relative;
+  }
+  .node h4 { margin: 0 0 4px; font-size: 13.5px; display: flex; align-items: center; gap: 6px; }
+  .node ul { margin: 4px 0 0; padding: 0 16px 0 0; color: var(--muted); font-size: 12px; }
+  .node li { margin: 2px 0; }
+  .tag {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 600; margin-inline-start: auto;
+  }
+  .tag.ok    { background: var(--ok-soft); color: var(--ok); }
+  .tag.warn  { background: var(--warn-soft); color: var(--warn); }
+  .tag.danger{ background: var(--danger-soft); color: var(--danger); }
+  .tag.info  { background: var(--accent-soft); color: var(--accent); }
+  .tag.violet{ background: var(--violet-soft); color: var(--violet); }
+  .arrow {
+    flex: 0 0 34px; display: flex; align-items: center; justify-content: center;
+    color: var(--accent); font-size: 20px; font-weight: 700;
+  }
+  .lane { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 14px; }
+  .lane > h3 { margin: 0 0 10px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .lane > h3 .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .lane .note { color: var(--muted); font-size: 12px; margin: 10px 0 0; border-top: 1px dashed var(--line); padding-top: 8px; }
+
+  /* vertical flow (campaign lifecycle) */
+  .vflow { display: flex; flex-direction: column; gap: 0; }
+  .vrow { display: flex; gap: 12px; align-items: stretch; }
+  .vstep {
+    flex: 1; background: var(--surface); border: 1px solid var(--line);
+    border-inline-start: 4px solid var(--accent);
+    border-radius: var(--radius); padding: 10px 14px;
+  }
+  .vstep h4 { margin: 0; font-size: 13.5px; }
+  .vstep p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+  .vdown { text-align: center; color: var(--accent); font-size: 18px; line-height: 1; padding: 4px 0; }
+  .vstep.ok    { border-inline-start-color: var(--ok); }
+  .vstep.warn  { border-inline-start-color: var(--warn); }
+  .vstep.danger{ border-inline-start-color: var(--danger); }
+  .vstep.violet{ border-inline-start-color: var(--violet); }
+
+  /* nav map */
+  .navmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .navcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+  .navcard h4 { margin: 0 0 4px; font-size: 13.5px; color: var(--accent); }
+  .navcard p { margin: 0; color: var(--muted); font-size: 12px; }
+
+  /* decision */
+  .decision {
+    background: var(--warn-soft); border: 1px dashed var(--warn); border-radius: var(--radius);
+    padding: 10px 14px; margin: 0; max-width: 300px;
+  }
+  .decision h4 { margin: 0 0 4px; font-size: 13px; color: var(--warn); }
+  .decision p { margin: 0; font-size: 12px; color: var(--ink); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+  .legend i { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+  code { background: #eef1f5; border-radius: 5px; padding: 1px 6px; font-size: 11.5px; direction: ltr; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <h1>نقشهٔ جریان کار بخش پرفورمنس</h1>
+  <p>همهٔ جریان‌ها از روی کد فعلی سرویس پرفورمنس رسم شده‌اند. هیچ اقدام حساس (پرداخت، ارسال پیامک، نوشتن در میزیتو) خودکار نیست؛ اتوماسیون فقط تا دکمهٔ تأیید انسانی آماده می‌کند.</p>
+</header>
+
+<!-- 1 -->
+<h2 class="section"><span class="num">۱</span> نقشهٔ کلی صفحات</h2>
+<p class="section-sub">منوی «پرفورمنس» در کنار سامانه؛ همه از یک هدر به هم لینک دارند (RelatedLinks).</p>
+<div class="navmap">
+  <div class="navcard"><h4>خانه پرفورمنس</h4><p>صف گام بعدی هر کمپین فعال: بودجه، پیج، انتشار، اینسایت، پیامک، تحویل. کلیک فقط باز می‌کند، چیزی نمی‌فرستد.</p></div>
+  <div class="navcard"><h4>کمپین‌ها</h4><p>فهرست کمپین‌ها + صندوق «درخواست‌های جدید از میزیتو»، کدهای بی‌کارت، تریاژ کارت‌ها.</p></div>
+  <div class="navcard"><h4>پیامک</h4><p>نوشتن متن، چک قوانین، نمونهٔ LLM، ثبت ارسال با گیرندهٔ انسانی.</p></div>
+  <div class="navcard"><h4>سوشال</h4><p>بودجه، چیدن پیج‌ها، قرارداد استوری، انتشار و اینسایت.</p></div>
+  <div class="navcard"><h4>هزینه‌ها</h4><p>درخواست شارژ پنل و هزینهٔ سوشال؛ تأیید و پرداخت با مالی؛ لیست کارت‌های میزیتو.</p></div>
+  <div class="navcard"><h4>شیت</h4><p>نمای فقط‌خواندنی از شیت‌های گوگل بعد از همگام‌سازی.</p></div>
+  <div class="navcard"><h4>اتصالات</h4><p>وضعیت زندهٔ گوگل‌شیت، میزیتو، پنل‌های پیامک، اینسایت و تلگرام با خطای دقیق.</p></div>
+</div>
+
+<!-- 2 -->
+<h2 class="section"><span class="num">۲</span> چرخهٔ زندگی یک کمپین</h2>
+<p class="section-sub">صف «گام بعدی» (queue.py) دقیقاً همین ترتیب را برای هر کمپین فعال چک می‌کند و اولین شکاف را نشان می‌دهد.</p>
+<div class="vflow">
+  <div class="vrow"><div class="vstep violet">
+    <h4>ساخت کمپین</h4>
+    <p>دسترسی <code>perf.write</code>. فرم «کمپین تازه» با حرف برند و کد خودکار از دفتر ثبت (S94، S95، …)، یا از درخواست میزیتو با کد صریح. تا تأیید فرم هیچ کمپینی ساخته نمی‌شود. کد تکراری ← ۴۰۹.</p>
+  </div></div>
+  <div class="vdown">▼</div>
+  <div class="vrow"><div class="vstep warn">
+    <h4>بودجه</h4>
+    <p>ماشین‌های واردشده از دیدار آمده‌اند ولی بودجه صفر است ← گام «بودجه» در سوشال. رقم بودجه را خود کاربر وارد می‌کند.</p>
+  </div></div>
+  <div class="vdown">▼</div>
+  <div class="vrow"><div class="vstep">
+    <h4>چیدن پیج</h4>
+    <p>بودجه هست ولی هیچ استوری چیده نشده ← صفحهٔ سوشال. قیمت و پیج از پروندهٔ پیج‌ها انتخاب می‌شود.</p>
+  </div></div>
+  <div class="vdown">▼</div>
+  <div class="vrow"><div class="vstep">
+    <h4>انتشار استوری</h4>
+    <p>قرارهایی که هنوز «منتشر نشده» باقی مانده‌اند. ثبت انتشار یعنی تاریخ و لینک منتشرشده؛ ثبت با انسان است.</p>
+  </div></div>
+  <div class="vdown">▼</div>
+  <div class="vrow"><div class="vstep">
+    <h4>اینسایت</h4>
+    <p>انتشار بی‌عدد (بازدید/لید) ← گام اینسایت. عدد می‌تواند از اسکرین‌شات با کلید مدل زبانی خوانده شود یا دستی وارد شود.</p>
+  </div></div>
+  <div class="vdown">▼</div>
+  <div class="vrow"><div class="vstep">
+    <h4>پیامک</h4>
+    <p>کمپین کانال پیامک دارد ولی هنوز ارسالی ثبت نشده ← صفحهٔ پیامک. چک قوانین، متن نمونه، سپس ثبت ارسال.</p>
+  </div></div>
+  <div class="vdown">▼</div>
+  <div class="vrow"><div class="vstep">
+    <h4>تحویل</h4>
+    <p>ارسال با گیرندهٔ ثبت‌شده ولی فایل تحویل پنل بارگذاری نشده ← گام تحویل. بعد از این، هزینه و لید در شیت و گزارش می‌نشیند.</p>
+  </div></div>
+</div>
+
+<!-- 3 -->
+<h2 class="section"><span class="num">۳</span> جریان پول و پرداخت</h2>
+<p class="section-sub">درخواست‌دهنده هرگز نمی‌تواند درخواست خودش را تأیید کند؛ تأیید فقط با مالی (<code>price.write</code>). پول یک مسیر موازی است: شارژ پنل قبل از ارسال پیامک لازم می‌شود و هزینهٔ سوشال قبل از انتشار. تأیید مالی به مبلغی که روی صفحه دیده گره خورده — اگر درخواست‌دهنده مبلغ را عوض کرده باشد، سرور تأیید را رد می‌کند (۴۰۹) و می‌گوید صفحه را تازه کنید.</p>
+<div class="flow">
+  <div class="node">
+    <h4>۱. درخواست تازه <span class="tag info">requested</span></h4>
+    <ul>
+      <li>شارژ پنل یا هزینهٔ سوشال یا سایر</li>
+      <li>مبلغ، ذی‌نفع، شبا، مرکز هزینه</li>
+      <li>درخواست‌دهنده می‌تواند فقط مبلغ خودش را قبل از تأیید عوض کند</li>
+    </ul>
+  </div>
+  <div class="arrow">←</div>
+  <div class="node">
+    <h4>۲. تأیید و پرداخت <span class="tag ok">paid</span></h4>
+    <ul>
+      <li>فقط مالی و نه درخواست‌دهنده</li>
+      <li>هم‌زمان ردیف هزینه ساخته می‌شود (شمارهٔ هزینهٔ خودکار)</li>
+      <li>شارژ پنل موجودی پنل پیامک را بالا می‌برد</li>
+    </ul>
+  </div>
+  <div class="arrow">←</div>
+  <div class="node">
+    <h4>۳. ثبت شد <span class="tag ok">recorded</span></h4>
+    <ul>
+      <li>هزینه در شیت و گزارش می‌نشیند</li>
+      <li>هزینهٔ ثبت‌شده حذف نمی‌شود (۴۰۹)</li>
+      <li>درخواست ردشده دیگر قابل تأیید نیست</li>
+    </ul>
+  </div>
+  <div class="arrow">←</div>
+  <div class="decision">
+    <h4>قاعده</h4>
+    <p>هیچ دکمهٔ تأیید و پرداخت خودکار زده نمی‌شود. نتیجهٔ هر اقدام در پنجرهٔ «موفق / ناموفق» با متن دقیق خطا نشان داده می‌شود.</p>
+  </div>
+</div>
+
+<!-- 4 -->
+<h2 class="section"><span class="num">۴</span> جریان میزیتو (فقط‌خواندنی)</h2>
+<p class="section-sub">توکن x-token یک بار در «اتصالات» ذخیره می‌شود؛ رمز عبور هرگز ذخیره نمی‌شود. هیچ نوشتنی در میزیتو وجود ندارد.</p>
+<div class="lane">
+  <h3><span class="dot" style="background:var(--violet)"></span> مسیر خواندن کارت‌ها</h3>
+  <div class="flow">
+    <div class="node"><h4>ذخیرهٔ توکن</h4><ul><li>اتصالات ← توکن ← ذخیره</li><li>روی سرور سازمان می‌ماند؛ فقط ۴ رقم آخر نشان داده می‌شود</li></ul></div>
+    <div class="arrow">←</div>
+    <div class="node"><h4>خواندن زنده</h4><ul><li>projects/getList و tasks/upcoming (فقط این‌ها مجازند)</li><li>کارت باز و تکمیل‌شدهٔ هر پروژه، حداکثر محدودشده</li><li>عکس (snapshot) در پایگاه داده می‌نشیند</li></ul></div>
+    <div class="arrow">←</div>
+    <div class="node"><h4>نمایش</h4><ul><li>لیست کارت‌ها در صفحهٔ هزینه‌ها با فیلتر فعال/همه</li><li>وضعیت هر کارت از قواعد نام برد (کنسل، پرداخت شده، درخواست پرداخت، …)</li><li>دیالوگ جزئیات کارت با چک‌لیست و فلگ‌های تریاژ</li></ul></div>
+    <div class="arrow">←</div>
+    <div class="node"><h4>تطبیق کد</h4><ul><li>کد داخل عنوان کارت ← کمپین همان کد در پنل</li><li>کد در میزیتو هست ولی در پنل نیست ← پیشنهاد «ساخت در پنل» با کد قفل‌شده</li></ul></div>
+  </div>
+  <p class="note">وضعیت اتصال میزیتو در «اتصالات» با خواندن سبک فهرست پروژه‌ها زنده نگه داشته می‌شود؛ خطا (۴۰۱/۴۰۳) با کد و متن میزیتو نمایش داده می‌شود.</p>
+</div>
+<div class="lane">
+  <h3><span class="dot" style="background:var(--warn)"></span> مسیر درخواست‌های تبلیغ (صندوق ورودی)</h3>
+  <div class="flow">
+    <div class="node"><h4>بررسی گفتگوها و بردها</h4><ul><li>دکمهٔ «بررسی دوباره»، فقط‌خواندنی</li><li>چت‌های پیگیری‌شده و بردهای انتخابی</li><li>تکراری بودن تشخیص داده می‌شود</li></ul></div>
+    <div class="arrow">←</div>
+    <div class="node"><h4>پیش‌نویس درخواست</h4><ul><li>برند، خودروها، کانال‌ها، شعب، قیمت‌ها</li><li>خلاصهٔ متن ≤۳۰۰ نویسه؛ متن کامل ذخیره نمی‌شود</li><li>وضعیت: جدید / تکراری / ساخته‌شده / ردشده</li></ul></div>
+    <div class="arrow">←</div>
+    <div class="decision" style="max-width:250px">
+      <h4>شاخه</h4>
+      <p>کد در پنل هست؟ ← دکمهٔ «باز کردن کد» (کمپین موجود).<br>کد نیست و نوع «توقف» است؟ ← فقط اطلاع؛ کمپین ساخته نمی‌شود (۴۲۲).</p>
+    </div>
+    <div class="arrow">←</div>
+    <div class="node"><h4>ساخت کمپین (اختیاری، انسانی)</h4><ul><li>«ساخت کمپین» فرم را با پیشنهاد پر می‌کند</li><li>تأیید نهایی با کاربر است</li><li>تأیید دوباره یا ردِ ساخته‌شده ← ۴۰۹</li></ul></div>
+  </div>
+</div>
+
+<!-- 5 -->
+<h2 class="section"><span class="num">۵</span> جریان گوگل‌شیت</h2>
+<p class="section-sub">چهار شیت منبع فقط append هستند؛ شیت گزارشِ خود پنل از نو نوشته می‌شود.</p>
+<div class="flow">
+  <div class="node"><h4>ماخذ داخل پنل</h4><ul><li>کمپین‌های بعد از ورود آرشیو</li><li>هزینه‌های ثبت‌شده</li><li>ارسال پیامک</li><li>استوری منتشرشده</li></ul></div>
+  <div class="arrow">←</div>
+  <div class="node"><h4>همگام‌سازی (refresh_sheet)</h4><ul><li>وقتی گوگل وصل است و شیت باز می‌شود</li><li>ردیف‌های تازه فقط اضافه می‌شوند؛ قدیمی‌ها دست نمی‌خورند</li><li>ردیف‌های پیش از ساعت ورود آرشیو دوباره نوشته نمی‌شوند</li></ul></div>
+  <div class="arrow">←</div>
+  <div class="node"><h4>شیت‌های مقصد</h4><ul><li>Campaign Number ← دفتر شمارهٔ کمپین</li><li>Sheet3 + Log ← هزینه</li><li>SMS ریپورتر ← پیامک</li><li>Instagram-S ← استوری (مگر پیج فقط بله/روبیکا)</li></ul></div>
+  <div class="arrow">←</div>
+  <div class="node"><h4>شیت گزارش خود پنل</h4><ul><li>تب‌های SMS، Social، Leads، Costs، Report</li><li>دکمهٔ «بفرست به گوگل‌شیت» بازنویسی کامل می‌کند</li><li>نمای «شیت» فقط می‌خواند</li></ul></div>
+</div>
+<p class="section-sub" style="margin-top:10px">احتیاط: بازکردن فهرست کمپین‌ها یا صفحهٔ یک کمپین همین همگام‌سازی را اجرا می‌کند (نوشتن گوگل). صفحهٔ اتصالات فقط عنوان می‌خواند و نمی‌نویسد.</p>
+
+<!-- 6 -->
+<h2 class="section"><span class="num">۶</span> اتصالات و خطاها</h2>
+<p class="section-sub">صفحهٔ اتصالات هر ۴۵ ثانیه وضعیت را تازه می‌کند؛ بررسی فقط خواندن است.</p>
+<div class="navmap">
+  <div class="navcard"><h4>گوگل‌شیت <span class="tag ok">وصل</span></h4><p>حساب سرویس + شناسهٔ هر چهار شیت. خطا با کد وضعیت گوگل: ۴۰۱ توکن، ۴۰۳ اشتراک/API، ۴۰۴ شیت نیست.</p></div>
+  <div class="navcard"><h4>میزیتو <span class="tag ok">وصل</span></h4><p>فهرست پروژه‌ها جواب می‌دهد؟ «وصل». ۴۰۱/۴۰۳ یعنی x-token منقضی؛ توکن تازه در همان صفحه.</p></div>
+  <div class="navcard"><h4>پنل‌های پیامک</h4><p>«ورود ذخیره شده» یعنی نام کاربری/توکن در پروندهٔ پنل هست. موجودی زنده از این صفحه خوانده نمی‌شود.</p></div>
+  <div class="navcard"><h4>اینسایت</h4><p>کلید مدل زبانی هست/نیست؛ خواندن اسکرین‌شات از همین کلید.</p></div>
+  <div class="navcard"><h4>تلگرام</h4><p>از صفحهٔ اتصالات صدا زده نمی‌شود؛ تنظیم در تنظیمات سامانه. اگر خاموش باشد فقط اعلان نمی‌رسد.</p></div>
+</div>
+
+<!-- 7 -->
+<h2 class="section"><span class="num">۷</span> دسترسی‌ها و خطوط قرمز</h2>
+<div class="flow">
+  <div class="node"><h4>نقش‌ها</h4><ul>
+    <li><span class="tag info">perf.write</span> نادیا / مدیر سازمان: ساخت، درخواست، ثبت ارسال</li>
+    <li><span class="tag ok">price.write</span> مالی: تأیید و پرداخت و رد</li>
+    <li>همه با <span class="tag violet">perf.read</span> می‌بینند</li>
+  </ul></div>
+  <div class="arrow">←</div>
+  <div class="decision" style="max-width:340px">
+    <h4>خطوط قرمز (هرگز خودکار نمی‌شود)</h4>
+    <p>پرداخت و تأیید مالی · ثبت ارسال پیامک · نوشتن در میزیتو (seen، تایپ، کامنت) · تأیید فرم ساخت کمپین · فیک‌کردن اتصال گوگل. اتوماسیون فقط تا قبل از دکمهٔ انسان آماده می‌کند.</p>
+  </div>
+</div>
+
+<!-- 8 -->
+<h2 class="section"><span class="num">۸</span> فلوچارت روند کامل</h2>
+<p class="section-sub">روند یک کمپین از درخواست تا گزارش. پول یک مسیر موازی است: هرجا گامی هزینه دارد، پرداخت همان‌جا می‌آید — شارژ پنل قبل از ارسال پیامک، هزینهٔ سوشال قبل از انتشار. هیچ مسیر بن‌بست ندارد؛ «رد شد» به اصلاح و درخواست تازه برمی‌گردد.</p>
+<svg class="flow-svg" viewBox="0 0 1000 1250" role="img" aria-label="فلوچارت روند کامل کمپین پرفورمنس" style="width:100%;max-width:1000px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);display:block;margin:0 auto;">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path>
+    </marker>
+    <marker id="arwd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--violet)"></path>
+    </marker>
+  </defs>
+  <style>
+    .fp { fill:#ffffff; stroke:#c9d0da; stroke-width:1.5; rx:10; }
+    .fd { fill:var(--warn-soft); stroke:var(--warn); stroke-width:1.5; }
+    .fs { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.5; }
+    .fe { fill:var(--ok-soft); stroke:var(--ok); stroke-width:1.5; }
+    .fx { fill:var(--danger-soft); stroke:var(--danger); stroke-width:1.5; }
+    .fm { fill:var(--violet-soft); stroke:var(--violet); stroke-width:1.5; stroke-dasharray:5 4; }
+    .ln { stroke:var(--accent); stroke-width:1.6; fill:none; }
+    .lnd { stroke:var(--violet); stroke-width:1.6; fill:none; stroke-dasharray:5 4; }
+    .ldb { stroke:var(--accent); stroke-width:1.4; fill:none; stroke-dasharray:5 4; opacity:0.75; }
+    .tt { font-size:12.5px; font-weight:700; fill:var(--ink); text-anchor:middle; }
+    .ts { font-size:10.5px; fill:var(--muted); text-anchor:middle; }
+    .lb { font-size:11px; font-weight:700; fill:var(--warn); text-anchor:middle; }
+    .lb2 { font-size:11px; font-weight:700; fill:var(--ok); text-anchor:middle; }
+  </style>
+
+  <!-- start -->
+  <ellipse class="fs" cx="440" cy="36" rx="150" ry="24"></ellipse>
+  <text class="tt" x="440" y="33">درخواست تبلیغ</text>
+  <text class="ts" x="440" y="47">از میزیتو یا ساخت دستی</text>
+  <path class="ln" d="M440,60 V92" marker-end="url(#arw)"></path>
+
+  <!-- meizito read box -->
+  <rect class="fm" x="40" y="20" width="220" height="56" rx="10"></rect>
+  <text class="tt" x="150" y="43" style="fill:var(--violet)">خواندن میزیتو</text>
+  <text class="ts" x="150" y="60">کارت‌ها و درخواست‌ها، فقط‌خواندنی</text>
+  <path class="lnd" d="M150,76 V134 H312" marker-end="url(#arwd)"></path>
+
+  <!-- D1 -->
+  <polygon class="fd" points="440,96 560,134 440,172 320,134"></polygon>
+  <text class="tt" x="440" y="139">کد کمپین در پنل هست؟</text>
+  <text class="lb2" x="452" y="192">بله</text>
+  <text class="lb" x="600" y="124">خیر</text>
+  <path class="ln" d="M440,172 V204" marker-end="url(#arw)"></path>
+  <path class="ln" d="M560,134 H636" marker-end="url(#arw)"></path>
+
+  <!-- N2 form (خیر) -->
+  <rect class="fp" x="640" y="112" width="200" height="44" rx="10"></rect>
+  <text class="tt" x="740" y="130">فرم ساخت کمپین</text>
+  <text class="ts" x="740" y="146">تأیید نهایی با شما — کد تکراری ۴۰۹</text>
+  <path class="ln" d="M740,156 V226 H548" marker-end="url(#arw)"></path>
+
+  <!-- N3 -->
+  <rect class="fp" x="340" y="204" width="200" height="44" rx="10"></rect>
+  <text class="tt" x="440" y="222">باز کردن کمپین موجود</text>
+  <text class="ts" x="440" y="238">کمپین آماده است</text>
+  <path class="ln" d="M440,248 V270" marker-end="url(#arw)"></path>
+
+  <!-- D2 budget -->
+  <polygon class="fd" points="440,270 560,308 440,346 320,308"></polygon>
+  <text class="tt" x="440" y="313">بودجه ثبت شده؟</text>
+  <text class="lb2" x="452" y="366">بله</text>
+  <text class="lb" x="600" y="298">خیر</text>
+  <path class="ln" d="M440,346 V378" marker-end="url(#arw)"></path>
+  <path class="ln" d="M560,308 H636" marker-end="url(#arw)"></path>
+  <rect class="fp" x="640" y="286" width="200" height="44" rx="10"></rect>
+  <text class="tt" x="740" y="304">گام بودجه در سوشال</text>
+  <text class="ts" x="740" y="320">تا ثبت بودجه جلو نمی‌رود</text>
+  <path class="ldb" d="M640,322 H524" marker-end="url(#arw)"></path>
+
+  <!-- N6 pages -->
+  <rect class="fp" x="310" y="378" width="260" height="44" rx="10"></rect>
+  <text class="tt" x="440" y="396">چیدن پیج‌ها و قرارداد استوری</text>
+  <text class="ts" x="440" y="412">قیمت و پیج از پروندهٔ پیج‌ها</text>
+  <path class="ln" d="M440,422 V462" marker-end="url(#arw)"></path>
+
+  <!-- D-pay: does this step need money? -->
+  <polygon class="fd" points="440,462 550,500 440,538 330,500"></polygon>
+  <text class="tt" x="440" y="505">این گام پرداخت می‌خواهد؟</text>
+  <text class="lb" x="575" y="490">بله</text>
+  <text class="lb" x="404" y="554">بدون هزینه</text>
+  <path class="ln" d="M550,500 H590" marker-end="url(#arw)"></path>
+  <path class="ln" d="M440,538 V558" marker-end="url(#arw)"></path>
+
+  <!-- payment lane -->
+  <rect class="fp" x="590" y="478" width="220" height="44" rx="10"></rect>
+  <text class="tt" x="700" y="496">درخواست پرداخت در هزینه‌ها</text>
+  <text class="ts" x="700" y="512">شارژ پنل یا هزینهٔ سوشال</text>
+  <path class="ln" d="M700,522 V578" marker-end="url(#arw)"></path>
+
+  <polygon class="fd" points="700,582 800,620 700,658 600,620"></polygon>
+  <text class="tt" x="700" y="625">مالی تأیید می‌کند؟</text>
+  <text class="lb2" x="712" y="682">بله</text>
+  <text class="lb" x="800" y="604">خیر</text>
+  <path class="ln" d="M700,658 V694" marker-end="url(#arw)"></path>
+  <path class="ln" d="M800,620 H801" marker-end="url(#arw)"></path>
+
+  <ellipse class="fx" cx="890" cy="620" rx="85" ry="26"></ellipse>
+  <text class="tt" x="890" y="616" style="fill:var(--danger)">رد شد</text>
+  <text class="ts" x="890" y="630">پایان این درخواست</text>
+  <path class="ldb" d="M890,594 V500 H818" marker-end="url(#arw)"></path>
+  <text class="ts" x="902" y="548">اصلاح مبلغ یا درخواست تازه</text>
+
+  <rect class="fp" x="590" y="698" width="220" height="44" rx="10"></rect>
+  <text class="tt" x="700" y="716">هزینه ثبت شد</text>
+  <text class="ts" x="700" y="732">پرداخت شد ← ثبت شد؛ در شیت می‌نشیند</text>
+  <path class="ldb" d="M590,720 H480 V566" marker-end="url(#arw)"></path>
+  <text class="ts" x="498" y="650">بعد از تأیید، کار ادامه می‌یابد</text>
+
+  <!-- N7 publish -->
+  <rect class="fp" x="310" y="562" width="260" height="44" rx="10"></rect>
+  <text class="tt" x="440" y="580">انتشار استوری</text>
+  <text class="ts" x="440" y="596">ثبت انتشار با انسان</text>
+  <path class="ln" d="M440,606 V638" marker-end="url(#arw)"></path>
+
+  <!-- stop note -->
+  <rect class="fm" x="40" y="548" width="210" height="72" rx="10"></rect>
+  <text class="tt" x="145" y="572" style="fill:var(--violet)">درخواست توقف از میزیتو</text>
+  <text class="ts" x="145" y="589">کمپین نمی‌سازد (۴۲۲)</text>
+  <text class="ts" x="145" y="604">توقف با انسان است؛ پنل دکمهٔ توقف ندارد</text>
+  <path class="lnd" d="M250,584 H302" marker-end="url(#arwd)"></path>
+
+  <!-- N8 insight -->
+  <rect class="fp" x="310" y="638" width="260" height="44" rx="10"></rect>
+  <text class="tt" x="440" y="656">خواندن اینسایت</text>
+  <text class="ts" x="440" y="672">بازدید، ایمپرشن، لید — اسکرین‌شات یا دستی</text>
+  <path class="ln" d="M440,682 V718" marker-end="url(#arw)"></path>
+
+  <!-- D4 sms -->
+  <polygon class="fd" points="440,718 555,756 440,794 325,756"></polygon>
+  <text class="tt" x="440" y="761">کانال پیامک دارد؟</text>
+  <text class="lb2" x="452" y="814">بله</text>
+  <text class="lb" x="620" y="746">خیر</text>
+  <path class="ln" d="M440,794 V824" marker-end="url(#arw)"></path>
+  <path class="ln" d="M555,756 H690 V1110 H598" marker-end="url(#arw)"></path>
+
+  <!-- D6 balance -->
+  <polygon class="fd" points="440,828 565,866 440,904 315,866"></polygon>
+  <text class="tt" x="440" y="871">موجودی پنل کافی است؟</text>
+  <text class="lb2" x="452" y="924">بله</text>
+  <text class="lb" x="585" y="856">خیر</text>
+  <path class="ln" d="M440,904 V932" marker-end="url(#arw)"></path>
+  <path class="ln" d="M565,866 H596" marker-end="url(#arw)"></path>
+  <rect class="fp" x="600" y="844" width="240" height="44" rx="10"></rect>
+  <text class="tt" x="720" y="862">درخواست شارژ پنل</text>
+  <text class="ts" x="720" y="878">تأیید مالی ← موجودی بالا می‌رود</text>
+  <path class="ldb" d="M600,878 H528" marker-end="url(#arw)"></path>
+
+  <!-- N9 sms text -->
+  <rect class="fp" x="290" y="936" width="300" height="44" rx="10"></rect>
+  <text class="tt" x="440" y="954">نوشتن متن و چک قوانین</text>
+  <text class="ts" x="440" y="970">نمونهٔ LLM — ثبت ارسال با تأیید انسان</text>
+  <path class="ln" d="M440,980 V1012" marker-end="url(#arw)"></path>
+
+  <!-- N10 delivery -->
+  <rect class="fp" x="310" y="1012" width="260" height="44" rx="10"></rect>
+  <text class="tt" x="440" y="1030">بارگذاری فایل تحویل پنل</text>
+  <text class="ts" x="440" y="1046">گیرنده و تحویل ثبت می‌شود</text>
+  <path class="ln" d="M440,1056 V1088" marker-end="url(#arw)"></path>
+
+  <!-- N14 report -->
+  <rect class="fp" x="290" y="1088" width="300" height="44" rx="10"></rect>
+  <text class="tt" x="440" y="1106">نوشتن در گوگل‌شیت و گزارش</text>
+  <text class="ts" x="440" y="1122">هزینه، پیامک و استوری کنار هم</text>
+  <path class="ln" d="M440,1132 V1164" marker-end="url(#arw)"></path>
+
+  <!-- google error note -->
+  <rect class="fm" x="40" y="1088" width="210" height="72" rx="10"></rect>
+  <text class="tt" x="145" y="1112" style="fill:var(--violet)">خطای اتصال گوگل یا میزیتو</text>
+  <text class="ts" x="145" y="1129">کار متوقف نمی‌شود؛</text>
+  <text class="ts" x="145" y="1144">بعداً دوباره بفرست — وضعیت در اتصالات</text>
+  <path class="lnd" d="M250,1110 H286" marker-end="url(#arwd)"></path>
+
+  <!-- end -->
+  <ellipse class="fe" cx="440" cy="1188" rx="150" ry="24"></ellipse>
+  <text class="tt" x="440" y="1185" style="fill:var(--ok)">کمپین کامل در گزارش</text>
+  <text class="ts" x="440" y="1199">هزینه و نتیجه کنار هم</text>
+</svg>
+
+<!-- 9 -->
+<h2 class="section"><span class="num">۹</span> شاخه‌های موازی و وضعیت کلی کمپین</h2>
+<p class="section-sub">هر کمپین یک درخت نیست؛ چند شاخهٔ هم‌زمان است که هرکدام وضعیت خودش را دارد. وضعیت کلی از کنار هم گذاشتن آن‌ها خوانده می‌شود — نه از یک زنجیرهٔ خطی.</p>
+<div class="lane">
+  <h3><span class="dot" style="background:var(--accent)"></span> نمونه: کمپین S94 با چهار شاخهٔ موازی</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+    <tr style="color:var(--muted)">
+      <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--line)">شاخه</th>
+      <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--line)">وضعیت خود شاخه</th>
+      <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--line)">کار بعدی</th>
+    </tr>
+    <tr>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)">بودجه و هزینه‌ها</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)"><span class="tag ok">هزینه ثبت شد</span></td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)">—</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)">سوشال</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)"><span class="tag warn">۱ قرار منتشر نشده</span></td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)">ثبت انتشار</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)">پیامک</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)"><span class="tag warn">ارسال ثبت شده، فایل تحویل نیست</span></td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)">بارگذاری تحویل</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)">اینسایت</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)"><span class="tag danger">۲ انتشار بدون عدد</span></td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--line)">خواندن اینسایت</td>
+    </tr>
+  </table>
+  <p class="note">وضعیت کلی کمپین از بدترین وضعیت شاخه‌ها می‌آید: اینجا «اینسایت ندارد». همین ساختار، صفحهٔ خانه پرفورمنس است: صف گام بعدی یعنی همهٔ شاخه‌های همهٔ کمپین‌های فعال که کار دارند، مرتب‌شده با فوریت.</p>
+</div>
+<!-- 10 -->
+<h2 class="section"><span class="num">۱۰</span> نکته‌های طراحی باز</h2>
+<div class="navmap">
+  <div class="navcard">
+    <h4>خواندن با اثر جانبی <span class="tag warn">در انتظار تصمیم</span></h4>
+    <p>بازکردن فهرست کمپین‌ها یا صفحهٔ یک کمپین، همگام‌سازی و نوشتن گوگل را اجرا می‌کند. ریسک: ردیف تکراری با دو کاربر هم‌زمان و سقف نرخ API. گزینه‌ها: همگام‌سازی فقط با دکمهٔ «بفرست به گوگل‌شیت»، یا کلید پایدار برای هر ردیف به‌جای ساعت ورود آرشیو. هنوز تصمیمی گرفته نشده و رفتار فعلی دست نخورده است.</p>
+  </div>
+  <div class="navcard">
+    <h4>تأیید به مبلغ دیده‌شده <span class="tag ok">انجام شد</span></h4>
+    <p>تأیید و پرداخت مبلغی که تأییدکننده روی صفحه دیده را همراه می‌فرستد. اگر درخواست‌دهنده قبل از تأیید مبلغ را عوض کرده باشد، سرور با ۴۰۹ رد می‌کند و صفحهٔ تازه لازم است.</p>
+  </div>
+  <div class="navcard">
+    <h4>خانه به‌عنوان مرکز فرمان <span class="tag info">بخش‌ساخته</span></h4>
+    <p>صف گام بعدی (بخش ۲) همین حالا «کار بعدی» همهٔ کمپین‌های فعال را با لینک می‌آورد. گسترش‌های بعدی مانند اولویت فوریت و پیشنهاد هوشمند در طرح‌های کاربر باقی مانده و اینجا ساخته نشده است.</p>
+  </div>
+</div>
+
+<div class="legend" style="margin-top:18px">
+  <span><i style="background:var(--accent)"></i> جریان عادی</span>
+  <span><i style="background:var(--ok)"></i> پایانهٔ موفق</span>
+  <span><i style="background:var(--warn)"></i> نقطهٔ تصمیم / انتظار</span>
+  <span><i style="background:var(--danger)"></i> مسدود / خطا</span>
+  <span><i style="background:var(--violet)"></i> شروع از میزیتو</span>
+</div>
+
+<footer>
+  ساخته‌شده از روی کد مخزن CM Ops — مسیرها: <code>backend/app/perf</code> و <code>frontend/src/perf</code>. این فایل مستند است و به سرویس وصل نمی‌شود.
+</footer>
+
+</div>
+</body>
+</html>

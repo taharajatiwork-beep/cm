@@ -19,6 +19,10 @@ for _name in (
     "PERF_SHEETS_REPORTER_ID",
     "PERF_SHEETS_WEBHOOK",
     "PERF_MIZITO_TOKEN",
+    "PERF_MIZITO_WORKSPACE_ID",
+    "PERF_MIZITO_TASK_BOARDS",
+    "PERF_MIZITO_REQUESTER_IDS",
+    "PERF_MIZITO_IGNORE_IDS",
 ):
     os.environ[_name] = ""
 

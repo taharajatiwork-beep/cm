@@ -3,12 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
 import { Badge, Button, Card, ErrorMessage, Field, Input, LoadingState, Muted, PageHeader, SectionHeader, Select, Table } from "../components/ui";
+import { DELETE_CONFIRM_LABEL, useConfirm } from "../components/ui/ConfirmDialog";
 import { DateText } from "../components/DateText";
-import { useToast } from "../components/ui/Toast";
 import { Bi } from "../i18n";
-import { perfApi, toman, type CampaignRow, type MizitoCard, type Payment } from "./api";
+import { MIZITO_STATUS, mizitoStatus, perfApi, toman, type CampaignRow, type MizitoCard, type MizitoFinance, type MizitoFinanceCard, type Payment } from "./api";
+import { CampaignCode, exactError, OutcomePop, RelatedLinks, type Outcome } from "./bits";
 import { ArrangeBar, hit, ShowMore, useArrange, type SortOption } from "./browse";
-import { useRemove } from "./edit";
+import { MizitoCardDialog, MizitoOpenButton, type MizitoCardLike } from "./MizitoCardDialog";
+import { withoutEmptyColumns } from "../lib/columns";
 
 const KIND: Record<string, string> = {
   panel_charge: "شارژ پنل",
@@ -19,20 +21,23 @@ const KIND: Record<string, string> = {
 const CENTERS = ["پرفورمنس", "دفتر مرکزی", "شعبه فروش مرزداران", "شعبه فروش ایرانمال", "شعبه فروش کاشانی", "کلیه شعب"];
 
 const STATUS: Record<string, string> = {
-  requested: "درخواست",
-  manager_ok: "تأیید مدیر",
-  finance_ok: "تأیید مالی",
-  paid: "پرداخت شد",
-  recorded: "ثبت شد",
-  rejected: "رد شد",
+  requested: "درخواست — منتظر تأیید مالی",
+  manager_ok: "تأیید مدیر — منتظر مالی",
+  finance_ok: "تأیید مالی — منتظر ثبت هزینه",
+  paid: "پرداخت شد — هزینه هنوز در شیت نیامده",
+  recorded: "ثبت شد — هزینه در شیت کمپین آمده",
+  rejected: "رد شد — دیگر قابل تأیید نیست",
 };
+
+function paymentStatus(status: string): string {
+  return STATUS[status] || `وضعیت ناشناخته: ${status}`;
+}
 
 export function MoneyPage() {
   const [params] = useSearchParams();
   const { has, user } = useAuth();
   const canFinance = !!user?.permissions.includes("price.write");
   const qc = useQueryClient();
-  const toast = useToast();
   const payments = useQuery({ queryKey: ["perf", "payments"], queryFn: perfApi.payments });
   const panels = useQuery({ queryKey: ["perf", "panels"], queryFn: perfApi.panels });
   const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
@@ -47,6 +52,7 @@ export function MoneyPage() {
   const [open, setOpen] = useState(Boolean(params.get("campaign")));
   const [center, setCenter] = useState("پرفورمنس");
   const [campaignQuery, setCampaignQuery] = useState("");
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
   const create = useMutation({
     mutationFn: () =>
       perfApi.createPayment({
@@ -58,29 +64,39 @@ export function MoneyPage() {
         campaign_id: campaignId || null,
         cost_center: center,
       }),
-    onSuccess: () => {
-      toast("درخواست ثبت شد");
+    onSuccess: (row) => {
       qc.invalidateQueries({ queryKey: ["perf"] });
+      setOutcome({
+        ok: true,
+        title: "ثبت درخواست موفق بود",
+        detail: `درخواست ${KIND[row.kind] || row.kind} به مبلغ ${toman(row.amount_toman)} تومان ثبت شد.\nوضعیت: ${paymentStatus(row.status)}`,
+      });
     },
-    onError: (error: Error) => toast(error.message),
+    onError: (error: unknown) => setOutcome({ ok: false, title: "ثبت درخواست ناموفق بود", detail: exactError(error) }),
   });
   const act = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: string }) => perfApi.advance(id, action),
-    onSuccess: () => {
-      toast("پرداخت ثبت شد");
+    mutationFn: ({ id, action, amount }: { id: string; action: string; amount?: number }) => perfApi.advance(id, action, amount),
+    onSuccess: (row) => {
       qc.invalidateQueries({ queryKey: ["perf"] });
+      setOutcome({
+        ok: true,
+        title: "اقدام روی درخواست موفق بود",
+        detail: `وضعیت الان: ${paymentStatus(row.status)}`,
+      });
     },
-    onError: (error: Error) => toast(error.message),
+    onError: (error: unknown) => setOutcome({ ok: false, title: "اقدام روی درخواست ناموفق بود", detail: exactError(error) }),
   });
 
   return (
     <>
       <PageHeader
-        title={<Bi en="Money" fa="پول" />}
+        title={<Bi en="Costs" fa="هزینه‌ها" />}
         description={<Bi en="Panel top-ups and social costs are requested here. Finance approves and pays here." fa="شارژ پنل و هزینهٔ سوشال همین‌جا درخواست می‌شود. مالی همین‌جا تأیید و پرداخت می‌کند." />}
         actions={
           <div className="row">
-            <Button variant="secondary" to="/perf/sheet"><Bi en="Sheet" fa="شیت" /></Button>
+            {campaignId ? <RelatedLinks id={campaignId} code={(campaigns.data ?? []).find((row) => row.id === campaignId)?.code} here="money" /> : (
+              <Button variant="secondary" to="/perf/sheet"><Bi en="Sheet" fa="شیت" /></Button>
+            )}
             <Button variant="secondary" to="/perf/connections"><Bi en="Connections" fa="اتصالات" /></Button>
             {has("perf.write") ? <Button type="button" onClick={() => setOpen((value) => !value)}><Bi en="New request" fa="درخواست تازه" /></Button> : null}
           </div>
@@ -169,19 +185,23 @@ export function MoneyPage() {
         </Card>
       ) : null}
       <MizitoList campaigns={campaigns.data ?? []} />
+      <MizitoFinanceBlock campaigns={campaigns.data ?? []} />
       {payments.isLoading ? <LoadingState /> : null}
       {payments.error ? <ErrorMessage error={payments.error instanceof Error ? payments.error.message : String(payments.error)} /> : null}
       {payments.data ? (
-        <MoneyTable rows={payments.data} campaigns={campaigns.data ?? []} canFinance={canFinance} userId={user?.id} onAct={(id, action) => act.mutate({ id, action })} />
+        <MoneyTable rows={payments.data} campaigns={campaigns.data ?? []} canFinance={canFinance} userId={user?.id} onAct={(id, action, amount) => act.mutate({ id, action, amount })} onOutcome={setOutcome} />
       ) : null}
+      <OutcomePop outcome={outcome} onClose={() => setOutcome(null)} />
     </>
   );
 }
 
 function MizitoList({ campaigns }: { campaigns: CampaignRow[] }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [openCard, setOpenCard] = useState<MizitoCardLike | null>(null);
   const list = useQuery({ queryKey: ["perf", "mizito"], queryFn: perfApi.mizito });
   const byCode = new Map(campaigns.map((row) => [row.code, row.id]));
 
@@ -189,45 +209,222 @@ function MizitoList({ campaigns }: { campaigns: CampaignRow[] }) {
     setBusy(true);
     perfApi.refreshMizito().then((result) => {
       qc.setQueryData(["perf", "mizito"], result);
-      toast(result.connected ? `${result.open_count} کارت باز خوانده شد` : (result.reason || "میزیتو خوانده نشد"));
-    }).catch((error: Error) => toast(error.message)).finally(() => setBusy(false));
+      qc.invalidateQueries({ queryKey: ["perf", "mizito", "missing"] });
+      qc.invalidateQueries({ queryKey: ["perf", "mizito", "finance"] });
+      qc.invalidateQueries({ queryKey: ["perf", "mizito", "triage"] });
+      setOutcome({
+        ok: result.connected,
+        title: result.connected ? "به‌روزرسانی میزیتو موفق بود" : "به‌روزرسانی میزیتو ناموفق بود",
+        detail: result.connected
+          ? `${toman(result.open_count)} کارت فعال خوانده شد. چیزی در میزیتو نوشته نشد.`
+          : (result.reason || "میزیتو جواب نداد و دلیلی هم نفرستاد."),
+      });
+    }).catch((error: unknown) => {
+      setOutcome({ ok: false, title: "به‌روزرسانی میزیتو ناموفق بود", detail: exactError(error) });
+    }).finally(() => setBusy(false));
   }
 
   const data = list.data;
-  const cards = data?.cards ?? [];
+  const all = data?.cards ?? [];
+  const cards = showAll ? all : all.filter((row) => row.active !== false);
+  const shown = cards.slice(0, 300);
+  const total = data?.total_count ?? all.length;
+  // ستونی که در همهٔ ردیف‌ها خالی است نشان داده نمی‌شود. در موبایل فقط کارت، وضعیت و آخرین تغییر می‌ماند (hide-sm).
+  const mizitoColumns = withoutEmptyColumns<MizitoCard>([
+    { key: "project", header: "پروژه", className: "hide-sm", render: (row: MizitoCard) => row.project },
+    { key: "board", header: "برد", className: "hide-sm", render: (row: MizitoCard) => row.board || "—" },
+    {
+      key: "status",
+      header: "وضعیت",
+      render: (row: MizitoCard) => {
+        const label = mizitoStatus(row);
+        return row.completed ? `${label} · تکمیل‌شده` : label;
+      },
+    },
+    { key: "title", header: "کارت", render: (row: MizitoCard) => <MizitoOpenButton title={row.title} onOpen={() => setOpenCard(row)} /> },
+    {
+      key: "checklist",
+      header: "چک‌لیست",
+      className: "hide-sm",
+      render: (row: MizitoCard) => (row.checklist_total ? `${row.checklist_done ?? 0} از ${row.checklist_total}` : "—"),
+    },
+    {
+      key: "modified",
+      header: "آخرین تغییر",
+      className: "cell-nowrap",
+      render: (row: MizitoCard) => (row.modified_at ? <DateText value={row.modified_at} /> : "—"),
+    },
+    {
+      key: "code",
+      header: "کمپین",
+      className: "hide-sm cell-nowrap",
+      render: (row: MizitoCard) => {
+        const id = row.code ? byCode.get(row.code) : undefined;
+        if (!row.code) return "—";
+        return id ? <Link to={`/perf/campaigns/${id}`} onClick={(event) => event.stopPropagation()}>{row.code}</Link> : row.code;
+      },
+    },
+  ], shown, {
+    project: (row) => Boolean(row.project),
+    board: (row) => Boolean(row.board),
+    checklist: (row) => Boolean(row.checklist_total),
+    modified: (row) => Boolean(row.modified_at),
+    code: (row) => Boolean(row.code),
+  });
   return (
     <Card>
       <SectionHeader
         icon="briefcase"
         title={<Bi en="Mizito cards" fa="کارت‌های میزیتو" />}
         count={data?.connected ? data.open_count : undefined}
-        hint={<Bi en="Open cards still on a working board. Paid, cancelled and notice boards stay out. Refresh replaces this list and does not create a payment." fa="کارت‌هایی که هنوز روی برد کار هستند. پرداخت‌شده، کنسل و اطلاعیه نمی‌آیند. به‌روز کردن همین لیست را عوض می‌کند و درخواست پرداخت نمی‌سازد." />}
-        action={<Button type="button" variant="secondary" disabled={busy} onClick={refresh}><Bi en="Refresh from Mizito" fa="به‌روز از میزیتو" /></Button>}
+        hint={<Bi en="Cards of the marketing projects, each with a status from its board. Only active cards show unless you pick Show all. Refresh replaces this list and does not create a payment." fa="کارت‌های پروژه‌های مارکتینگ، هر کدام با وضعیتی از روی بردش. پیش‌فرض فقط کارت‌های فعال؛ تکمیل‌شده، پرداخت‌شده، تمام‌شده، کنسل، متوقف و اطلاعیه با «نمایش همه» می‌آیند. به‌روز کردن همین لیست را عوض می‌کند و درخواست پرداخت نمی‌سازد." />}
+        action={
+          <div className="row">
+            <Button type="button" variant="secondary" onClick={() => setShowAll(!showAll)}>
+              {showAll ? <Bi en="Active only" fa="فقط فعال‌ها" /> : <Bi en={`Show all (${total})`} fa={`نمایش همه (${total})`} />}
+            </Button>
+            <Button type="button" variant="secondary" disabled={busy} onClick={refresh}><Bi en="Refresh from Mizito" fa="به‌روز از میزیتو" /></Button>
+          </div>
+        }
       />
       {list.isLoading ? <LoadingState /> : null}
       {data && !data.connected ? <Muted>{data.reason || "هنوز خوانده نشده است"}</Muted> : null}
       {data?.read_at ? <Muted>آخرین خواندن: <DateText value={data.read_at} withTime /></Muted> : null}
-      {cards.length > 0 ? (
+      {all.length > 0 && cards.length === 0 ? <Muted>کارت فعالی نیست.</Muted> : null}
+      {shown.length > 0 ? (
         <Table
-          rows={cards}
-          rowKey={(row: MizitoCard) => `${row.project}|${row.board}|${row.title}`}
-          columns={[
-            { key: "project", header: "پروژه", render: (row: MizitoCard) => row.project },
-            { key: "board", header: "برد", render: (row: MizitoCard) => row.board || "—" },
-            { key: "title", header: "کارت", render: (row: MizitoCard) => row.title },
-            {
-              key: "code",
-              header: "کمپین",
-              render: (row: MizitoCard) => {
-                const id = row.code ? byCode.get(row.code) : undefined;
-                if (!row.code) return "—";
-                return id ? <Link to={`/perf/campaigns/${id}`}>{row.code}</Link> : row.code;
-              },
-            },
-          ]}
+          rows={shown}
+          rowKey={(row: MizitoCard) => row.id || `${row.project}|${row.board}|${row.title}`}
+          onRowClick={(row: MizitoCard) => setOpenCard(row)}
+          columns={mizitoColumns}
         />
       ) : null}
+      {cards.length > shown.length ? <Muted>{shown.length} از {cards.length} کارت نشان داده شده است.</Muted> : null}
+      {openCard ? <MizitoCardDialog card={openCard} onClose={() => setOpenCard(null)} /> : null}
+      <OutcomePop outcome={outcome} onClose={() => setOutcome(null)} />
     </Card>
+  );
+}
+
+const FINANCE_ORDER = ["waiting_approval", "waiting_payment", "paid", "not_in_cost_tracking"];
+
+function MizitoFinanceBlock({ campaigns }: { campaigns: CampaignRow[] }) {
+  const finance = useQuery({ queryKey: ["perf", "mizito", "finance"], queryFn: perfApi.mizitoFinance });
+  const data = finance.data;
+  if (!data || !data.read_at) return null;
+  return (
+    <Card>
+      <SectionHeader
+        icon="briefcase"
+        title={<Bi en="Mizito payments and Cost Tracking" fa="پرداخت‌های میزیتو و Cost Tracking" />}
+        hint={<Bi en="Finance project cards from the last Mizito read next to the panel's Cost Tracking rows. Matching is by campaign code only and is a suggestion; nothing is recorded automatically." fa="کارت‌های پروژهٔ مالی از آخرین خواندن میزیتو، کنار ردیف‌های Cost Tracking پنل. تطبیق فقط با کد کمپین و پیشنهادی است؛ چیزی خودکار ثبت نمی‌شود." />}
+      />
+      <p className="muted">
+        {FINANCE_ORDER.map((status, index) => {
+          const count = data.counts[status] ?? { total: 0, open: 0 };
+          return (
+            <span key={status}>
+              {index ? " · " : null}
+              {MIZITO_STATUS[status]}: {toman(count.total)}
+              {count.open !== count.total ? ` (${toman(count.open)} باز)` : null}
+            </span>
+          );
+        })}
+      </p>
+      <h4><Bi en="Not yet in Cost Tracking" fa="ثبت‌نشده در Cost Tracking" /> ({toman(data.to_register_count)})</h4>
+      {data.to_register.length ? <FinanceCards rows={data.to_register} /> : <Muted as="p">کارت بازی در ستون «ثبت نشده در Cost Tracking» نیست.</Muted>}
+      <h4><Bi en="Paid in Mizito, no Cost Tracking row" fa="پرداخت‌شده در میزیتو، بدون ردیف Cost Tracking" /> ({toman(data.paid_without_cost_count)})</h4>
+      {data.paid_without_cost.length ? <FinanceCards rows={data.paid_without_cost} /> : <Muted as="p">همهٔ کارت‌های پرداخت‌شده کد هم‌خوان در Cost Tracking دارند.</Muted>}
+      {data.paid_suggested_count ? <Muted as="p">{toman(data.paid_suggested_count)} کارت پرداخت‌شده کد هم‌خوان در Cost Tracking دارد (پیشنهادی، بدون بررسی مبلغ).</Muted> : null}
+      <h4><Bi en="Tracked in Mizito, no finance card" fa="در میزیتو هست، کارت مالی ندارد" /> ({toman(data.panel_without_card_count ?? 0)})</h4>
+      {(data.panel_without_card ?? []).length ? <PanelCosts rows={data.panel_without_card ?? []} campaigns={campaigns} /> : <Muted as="p">هر کمپینی که در میزیتو کارت دارد، اگر هزینه‌ای در پنل داشته باشد کارت مالی هم دارد.</Muted>}
+    </Card>
+  );
+}
+
+function PanelCosts({
+  rows,
+  campaigns,
+}: {
+  rows: NonNullable<MizitoFinance["panel_without_card"]>;
+  campaigns: CampaignRow[];
+}) {
+  const [all, setAll] = useState(false);
+  const shown = all ? rows : rows.slice(0, 8);
+  const byCode = new Map(campaigns.map((row) => [row.code, row.id]));
+  return (
+    <>
+      <Table
+        rows={shown}
+        rowKey={(row) => `${row.cost_number}-${row.campaign_code}`}
+        columns={[
+          { key: "number", header: "شماره", className: "cell-nowrap", render: (row) => `#${toman(row.cost_number)}` },
+          {
+            key: "code",
+            header: "کمپین",
+            className: "cell-nowrap",
+            render: (row) => {
+              const id = byCode.get(row.campaign_code);
+              return id ? <Link to={`/perf/campaigns/${id}`}>{row.campaign_code}</Link> : row.campaign_code;
+            },
+          },
+          { key: "amount", header: "مبلغ", render: (row) => (row.amount_toman == null ? "—" : toman(row.amount_toman)) },
+          { key: "kind", header: "نوع", render: (row) => row.kind || "—" },
+          { key: "description", header: "شرح", render: (row) => row.description || "—" },
+        ]}
+      />
+      <ShowMore left={rows.length - shown.length} onMore={() => setAll(true)} />
+    </>
+  );
+}
+
+const FINANCE_MATCH: Record<string, string> = {
+  suggested: "پیشنهاد",
+  no_cost_row: "کد در Cost Tracking نیست",
+  no_code: "بدون کد کمپین",
+};
+
+function FinanceCards({ rows }: { rows: MizitoFinanceCard[] }) {
+  const [all, setAll] = useState(false);
+  const [openCard, setOpenCard] = useState<MizitoCardLike | null>(null);
+  const shown = all ? rows : rows.slice(0, 8);
+  return (
+    <>
+      <Table
+        rows={shown}
+        rowKey={(row: MizitoFinanceCard) => row.id || row.title}
+        onRowClick={(row: MizitoFinanceCard) => setOpenCard(row)}
+        columns={[
+          { key: "title", header: "کارت", render: (row: MizitoFinanceCard) => <MizitoOpenButton title={row.title} onOpen={() => setOpenCard(row)} /> },
+          {
+            key: "code",
+            header: "کد",
+            className: "cell-nowrap",
+            render: (row: MizitoFinanceCard) => (row.code ? <><CampaignCode code={row.code} />{row.code_source === "notes" ? <span className="muted"> (از یادداشت)</span> : null}</> : "—"),
+          },
+          {
+            key: "match",
+            header: "Cost Tracking",
+            render: (row: MizitoFinanceCard) => (row.match === "suggested"
+              ? `${FINANCE_MATCH.suggested}: ${row.suggested_costs.map((number) => `#${toman(number)}`).join("، ")}`
+              : FINANCE_MATCH[row.match] || "—"),
+          },
+          {
+            key: "modified",
+            header: "آخرین تغییر",
+            className: "cell-nowrap",
+            render: (row: MizitoFinanceCard) => (
+              <>
+                {row.modified_at ? <DateText value={row.modified_at} /> : "—"}
+                {row.completed ? <span className="muted"> · تکمیل‌شده</span> : null}
+              </>
+            ),
+          },
+        ]}
+      />
+      <ShowMore left={rows.length - shown.length} onMore={() => setAll(true)} />
+      {openCard ? <MizitoCardDialog card={openCard} onClose={() => setOpenCard(null)} /> : null}
+    </>
   );
 }
 
@@ -244,14 +441,17 @@ function MoneyTable({
   canFinance,
   userId,
   onAct,
+  onOutcome,
 }: {
   rows: Payment[];
   campaigns: CampaignRow[];
   canFinance: boolean;
   userId?: string;
-  onAct: (id: string, action: string) => void;
+  onAct: (id: string, action: string, amount?: number) => void;
+  onOutcome: (outcome: Outcome) => void;
 }) {
-  const remove = useRemove();
+  const confirm = useConfirm();
+  const qc = useQueryClient();
   const [status, setStatus] = useState("");
   const [kind, setKind] = useState("");
   const narrowed = rows.filter((row) => (status === "" || row.status === status) && (kind === "" || row.kind === kind));
@@ -288,26 +488,48 @@ function MoneyTable({
           rows={list.windowed.rows}
           rowKey={(row) => row.id}
           columns={[
-            { key: "kind", header: "نوع", render: (row: Payment) => row.campaign_id ? <Link to={`/perf/campaigns/${row.campaign_id}`}>{KIND[row.kind] || row.kind}</Link> : (KIND[row.kind] || row.kind) },
-            { key: "campaign", header: "کمپین", render: (row) => campaigns.find((item) => item.id === row.campaign_id)?.code || "—" },
+            { key: "kind", header: "نوع", render: (row: Payment) => KIND[row.kind] || row.kind },
+            { key: "campaign", header: "کمپین", render: (row) => <CampaignCode id={row.campaign_id} code={campaigns.find((item) => item.id === row.campaign_id)?.code} /> },
             { key: "amount", header: "مبلغ", render: (row) => toman(row.amount_toman) },
             { key: "who", header: "ذی‌نفع", render: (row) => row.beneficiary },
             { key: "by", header: "درخواست‌کننده", render: (row) => row.requester_name || "—" },
             { key: "when", header: "تاریخ", render: (row) => row.created_at ? <DateText value={row.created_at} /> : "—" },
-            { key: "status", header: "وضعیت", render: (row) => <Badge tone={row.status === "rejected" ? "danger" : row.status === "paid" || row.status === "recorded" ? "ok" : "warn"}>{STATUS[row.status] || row.status}</Badge> },
+            { key: "status", header: "وضعیت", render: (row) => <Badge tone={row.status === "rejected" ? "danger" : row.status === "paid" || row.status === "recorded" ? "ok" : "warn"}>{paymentStatus(row.status)}</Badge> },
             {
               key: "actions",
               header: "",
               render: (row) => (
                 <div className="row">
                   {["requested", "manager_ok", "finance_ok"].includes(row.status) && canFinance && userId !== row.requester_id ? (
-                    <Button type="button" onClick={() => onAct(row.id, "finance")}>تأیید و پرداخت</Button>
+                    <Button type="button" onClick={() => onAct(row.id, "finance", row.amount_toman)}>تأیید و پرداخت</Button>
                   ) : null}
                   {row.status === "requested" && userId === row.requester_id ? (
-                    <AmountEdit id={row.id} amount={row.amount_toman} />
+                    <AmountEdit id={row.id} amount={row.amount_toman} onOutcome={onOutcome} />
                   ) : null}
                   {row.status !== "recorded" && row.status !== "paid" ? (
-                    <Button type="button" variant="danger" className="btn-sm" onClick={() => void remove(KIND[row.kind] || "درخواست", () => perfApi.deletePayment(row.id))}>حذف</Button>
+                    <Button
+                      type="button"
+                      variant="danger-quiet"
+                      className="btn-sm"
+                      onClick={() => {
+                        void confirm("حذف", `${KIND[row.kind] || "درخواست"} حذف شود؟`, DELETE_CONFIRM_LABEL, { danger: true }).then(async (ok) => {
+                          if (!ok) return;
+                          try {
+                            await perfApi.deletePayment(row.id);
+                            await qc.invalidateQueries({ queryKey: ["perf"] });
+                            onOutcome({
+                              ok: true,
+                              title: "حذف درخواست موفق بود",
+                              detail: "درخواست از فهرست برداشته شد.",
+                            });
+                          } catch (error) {
+                            onOutcome({ ok: false, title: "حذف درخواست ناموفق بود", detail: exactError(error) });
+                          }
+                        });
+                      }}
+                    >
+                      حذف
+                    </Button>
                   ) : null}
                 </div>
               ),
@@ -320,9 +542,8 @@ function MoneyTable({
   );
 }
 
-function AmountEdit({ id, amount }: { id: string; amount: number }) {
+function AmountEdit({ id, amount, onOutcome }: { id: string; amount: number; onOutcome: (outcome: Outcome) => void }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const [value, setValue] = useState(amount);
   return (
     <span className="row">
@@ -332,10 +553,14 @@ function AmountEdit({ id, amount }: { id: string; amount: number }) {
         variant="secondary"
         disabled={value <= 0 || value === amount}
         onClick={() => {
-          perfApi.patchPayment(id, { amount_toman: value }).then(() => {
-            toast("مبلغ عوض شد");
+          perfApi.patchPayment(id, { amount_toman: value }).then((row) => {
             qc.invalidateQueries({ queryKey: ["perf"] });
-          }).catch((error: Error) => toast(error.message));
+            onOutcome({
+              ok: true,
+              title: "تغییر مبلغ موفق بود",
+              detail: `مبلغ جدید ${toman(row.amount_toman)} تومان است.\nوضعیت: ${paymentStatus(row.status)}`,
+            });
+          }).catch((error: unknown) => onOutcome({ ok: false, title: "تغییر مبلغ ناموفق بود", detail: exactError(error) }));
         }}
       >
         ذخیره

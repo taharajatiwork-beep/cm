@@ -301,6 +301,12 @@ async def test_payment_records_cost_and_campaign_cpl(client, seeded, db):
     )
     await db.commit()
     finance_token = await login(client, "finance-test@autoco.example")
+    stale = await client.post(
+        f"/perf/payments/{payment_id}/advance",
+        headers=auth(finance_token),
+        json={"action": "finance", "seen_amount_toman": 999},
+    )
+    assert stale.status_code == 409, stale.text
     step = await client.post(
         f"/perf/payments/{payment_id}/advance",
         headers=auth(finance_token),
@@ -502,7 +508,9 @@ async def test_delivery_file_matches_the_send(client, seeded, db):
         },
     )
     assert send.status_code == 201, send.text
-    assert "D1" in send.json()["body"]
+    # کد کمپین روی ارسال می‌ماند، نه داخل متن پیامک (docs/performance-marketing.md)
+    assert send.json()["campaign_code"] == "D1"
+    assert "D1" not in send.json()["body"]
     book = Workbook()
     sheet = book.active
     sheet.append(["وضعیت"])
@@ -702,9 +710,258 @@ async def test_mizito_token_is_saved_without_being_shown(client, seeded, db):
     assert page.status_code == 200
     body = page.json()
     assert body["mizito"]["saved"] is True
+    assert body["mizito"]["connected"] is False
+    assert "توکن" not in body["mizito"]["reason"]
+    assert body["mizito"]["reason"]
     assert secret not in page.text
     assert "sheets" in body
+    assert "حساب سرویس" in body["sheets"]["report"]["reason"]
     cleared = await client.put("/perf/connections/mizito", headers=auth(token), json={"token": ""})
     assert cleared.json()["saved"] is False
     again = await client.get("/perf/connections", headers=auth(token))
     assert again.json()["mizito"]["saved"] is False
+    assert "توکن میزیتو ذخیره نشده" in again.json()["mizito"]["reason"]
+
+
+def test_mizito_status_follows_the_latest_probe():
+    from app.perf.services.connections import _mizito_status
+    from app.perf.services.mizito import mizito_http_reason
+
+    ok = _mizito_status("x" * 12, {"connected": False, "probed_ok": True, "probed_at": "2026-01-01T00:00:00", "probe_reason": ""})
+    assert ok["connected"] is True
+    bad = _mizito_status("x" * 12, {"connected": True, "probed_ok": False, "probed_at": "2026-01-01T00:00:00", "probe_reason": "توکن میزیتو پذیرفته نشد"})
+    assert bad["connected"] is False
+    assert "پذیرفته نشد" in bad["reason"]
+    assert "۴۰۱" in mizito_http_reason(401, {"msg": "unauthorized"})
+    assert "unauthorized" in mizito_http_reason(401, {"msg": "unauthorized"})
+
+
+def test_google_sheet_error_keeps_status_and_google_text():
+    from app.perf.services.connections import google_sheet_reason
+
+    text = google_sheet_reason(403, {"error": {"message": "The caller does not have permission"}})
+    assert "۴۰۳" in text
+    assert "The caller does not have permission" in text
+    assert "توکن" not in text
+    missing = google_sheet_reason(404, {})
+    assert "۴۰۴" in missing
+
+
+async def test_campaign_brief_draft_and_save(client, seeded, db):
+    await _nadia(db, seeded)
+    token = await login(client, "nadia-test@autoco.example")
+    headers = auth(token)
+    campaign = await client.post(
+        "/perf/campaigns",
+        headers=headers,
+        json={"code": "S96", "title": "شعبه نور", "brand": "ستوده", "goal": "معرفی شعبه نور", "channels": ["sms"]},
+    )
+    assert campaign.status_code == 201, campaign.text
+    campaign_id = campaign.json()["id"]
+
+    draft = await client.post(f"/perf/campaigns/{campaign_id}/brief/draft", headers=headers)
+    assert draft.status_code == 200, draft.text
+    body = draft.json()
+    assert body["source"] in ("llm", "template")
+    brief = body["brief"]
+    assert brief["slogan"]
+    assert len(brief["content_plan"]) == 7
+    assert brief["content_plan"][0]["day"] == "شنبه"
+
+    saved = await client.patch(
+        f"/perf/campaigns/{campaign_id}",
+        headers=headers,
+        json={"brief": {"slogan": "نور، جای قرار", "goals": ["معرفی", "جذب ورودی"], "ad_phases": [{"name": "آگاهی", "budget_share": 40}]}},
+    )
+    assert saved.status_code == 200, saved.text
+    saved_brief = saved.json()["brief"]
+    assert saved_brief["slogan"] == "نور، جای قرار"
+    assert saved_brief["goals"] == ["معرفی", "جذب ورودی"]
+    assert saved_brief["ad_phases"][0]["budget_share"] == 40
+    assert len(saved_brief["content_plan"]) == 7
+
+    detail = await client.get(f"/perf/campaigns/{campaign_id}", headers=headers)
+    assert detail.json()["brief"]["slogan"] == "نور، جای قرار"
+
+
+def test_isms_credit_probe_reads_balance_and_respects_lockout():
+    import asyncio
+
+    import httpx
+    from types import SimpleNamespace
+
+    from app.perf.services import connections
+    from app.perf.services.connections import probe_isms_credit
+
+    row = SimpleNamespace(organization_id="org-1", code="isms", api_username="user1", api_secret="pass1")
+
+    async def call(handler) -> tuple[dict, dict]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            first = await probe_isms_credit(client, row)
+            second = await probe_isms_credit(client, row)  # در قفل، دوباره کال نمی‌زند
+        return first, second
+
+    def locked_handler(request: httpx.Request) -> httpx.Response:
+        connections.calls.append(str(request.url))
+        return httpx.Response(200, json={"code": 102, "message": "Login failed 3 times! try ten minutes later"})
+
+    connections.calls = []
+    first, second = asyncio.run(call(locked_handler))
+    assert first["ok"] is False and "۱۰ دقیقه" in first["reason"]
+    assert second["ok"] is False and "قفل" in second["reason"]
+    assert len(connections.calls) == 1  # بار دوم از حافظهٔ قفل خواند
+
+    def ok_handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["username"] == "user1"
+        assert request.url.params["password"] == "pass1"
+        return httpx.Response(200, json={"code": 0, "credit": 1740096})
+
+    async def ok_call() -> dict:
+        connections._ISMS_LOCKED.clear()
+        async with httpx.AsyncClient(transport=httpx.MockTransport(ok_handler)) as client:
+            return await probe_isms_credit(client, row)
+
+    assert asyncio.run(ok_call())["ok"] is True
+
+
+def test_panel_probe_reads_balance_live():
+    import asyncio
+    import json
+
+    import httpx
+    from types import SimpleNamespace
+
+    from app.perf.services import connections
+    from app.perf.services.connections import probe_panel
+
+    row = SimpleNamespace(code="pishgam", api_base="https://api.example.ir/", api_token="tok-12345678", balance_toman=0)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "api.example.ir"
+        assert request.headers["Authorization"] == "tok-12345678"
+        if request.url.path == "/Messages/GetCredit":
+            return httpx.Response(200, json={"credit": 17400962, "statusCode": 0})
+        if request.url.path == "/Messages/PrivateNumberList":
+            return httpx.Response(200, json={"numbers": [{"number": "5000302137682", "type": 1}, {"number": "5000337682", "type": 1}, {"number": "5000302137682", "type": 1}], "statusCode": 0})
+        return httpx.Response(404, text="nope")
+
+    def bad_token_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"statusCode": 34})
+
+    def bad_ip_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"statusCode": 35})
+
+    async def main() -> tuple[dict, dict, dict]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            out = await probe_panel(client, row)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(bad_token_handler)) as client:
+            token_bad = await probe_panel(client, row)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(bad_ip_handler)) as client:
+            ip_bad = await probe_panel(client, row)
+        return out, token_bad, ip_bad
+
+    out, token_bad, ip_bad = asyncio.run(main())
+    assert out["ok"] is True
+    assert out["credit_rial"] == 17400962
+    assert row.balance_toman == 17400962 // 10  # موجودی واقعی در دفتر CM نشست
+    assert "۱۷٬۴۰۰٬۹۶۲" in out["balance"]
+    assert out["lines"] == ["5000302137682", "5000337682"]  # تکراری حذف شده
+    assert token_bad["ok"] is False and "توکن" in token_bad["reason"]
+    assert ip_bad["ok"] is False and "آی‌پی" in ip_bad["reason"]
+    assert json.dumps(out, ensure_ascii=False)  # پاسخ سری‌پذیر است
+
+
+def test_pishgam_delivery_texts_and_count():
+    from app.perf.services.integrations import delivery_text, pishgam_delivered_count
+
+    assert delivery_text(1) == "رسیده به گوشی"
+    assert delivery_text("11") == "منقضی"
+    assert delivery_text(999) == "999"
+    assert pishgam_delivered_count([1, 1, 2, 9, "1", None]) == 3
+
+
+async def test_pishgam_send_delivery_saves_message_id_and_count(client, seeded, db, monkeypatch):
+    import json as jsonlib
+
+    from app.core.config import get_settings
+    from app.perf import routes
+
+    await _nadia(db, seeded)
+    token = await login(client, "nadia-test@autoco.example")
+    headers = auth(token)
+
+    panel = await client.post(
+        "/perf/panels",
+        headers=headers,
+        json={"code": "pishgam", "name": "پیشگام", "sender_line": "5000302137682", "tariff_toman": 100, "balance_toman": 1000, "low_balance_toman": 100},
+    )
+    assert panel.status_code == 201, panel.text
+    panel_id = panel.json()["id"]
+
+    send = await client.post(
+        "/perf/sms/sends",
+        headers=headers,
+        json={"panel_id": panel_id, "body": "فونیکس تماس 02147677777", "recipient_count": 2, "pishgam_message_id": 555},
+    )
+    assert send.status_code == 201, send.text
+    send_id = send.json()["id"]
+    assert send.json()["pishgam_message_id"] == 555
+
+    async def fake_call(**kwargs):
+        assert kwargs["path"] == get_settings().pishgam_report_path
+        assert kwargs["method"] == "POST"
+        assert kwargs["payload"] == {"messageId": 555, "recipientNumbers": ["09121234567", "09121234568"]}
+        return {
+            "status_code": 200,
+            "body": jsonlib.dumps({"statusCode": 0, "numberDeliveryStatus": [
+                {"toNumber": "09121234567", "deliveryStatus": 1},
+                {"toNumber": "09121234568", "deliveryStatus": 2},
+            ]}),
+            "url": "fake",
+        }
+
+    monkeypatch.setattr(routes, "pishgam_call", fake_call)
+    result = await client.post(
+        f"/perf/sms/sends/{send_id}/pishgam-delivery",
+        headers=headers,
+        json={"recipients": ["09121234567", "09121234568"]},
+    )
+    assert result.status_code == 200, result.text
+    data = result.json()
+    assert data["ok"] is True
+    assert data["delivered_count"] == 1
+    assert data["rows"][0]["text"] == "رسیده به گوشی"
+    assert data["rows"][1]["text"] == "نرسیده به گوشی"
+
+    sends = await client.get("/perf/sms/sends", headers=headers)
+    row = next(item for item in sends.json() if item["id"] == send_id)
+    assert row["delivered_count"] == 1
+    assert row["pishgam_message_id"] == 555
+
+    # بدون شناسهٔ ذخیره‌شده، خطای گویا
+    other = await client.post(
+        "/perf/sms/sends",
+        headers=headers,
+        json={"panel_id": panel_id, "body": "فونیکس تماس 02147677777", "recipient_count": 2},
+    )
+    other_id = other.json()["id"]
+    missing = await client.post(
+        f"/perf/sms/sends/{other_id}/pishgam-delivery",
+        headers=headers,
+        json={"recipients": ["09121234567"]},
+    )
+    assert missing.status_code == 422
+    assert "شناسهٔ" in missing.json()["detail"]
+
+
+def test_normalize_brief_fills_the_week_and_keeps_shapes():
+    from types import SimpleNamespace
+
+    from app.perf.services.brief import normalize_brief
+
+    campaign = SimpleNamespace(brand="ستوده", title="شعبه نور", goal="", budget_toman=None)
+    out = normalize_brief({"goals": ["یک"], "content_plan": [{"day": "شنبه", "details": "معرفی"}], "ad_phases": [{"name": "آگاهی", "budget_share": "140"}], "hashtags": None}, campaign)
+    assert out["goals"] == ["یک"]
+    assert [row["day"] for row in out["content_plan"]] == ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
+    assert out["ad_phases"][0]["budget_share"] == 100
+    assert out["hashtags"] == []

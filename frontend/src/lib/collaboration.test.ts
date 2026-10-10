@@ -10,27 +10,27 @@ describe("formatDeadline", () => {
     for (const locale of ["en", "fa"] as const) {
       const out = formatDeadline(at, bi, locale) ?? "";
       expect(out, `locale=${locale}`).not.toMatch(/AM|PM/i);
-      expect(out, `locale=${locale}`).toMatch(/\d{2}:\d{2}/);
+      expect(out, `locale=${locale}`).toMatch(/[۰-۹]{2}:[۰-۹]{2}/);
     }
   });
 
   it("zero-pads hours below 10", () => {
     const out = formatDeadline("2026-09-29T05:07:00", bi, "fa") ?? "";
-    expect(out).toMatch(/05:07/);
+    expect(out).toMatch(/۰۵:۰۷/);
   });
 
-  it("uses the Jalali date under the Persian locale", () => {
-    // نه برای «امروز» — شاخهٔ sameDay تاریخ ندارد و فقط ساعت را نشان می‌دهد
-    const out = formatDeadline("2999-12-30T15:04:00", bi, "fa") ?? "";
-    expect(out).toMatch(/\d{4}\/\d{2}\/\d{2}/);
+  it("uses a Jalali date in either locale", () => {
+    const out = formatDeadline("2999-12-30T15:04:00", bi, "en") ?? "";
+    expect(out).toMatch(/[۰-۹]{4}\/[۰-۹]{2}\/[۰-۹]{2}/);
+    expect(out).not.toMatch(/2999/);
   });
 
   it("shows only the time for something due today", () => {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}T15:04:00`;
     const out = formatDeadline(today, bi, "fa") ?? "";
-    expect(out).not.toMatch(/\d{4}\/\d{2}\/\d{2}/);
-    expect(out).toMatch(/15:04/);
+    expect(out).not.toMatch(/[۰-۹]{4}\/[۰-۹]{2}\/[۰-۹]{2}/);
+    expect(out).toMatch(/۱۵:۰۴/);
   });
 
   it("returns null for missing or unparsable values", () => {

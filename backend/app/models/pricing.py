@@ -21,6 +21,8 @@ class PostSlot(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     vehicle_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("vehicles.id"), nullable=False)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     post_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     slot_type: Mapped[str] = mapped_column(String(40), default="video")  # video | post | story | price_change
     channel: Mapped[str | None] = mapped_column(String(40))

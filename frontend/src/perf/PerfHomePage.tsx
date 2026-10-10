@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Badge, Button, Card, EmptyState, ErrorMessage, List, ListItem, LoadingState, PageHeader, SectionHeader, StatCard } from "../components/ui";
+import { FaText } from "../components/FaText";
 import { Bi } from "../i18n";
 import { perfApi, toman, type Panel } from "./api";
 
@@ -29,8 +30,8 @@ export function PerfHomePage() {
           <List>
             {data.next.map((item) => (
               <ListItem key={item.href + item.title} tone={item.tone === "warn" ? "warn" : undefined}>
-                <Link to={item.href}>{item.title}</Link>
-                <Badge tone={item.tone === "warn" ? "warn" : ""}>{item.label}</Badge>
+                <Link to={item.href}><FaText text={item.title} /></Link>
+                <Badge tone={item.tone === "warn" ? "warn" : ""}><FaText text={item.label} /></Badge>
               </ListItem>
             ))}
           </List>

@@ -287,6 +287,28 @@ async def list_approvals(ctx: AuthContext = Depends(get_current_user), db: Async
     return out
 
 
+@router.get("/reports/work")
+async def work_report_route(
+    scope: str = "me",
+    group_by: str = "none",
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.work_report import work_report
+
+    try:
+        return await work_report(
+            db,
+            organization_id=ctx.organization_id,
+            user=ctx.user,
+            permissions=ctx.permissions,
+            scope=scope,
+            group_by=group_by,
+        )
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="این محدوده برای نقش شما مجاز نیست") from None
+
+
 @router.get("/reports/kpis")
 async def kpis(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     try:

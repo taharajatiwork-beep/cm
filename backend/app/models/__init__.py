@@ -33,6 +33,8 @@ from app.models.enterprise import (  # noqa: F401
     RefreshToken,
     ReportSchedule,
     StoredFile,
+    TeamNotice,
+    UserPermissionGrant,
     UserTeam,
 )
 from app.models.enums import (
@@ -58,6 +60,7 @@ from app.models.inventory import (  # noqa: F401 — register metadata
     VehiclePrice,
 )
 from app.models.pricing import PostSlot  # noqa: F401
+from app.requests import models as _request_models  # noqa: F401
 from app.perf.models import (  # noqa: F401
     PmBlacklist,
     PmCampaign,
@@ -65,6 +68,8 @@ from app.perf.models import (  # noqa: F401
     PmCost,
     PmIntegration,
     PmLead,
+    PmMizitoCursor,
+    PmMizitoRequest,
     PmPage,
     PmPagePrice,
     PmPanel,
@@ -134,12 +139,14 @@ class Team(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id"))
+    parent_team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teams.id"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     code: Mapped[str] = mapped_column(String(50), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     organization: Mapped[Organization] = relationship(back_populates="teams")
     department: Mapped[Department | None] = relationship(back_populates="teams")
+    parent_team: Mapped[Team | None] = relationship(remote_side=[id])
 
 
 class Role(Base):
@@ -258,6 +265,8 @@ class Conversation(Base):
     team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teams.id"))
     work_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("work_items.id"))
     case_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("cases.id"))
+    project_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     vehicle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("vehicles.id"))
     customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customers.id"))  # CRM
     campaign_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("campaigns.id"))
@@ -299,6 +308,8 @@ class Message(Base):
         Enum(MessageType, name="message_type"), default=MessageType.TEXT
     )
     reply_to_message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id"))
+    task_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    perf_campaign_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
@@ -397,6 +408,8 @@ class Task(Base):
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     work_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("work_items.id"))
     case_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("cases.id"))
+    project_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
+    request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus, name="task_status"), default=TaskStatus.OPEN)

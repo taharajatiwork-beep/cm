@@ -1,4 +1,5 @@
 /** Client-side helpers for collaboration-first UX (no jargon). */
+import { faDigits } from "../fa";
 import { formatJalali } from "../jalali";
 
 export type PersonMap = Map<string, string>;
@@ -21,23 +22,16 @@ export function personName(map: PersonMap, id: unknown, fallback = "—"): strin
 export function formatDeadline(
   value: unknown,
   bi: (en: string, fa: string) => string,
-  locale: "en" | "fa" = "en",
+  _locale: "en" | "fa" = "en",
 ): string | null {
   if (!value) return null;
   const d = new Date(String(value));
   if (Number.isNaN(d.getTime())) return null;
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
-  // ساعت عمداً دستی ساخته می‌شود: `toLocaleTimeString(undefined, …)` هم
-  // به locale مرورگر وابسته است و هم در en-US خروجی «03:00 PM» می‌دهد،
-  // در حالی که تاریخِ کنارش لاتین است.
-  const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const time = faDigits(`${pad2(d.getHours())}:${pad2(d.getMinutes())}`);
   if (sameDay) return `${bi("Due", "مهلت")}: ${time}`;
-  // Persian UI shows the Jalali date; English UI keeps the Gregorian one.
-  const date =
-    locale === "fa"
-      ? formatJalali(d)
-      : `${d.getMonth() + 1}/${d.getDate()}`;
+  const date = formatJalali(d);
   return `${bi("Due", "مهلت")}: ${date ?? ""} ${time}`.trim();
 }
 

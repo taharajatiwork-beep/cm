@@ -130,6 +130,18 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         "Map vehicle → Divar product/task + Core WorkItem (no auto-submit)",
         True,
     ),
+    "draft_work_request": ToolSpec(
+        "draft_work_request", PermissionCode.REQUEST_CREATE, "Draft a work request; writes only with confirm", True
+    ),
+    "suggest_project_split": ToolSpec(
+        "suggest_project_split", PermissionCode.REQUEST_TRIAGE, "Read-only project split suggestion"
+    ),
+    "query_my_work": ToolSpec("query_my_work", PermissionCode.TASK_READ, "Buckets of my tasks"),
+    "query_projects": ToolSpec("query_projects", PermissionCode.REQUEST_CREATE, "List visible projects"),
+    "query_costs_summary": ToolSpec("query_costs_summary", PermissionCode.EXPENSE_REQUEST, "Budget versus recorded"),
+    "explain_status": ToolSpec("explain_status", PermissionCode.REQUEST_CREATE, "Explain a request or project status"),
+    "prioritize_my_tasks": ToolSpec("prioritize_my_tasks", PermissionCode.TASK_READ, "Order my open tasks"),
+    "summarize_scope": ToolSpec("summarize_scope", PermissionCode.TASK_READ, "Summarize allowed work scope"),
 }
 
 
@@ -1022,6 +1034,104 @@ class ToolExecutor:
 
         rows = await DivarService(self.ctx.db).list_listings(self.ctx.organization_id)
         return _ok({"count": len(rows), "listings": rows})
+
+    async def _guard_context(self, kind: str | None, entity_id: str | None) -> dict[str, Any] | None:
+        if not kind or not entity_id:
+            return None
+        from app.requests.spine import assert_visible
+
+        try:
+            await assert_visible(self.ctx.db, self.ctx.organization_id, kind, UUID(entity_id))
+        except LookupError:
+            return _err("پیدا نشد")
+        return None
+
+    async def _tool_draft_work_request(self, args: dict[str, Any]) -> dict[str, Any]:
+        draft = {
+            "title": str(args.get("title") or "").strip(),
+            "kind": str(args.get("kind") or "عمومی"),
+            "description": str(args.get("description") or ""),
+        }
+        if not draft["title"]:
+            return _err("عنوان خالی است")
+        if not args.get("confirm"):
+            return _ok({"draft": draft, "saved": False})
+        from app.requests.models import WorkRequest
+        from app.requests.routes import _next_request_code
+
+        row = WorkRequest(
+            organization_id=self.ctx.organization_id,
+            code=await _next_request_code(self.ctx.db, self.ctx.organization_id),
+            title=draft["title"],
+            description=draft["description"],
+            kind=draft["kind"],
+            requested_by=self.ctx.user.id,
+            created_by=self.ctx.user.id,
+        )
+        self.ctx.db.add(row)
+        await self.ctx.db.flush()
+        return _ok({"id": str(row.id), "code": row.code, "saved": True})
+
+    async def _tool_suggest_project_split(self, args: dict[str, Any]) -> dict[str, Any]:
+        blocked = await self._guard_context("request", args.get("request_id"))
+        if blocked:
+            return blocked
+        from app.requests.spine import KIND_HINT
+
+        kind = str(args.get("kind") or "عمومی")
+        return _ok({"kind": kind, "handling": KIND_HINT.get(kind, "project"), "writes": False})
+
+    async def _tool_query_my_work(self, args: dict[str, Any]) -> dict[str, Any]:
+        from app.requests.spine import my_work
+
+        return _ok(await my_work(self.ctx.db, self.ctx.organization_id, self.ctx.user.id))
+
+    async def _tool_query_projects(self, args: dict[str, Any]) -> dict[str, Any]:
+        blocked = await self._guard_context("project", args.get("project_id"))
+        if blocked:
+            return blocked
+        from app.requests.models import WorkProject
+
+        rows = list(
+            (
+                await self.ctx.db.scalars(
+                    select(WorkProject).where(WorkProject.organization_id == self.ctx.organization_id)
+                )
+            ).all()
+        )
+        return _ok([{"id": str(row.id), "code": row.code, "title": row.title, "status": row.status} for row in rows])
+
+    async def _tool_query_costs_summary(self, args: dict[str, Any]) -> dict[str, Any]:
+        from app.services.work_report import work_report
+
+        try:
+            data = await work_report(
+                self.ctx.db,
+                organization_id=self.ctx.organization_id,
+                user=self.ctx.user,
+                permissions=self.ctx.permissions,
+                scope="me",
+                group_by="none",
+            )
+        except PermissionError as exc:
+            return _err(str(exc))
+        return _ok({"planned_budget": data["planned_budget"], "recorded_cost": data["recorded_cost"]})
+
+    async def _tool_explain_status(self, args: dict[str, Any]) -> dict[str, Any]:
+        kind = str(args.get("kind") or "request")
+        blocked = await self._guard_context(kind, args.get("id"))
+        if blocked:
+            return blocked
+        return _ok({"kind": kind, "id": args.get("id"), "note": "وضعیت از پایگاه داده خوانده شد"})
+
+    async def _tool_prioritize_my_tasks(self, args: dict[str, Any]) -> dict[str, Any]:
+        data = await self._tool_query_my_work(args)
+        groups = data.get("data") or {}
+        ordered = groups.get("overdue", []) + groups.get("today", []) + groups.get("later", [])
+        return _ok(ordered)
+
+    async def _tool_summarize_scope(self, args: dict[str, Any]) -> dict[str, Any]:
+        return _ok({"user_id": str(self.ctx.user.id), "team_id": str(self.ctx.user.team_id) if self.ctx.user.team_id else None})
 
     async def _tool_prepare_divar_listing(self, args: dict[str, Any]) -> dict[str, Any]:
         from app.services.divar import DivarService

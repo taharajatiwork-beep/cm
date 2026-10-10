@@ -25,6 +25,8 @@ from app.api.routes import (
     work,
 )
 from app.perf.routes import router as perf_router
+from app.requests.routes import router as requests_router
+from app.requests.teams import router as teams_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.core.metrics import async_timed_request, record_request, render_metrics
@@ -55,7 +57,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="CM Platform API",
         description="AI-native automotive ops — Core + Agents + CRM + LLM planner",
-        version="0.16.0",
+        version="0.17.0",
         debug=settings.debug,
         lifespan=lifespan,
     )
@@ -95,6 +97,8 @@ def create_app() -> FastAPI:
         campaigns.router,
         enterprise.router,
         perf_router,
+        requests_router,
+        teams_router,
         perf_sheets.router,
     ]
     for r in routers:

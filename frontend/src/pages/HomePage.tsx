@@ -17,6 +17,7 @@ import {
 } from "../components/ui";
 import { Bi, useBi, useLocale } from "../i18n";
 import { formatJalaliLong } from "../jalali";
+import { faNum } from "../fa";
 import {
   type AttentionStory,
   assigneeNames,
@@ -171,7 +172,7 @@ export function HomePage() {
                       overdueCount > 0
                         ? bi(
                             `${overdueCount} late to-dos`,
-                            `${overdueCount} کار عقب‌افتاده`,
+                            `${faNum(overdueCount)} کار عقب‌افتاده`,
                           )
                         : bi("Campaign in progress", "کمپین در جریان"),
                     waiting: overdueCount > 0,
@@ -241,14 +242,7 @@ export function HomePage() {
         ? bi("Good afternoon", "ظهر بخیر")
         : bi("Good evening", "عصر بخیر");
 
-  const todayLabel =
-    locale === "fa"
-      ? formatJalaliLong(new Date())
-      : new Date().toLocaleDateString(undefined, {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-        });
+  const todayLabel = formatJalaliLong(new Date());
 
   const waiting = stories.filter((s) => s.waitingOnMe).length;
   const atRisk = stories.filter((s) => s.tone === "danger").length;
@@ -292,7 +286,7 @@ export function HomePage() {
       {approvals > 0 ? (
         <p>
           <Link to="/approvals">
-            <Bi en="Open approvals" fa="تأییدهای منتظر" /> ({approvals})
+            <Bi en="Open approvals" fa="تأییدهای منتظر" /> ({faNum(approvals)})
           </Link>
         </p>
       ) : null}

@@ -1,23 +1,35 @@
 import { useState, type FormEvent } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { ApiError } from "../api";
 import { useAuth } from "../auth";
 import { Button, Card, ErrorMessage, LoadingState, Muted } from "../components/ui";
 import { Bi, LangSwitch, useBi } from "../i18n";
 import { friendlyError } from "../lib/errors";
+import { loginRedirectTarget, type LoginFrom } from "../lib/navigation";
+
+// حساب نمایشی فقط در حالت توسعه پیش‌پر می‌شود. در build تولید import.meta.env.DEV برابر false است
+// و این رشته‌ها کلاً از باندل حذف می‌شوند.
+const DEMO = import.meta.env.DEV
+  ? { slug: "autoco", email: "ali@autoco.example", password: "password" }
+  : { slug: "", email: "", password: "" };
 
 export function LoginPage() {
   const { user, loading, login } = useAuth();
+  const location = useLocation();
   const bi = useBi();
-  const [slug, setSlug] = useState("autoco");
-  const [email, setEmail] = useState("ali@autoco.example");
-  const [password, setPassword] = useState("password");
+  const [slug, setSlug] = useState(DEMO.slug);
+  const [email, setEmail] = useState(DEMO.email);
+  const [password, setPassword] = useState(DEMO.password);
   const [totp, setTotp] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   if (loading) return <LoadingState />;
-  if (user) return <Navigate to="/" replace />;
+  // بعد از ورود (یا اگر از قبل لاگین بودیم) به صفحه‌ای که از آن آمدیم برمی‌گردیم، نه همیشه خانه
+  if (user) {
+    const from = (location.state as { from?: LoginFrom } | null)?.from;
+    return <Navigate to={loginRedirectTarget(from)} replace />;
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -51,23 +63,25 @@ export function LoginPage() {
         <p className="sub">
           <Bi en="Sign in to your branch workspace" fa="ورود به فضای کاری شعبه" />
         </p>
-        <Muted className="login-demo-hint">
-          <Bi
-            en="Demo password for all: password. Site admin admin@, manager ali@, marketing sara@ or mina@, finance finance@"
-            fa="رمز همه: password. ادمین سایت admin@، مدیر علی ali@، مارکتینگ سارا sara@ یا مینا mina@، مالی finance@"
-          />
-        </Muted>
+        {import.meta.env.DEV ? (
+          <Muted className="login-demo-hint">
+            <Bi
+              en="Demo password for all: password. Site admin admin@, manager ali@, marketing sara@ or mina@, finance finance@"
+              fa="رمز همه: password. ادمین سایت admin@، مدیر علی ali@، مارکتینگ سارا sara@ یا مینا mina@، مالی finance@"
+            />
+          </Muted>
+        ) : null}
         <div className="field mt-4">
           <label htmlFor="login-slug">
             <Bi en="Company code" fa="کد شرکت" />
           </label>
-          <input id="login-slug" value={slug} onChange={(e) => setSlug(e.target.value)} required />
+          <input id="login-slug" value={slug} onChange={(e) => setSlug(e.target.value)} autoComplete="organization" required />
         </div>
         <div className="field">
           <label htmlFor="login-email">
             <Bi en="Email" fa="ایمیل" />
           </label>
-          <input id="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input id="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
         </div>
         <div className="field">
           <label htmlFor="login-password">
@@ -78,14 +92,21 @@ export function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
             required
           />
         </div>
         <div className="field">
-          <label>
+          <label htmlFor="login-totp">
             <Bi en="Authenticator code" fa="رمز دو مرحله‌ای" />
           </label>
-          <input value={totp} onChange={(e) => setTotp(e.target.value)} inputMode="numeric" />
+          <input
+            id="login-totp"
+            value={totp}
+            onChange={(e) => setTotp(e.target.value)}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+          />
         </div>
         <ErrorMessage message={error} friendly={false} />
         <Button type="submit" disabled={busy}>

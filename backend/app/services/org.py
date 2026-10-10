@@ -21,19 +21,27 @@ from app.models import (
     Team,
     User,
 )
+from app.models.enterprise import UserPermissionGrant
 from app.models.enums import RelationshipType
 from app.services.audit import emit_event
 
 
 async def get_user_permissions(db: AsyncSession, user: User) -> set[str]:
-    if not user.role_id:
-        return set()
-    result = await db.execute(
+    codes: set[str] = set()
+    if user.role_id:
+        result = await db.execute(
+            select(Permission.code)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .where(RolePermission.role_id == user.role_id)
+        )
+        codes.update(result.scalars().all())
+    granted = await db.execute(
         select(Permission.code)
-        .join(RolePermission, RolePermission.permission_id == Permission.id)
-        .where(RolePermission.role_id == user.role_id)
+        .join(UserPermissionGrant, UserPermissionGrant.permission_id == Permission.id)
+        .where(UserPermissionGrant.user_id == user.id)
     )
-    return set(result.scalars().all())
+    codes.update(granted.scalars().all())
+    return codes
 
 
 class OrgService:
@@ -74,12 +82,14 @@ class OrgService:
         name: str,
         code: str,
         department_id: UUID | None = None,
+        parent_team_id: UUID | None = None,
     ) -> Team:
         team = Team(
             organization_id=organization_id,
             name=name,
             code=code,
             department_id=department_id,
+            parent_team_id=parent_team_id,
         )
         self.db.add(team)
         await self.db.flush()
@@ -129,6 +139,26 @@ class OrgService:
         self.db.add(DataScope(role_id=role.id, level=data_scope_level))
         await self.db.flush()
         return role
+
+    async def set_user_grants(self, user_id: UUID, permission_codes: list[str]) -> None:
+        """جایگزین قابلیت‌های افزودنی این کاربر. نقش را دست نمی‌زند."""
+        await self.ensure_permissions()
+        existing = list(
+            (
+                await self.db.scalars(
+                    select(UserPermissionGrant).where(UserPermissionGrant.user_id == user_id)
+                )
+            ).all()
+        )
+        for row in existing:
+            await self.db.delete(row)
+        await self.db.flush()
+        for pcode in permission_codes:
+            code = pcode.value if hasattr(pcode, "value") else str(pcode)
+            perm = await self.db.scalar(select(Permission).where(Permission.code == code))
+            if perm:
+                self.db.add(UserPermissionGrant(user_id=user_id, permission_id=perm.id))
+        await self.db.flush()
 
     async def create_user(
         self,

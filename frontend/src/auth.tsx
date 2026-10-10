@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -50,33 +51,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    if (!getToken()) {
+  // کوکی refresh تک‌مصرف است و سرور آن را rotate می‌کند؛ اگر دو refresh هم‌زمان
+  // بروند (مثلاً double-effect در StrictMode)، دومی 401 می‌گیرد، user موقعی null
+  // می‌شود و کاربرِ لاگین‌کرده به /login پرت می‌شود و مقصد اصلی‌اش را گم می‌کند.
+  // زنجیره: هر اجرا بعد از اجرای قبلی و با جدیدترین توکن اجرا می‌شود.
+  const chain = useRef<Promise<void>>(Promise.resolve());
+
+  const refresh = useCallback(() => {
+    const run = async () => {
+      // پاسخ refresh ممکن است بعد از ورود موفق برگردد. فقط اگر نشست از زمان
+      // شروع همین تلاش تغییر نکرده باشد، حق دارد state را «خارج‌شده» کند.
+      const tokenAtStart = getToken();
+      if (!tokenAtStart) {
+        try {
+          const session = await api.refresh();
+          setToken(session.access_token);
+        } catch {
+          if (getToken() === tokenAtStart) {
+            setUser(null);
+            setLoading(false);
+          }
+          return;
+        }
+      }
       try {
-        const session = await api.refresh();
-        setToken(session.access_token);
+        const me = await api.me();
+        let roleCode: string | undefined;
+        try {
+          const roles = await api.roles();
+          roleCode = roles.find((r) => r.id === me.role_id)?.code;
+        } catch {
+          /* roles may be restricted */
+        }
+        setUser({ ...me, roleCode });
       } catch {
+        setToken(null);
         setUser(null);
+      } finally {
         setLoading(false);
-        return;
       }
-    }
-    try {
-      const me = await api.me();
-      let roleCode: string | undefined;
-      try {
-        const roles = await api.roles();
-        roleCode = roles.find((r) => r.id === me.role_id)?.code;
-      } catch {
-        /* roles may be restricted */
-      }
-      setUser({ ...me, roleCode });
-    } catch {
-      setToken(null);
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
+    };
+    const next = chain.current.then(run);
+    chain.current = next.catch(() => undefined);
+    return chain.current;
   }, []);
 
   useEffect(() => {

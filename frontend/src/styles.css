@@ -4,6 +4,11 @@
    ========================================================================== */
 
 :root {
+  /* لایه‌ها (z-index) از یک مقیاس: منوی کشویی < پنجره‌ها < پیام‌های کوتاه */
+  --z-drawer-backdrop: 45;
+  --z-drawer: 50;
+  --z-dialog: 110;
+  --z-toast: 120;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -34,6 +39,8 @@
   --warn-soft: #fef4e6;
   --danger: #c01048;
   --danger-soft: #fdecf1;
+  --info: #175cd3;
+  --info-soft: #eaf2fd;
 
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px rgba(16, 24, 40, 0.05);
@@ -204,6 +211,25 @@ ol {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2) var(--space-2);
+}
+
+.brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.brand-row .brand {
+  flex: 1;
+  min-width: 0;
+}
+
+/* دکمهٔ بستن و پس‌زمینهٔ منوی کشویی فقط در موبایل و وقتی منو باز است دیده می‌شوند
+   (.icon-btn.nav-close چون .icon-btn پایین‌تر display خودش را دارد) */
+.icon-btn.nav-close,
+.nav-backdrop {
+  display: none;
 }
 
 .brand-mark {
@@ -728,6 +754,24 @@ html[lang="fa"] .btn {
   background: var(--danger);
 }
 
+/* حذفِ کنار ردیف: بی‌رنگ و آرام، تا با دکمهٔ اصلی (مثل «تأیید و پرداخت») اشتباه نشود.
+   تأیید نهایی حذف در پنجرهٔ پرسش با .btn-danger (قرمز پر) است. */
+.btn.btn-danger-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--danger);
+  box-shadow: none;
+}
+
+.btn.btn-danger-quiet:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger-soft);
+}
+
+:is(.row-actions, .row, .perf-actions) > .btn-danger-quiet:not(:first-child) {
+  margin-inline-start: var(--space-3);
+}
+
 .btn:disabled,
 .btn.is-disabled {
   opacity: 0.5;
@@ -968,6 +1012,22 @@ textarea.control,
   color: var(--accent-ink);
 }
 
+/* شمارهٔ تبی که کار تصمیم‌نگرفته دارد (مثل درخواست‌های باز میزیتو) */
+.seg-count.seg-count-attn,
+.seg.active .seg-count.seg-count-attn {
+  background: var(--warn);
+  color: #fff;
+}
+
+.seg-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* legacy tab row (Settings) */
 .tab-row {
   display: inline-flex;
@@ -1055,7 +1115,7 @@ textarea.control,
 .detail-pop {
   position: fixed;
   inset: 0;
-  z-index: 110;
+  z-index: var(--z-dialog);
   display: grid;
   place-items: center;
   padding: var(--space-4);
@@ -1081,6 +1141,12 @@ textarea.control,
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
+}
+
+/* پنجره خودش فقط وقتی فوکوس می‌گیرد که هیچ کنترلی داخلش نباشد؛ حلقهٔ فوکوس لازم نیست. */
+.detail-pop-card:focus,
+.sheet:focus {
+  outline: none;
 }
 
 /* ساخت و ویرایش کوتاه در پنجره باز می‌شود، نه به‌صورت فرم کشیده روی صفحه. */
@@ -1961,6 +2027,23 @@ a.row-title:hover {
   font-size: 0.8rem;
 }
 
+.not-found .empty-state {
+  padding-block: var(--space-6);
+}
+
+.not-found h1 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.empty-state .not-found-path {
+  color: var(--faint);
+}
+
+.not-found-actions {
+  justify-content: center;
+}
+
 .ui-loading {
   display: flex;
   align-items: center;
@@ -2014,7 +2097,7 @@ a.row-title:hover {
 .sheet-root {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: var(--z-dialog);
 }
 
 .sheet-backdrop {
@@ -3598,7 +3681,8 @@ html[dir="rtl"] .tag-list li {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  z-index: 80;
+  /* بالاتر از پنجره‌ها تا پیام داخل پنجرهٔ باز هم دیده شود */
+  z-index: var(--z-toast);
 }
 
 .toast {
@@ -3612,15 +3696,57 @@ html[dir="rtl"] .tag-list li {
   display: none;
 }
 
-.confirm-sheet {
-  max-width: 28rem;
-  margin: 10vh auto;
+/* پنجرهٔ پرسش (تأیید / حذف) */
+.confirm-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
 }
 
+.confirm-body {
+  margin: 0;
+  color: var(--ink-2);
+  white-space: pre-line;
+}
+
+.confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* گوشی: پنجره‌ها از پایین صفحه با عرض کامل باز می‌شوند (برگهٔ پایینی). */
+@media (max-width: 560px) {
+  .detail-pop {
+    padding: 0;
+    place-items: end stretch;
+  }
+
+  .detail-pop .detail-pop-card.detail-pop-card {
+    width: 100%;
+    max-height: 92vh;
+    max-height: 92dvh;
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .form-pop .detail-pop-card.detail-pop-card {
+    overflow: auto;
+  }
+
+  .confirm-actions > .btn {
+    flex: 1 1 auto;
+  }
+}
+
+/* موبایل: دکمهٔ منو در نوار بالا؛ منوی کشویی از سمت شروع باز می‌شود
+   (راست در فارسی، چپ در انگلیسی) — برای همین فقط ویژگی‌های منطقی (inline/block). */
 @media (max-width: 860px) {
   .nav-toggle {
-    display: inline-flex;
-    margin: 0.5rem;
+    display: inline-grid;
+    flex-shrink: 0;
+    color: var(--ink-2);
   }
 
   .nav {
@@ -3630,10 +3756,29 @@ html[dir="rtl"] .tag-list li {
   .nav-open .nav {
     display: flex;
     position: fixed;
-    inset: 0 auto 0 0;
+    inset-block: 0;
+    inset-inline-start: 0;
     width: min(18rem, 86vw);
-    z-index: 40;
+    z-index: var(--z-drawer);
     background: var(--surface);
+    border-inline-end: 1px solid var(--line);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .nav-open .nav-close {
+    display: inline-grid;
+    flex-shrink: 0;
+  }
+
+  .nav-open .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-drawer-backdrop);
+    padding: 0;
+    border: 0;
+    background: rgba(16, 24, 40, 0.45);
+    cursor: pointer;
   }
 }
 
@@ -3723,7 +3868,7 @@ html[dir="rtl"] .tag-list li {
   }
 
   .shell-top {
-    top: 49px;
+    top: 0;
     padding: 0 var(--space-3);
   }
 
@@ -3775,7 +3920,8 @@ html[dir="rtl"] .tag-list li {
   }
 
   /* Comfortable touch targets on phones */
-  .nav-toggle {
+  .nav-toggle,
+  .nav-close {
     min-width: 2.4rem;
     min-height: 2.4rem;
     padding: 0;
@@ -3834,18 +3980,47 @@ html[dir="rtl"] .tag-list li {
   display: inline-block;
 }
 
+.chart-hbars,
+.chart-grouped,
+.chart-donut-wrap,
+.chart-line-wrap {
+  direction: ltr;
+}
+
 .chart-grouped {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+}
+
+.chart-plot {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr);
+  column-gap: 0.45rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.chart-y {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: calc(0.66rem + var(--space-2));
+  font-size: 0.66rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
 }
 
 .chart-grouped-rows {
   display: flex;
   align-items: stretch;
   gap: var(--space-2);
-  flex: 1;
+  min-height: 0;
+  border-inline-start: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  padding: var(--space-2) 0 0;
+  padding-inline-start: 0.35rem;
 }
 
 .chart-col {
@@ -3920,8 +4095,9 @@ html[dir="rtl"] .tag-list li {
 .chart-hbar-value {
   font-size: 0.75rem;
   color: var(--ink-2);
-  text-align: start;
+  text-align: end;
   direction: ltr;
+  font-variant-numeric: tabular-nums;
 }
 
 .chart-donut-wrap {

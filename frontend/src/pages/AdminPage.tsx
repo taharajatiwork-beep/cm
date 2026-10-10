@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, type AdminMessage, type AdminRecord, type AdminRef } from "../api";
 import {
   Button,
   Card,
+  Dialog,
   EmptyState,
   ErrorMessage,
   Field,
@@ -25,6 +26,7 @@ import { useToast } from "../components/ui/Toast";
 import { queryKeys } from "../lib/queryKeys";
 import { DateText } from "../components/DateText";
 import { Donut, GroupedBars, HBars } from "../components/charts";
+import { faNum, toman } from "../fa";
 
 const SCOPES: Array<[string, string, string, string, string]> = [
   ["organization", "Whole organization", "همهٔ سازمان", "Every section and every branch.", "همهٔ بخش‌ها و همهٔ شعب."],
@@ -1249,30 +1251,21 @@ function DetailShell({
   onClose: () => void;
   children: ReactNode;
 }) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
+  const bi = useBi();
+  const titleId = useId();
   return (
-    <div className="detail-pop" role="dialog" aria-modal="true">
-      <button type="button" className="detail-pop-backdrop" onClick={onClose} />
-      <div className="detail-pop-card">
-        <SectionHeader
-          title={title}
-          count={count}
-          action={
-            <button type="button" className="kpi-more" onClick={onClose}>
-              <Bi en="Close" fa="بستن" />
-            </button>
-          }
-        />
-        {children}
-      </div>
-    </div>
+    <Dialog onClose={onClose} labelledBy={titleId} closeLabel={bi("Close", "بستن")}>
+      <SectionHeader
+        title={<span id={titleId}>{title}</span>}
+        count={count}
+        action={
+          <button type="button" className="kpi-more" onClick={onClose}>
+            <Bi en="Close" fa="بستن" />
+          </button>
+        }
+      />
+      {children}
+    </Dialog>
   );
 }
 
@@ -2064,7 +2057,7 @@ function AnalyticsTab() {
           {stockValue.length === 0 ? (
             <Muted><Bi en="No priced vehicles." fa="خودرویی با قیمت ثبت‌شده نیست." /></Muted>
           ) : (
-            <HBars data={stockValue} format={(v) => v.toLocaleString("en-US")} />
+            <HBars data={stockValue} format={(v) => toman(v)} />
           )}
         </Card>
       </div>
@@ -2335,8 +2328,8 @@ function MonitoringTab() {
           {d.audit_chain.ok === true ? (
             <span className="badge ok">
               <Bi
-                en={`Intact · ${d.audit_chain.rows_checked.toLocaleString("en-US")} rows`}
-                fa={`سالم · ${d.audit_chain.rows_checked.toLocaleString("fa-IR")} ردیف`}
+                en={`Intact · ${faNum(d.audit_chain.rows_checked)} rows`}
+                fa={`سالم · ${faNum(d.audit_chain.rows_checked)} ردیف`}
               />
             </span>
           ) : d.audit_chain.ok === false ? (
@@ -2599,7 +2592,7 @@ function MonitoringTab() {
               {
                 key: "rows",
                 header: <Bi en="Rows" fa="ردیف‌ها" />,
-                render: (r) => `${r.rows.toLocaleString("en-US")}`,
+                render: (r) => faNum(r.rows),
               },
             ]}
           />

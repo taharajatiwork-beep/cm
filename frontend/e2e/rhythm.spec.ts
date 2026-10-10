@@ -64,7 +64,7 @@ test("vertical rhythm is uniform on every page", async ({ page, request }) => {
   await signIn(page, request);
   for (const path of PAGES) {
     await page.goto(path);
-    await expect(page.locator("main")).toBeVisible();
+    await expect(page.locator("main"), `${path}: main did not render`).toBeVisible();
     // فونت باید لود شده باشد تا ارتفاع فونت fallback اندازه‌ها را منحرف نکند
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
     // فقط ظاهر شدن <main> کافی نیست: صفحه‌ای که داده‌اش دیر برسد ابتدا یک

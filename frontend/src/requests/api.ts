@@ -1,0 +1,124 @@
+import { ApiError, getToken, setToken } from "../api";
+
+export type TeamHome = {
+  team: { id: string; name: string; code: string };
+  shared: boolean;
+  can_edit: boolean;
+  requests: Array<{ id: string; code: string; title: string; status: string }>;
+  projects: Array<{ id: string; code: string; title: string; request_code: string; team_name: string; status: string; due_date: string | null; progress: { total: number; done: number; ratio: number } }>;
+  sections: Array<{ id: string; name: string; code: string }>;
+  own_section: boolean;
+};
+
+export type WorkRequest = {
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  kind: string;
+  priority: string;
+  due_date: string | null;
+  status: string;
+  requested_by: string | null;
+  requester_name: string;
+  team_id: string | null;
+  team_name: string;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type WorkProject = {
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  kind: string;
+  request_id: string | null;
+  request_code: string;
+  team_id: string | null;
+  team_name: string;
+  status: string;
+  created_at: string;
+  updated_at: string | null;
+};
+
+async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (!(init.body instanceof FormData) && !headers.has("Content-Type") && init.body) {
+    headers.set("Content-Type", "application/json");
+  }
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`/api${path}`, { ...init, headers, credentials: "include" });
+  if (res.status === 401 && retry) {
+    const refreshed = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
+    if (refreshed.ok) {
+      const body = (await refreshed.json()) as { access_token: string };
+      setToken(body.access_token);
+      return request<T>(path, init, false);
+    }
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail?.message || body.detail || detail;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, String(detail));
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+export type TeamOption = { id: string; name: string; code: string; parent_team_id?: string | null };
+
+export const requestsApi = {
+  list: (status: string = "") =>
+    request<WorkRequest[]>(`/requests${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  create: (body: Record<string, unknown>) => request<WorkRequest>("/requests", { method: "POST", body: JSON.stringify(body) }),
+  patch: (id: string, body: Record<string, unknown>) =>
+    request<WorkRequest>(`/requests/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  remove: (id: string) => request<void>(`/requests/${id}`, { method: "DELETE" }),
+  projects: (requestId: string = "", status: string = "") => {
+    const params = new URLSearchParams();
+    if (requestId) params.set("request_id", requestId);
+    if (status) params.set("status", status);
+    const qs = params.toString();
+    return request<WorkProject[]>(`/requests/projects${qs ? `?${qs}` : ""}`);
+  },
+  createProject: (requestId: string, body: Record<string, unknown>) =>
+    request<WorkProject>(`/requests/${requestId}/projects`, { method: "POST", body: JSON.stringify(body) }),
+  patchProject: (id: string, body: Record<string, unknown>) =>
+    request<WorkProject>(`/requests/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteProject: (id: string) => request<void>(`/requests/projects/${id}`, { method: "DELETE" }),
+  teams: () => request<TeamOption[]>("/teams"),
+  teamHome: (id: string) => request<TeamHome>(`/teams/${id}`),
+  project: (id: string) => request<Record<string, unknown>>(`/requests/projects/${id}`),
+  convertTask: (requestId: string, title: string) =>
+    request<Record<string, unknown>>(`/requests/${requestId}/tasks`, { method: "POST", body: JSON.stringify({ title }) }),
+  applyTemplate: (projectId: string) =>
+    request<Record<string, unknown>>(`/requests/projects/${projectId}/apply-template`, {
+      method: "POST",
+      body: JSON.stringify({ confirm: true }),
+    }),
+  addTask: (projectId: string, title: string, assigneeIds: string[] = []) =>
+    request<Record<string, unknown>>(`/requests/projects/${projectId}/tasks`, {
+      method: "POST",
+      body: JSON.stringify({ title, assignee_ids: assigneeIds }),
+    }),
+  setMembers: (projectId: string, userIds: string[]) =>
+    request<Array<{ id: string; full_name: string }>>(`/requests/projects/${projectId}/members`, {
+      method: "PUT",
+      body: JSON.stringify({ user_ids: userIds }),
+    }),
+  setCampaigns: (projectId: string, campaignIds: string[]) =>
+    request<Array<{ id: string; code: string; title: string }>>(`/requests/projects/${projectId}/campaigns`, {
+      method: "PUT",
+      body: JSON.stringify({ campaign_ids: campaignIds }),
+    }),
+  myWork: () =>
+    request<Record<string, Array<Record<string, string>>>>("/requests/my-work"),
+  workReport: (scope: string) => request<Record<string, unknown>>(`/reports/work?scope=${encodeURIComponent(scope)}`),
+};

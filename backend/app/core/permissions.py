@@ -37,14 +37,68 @@ class PermissionCode(StrEnum):
     PERF_READ = "perf.read"
     PERF_WRITE = "perf.write"
     PERF_APPROVE = "perf.approve"
+    # درخواست → پروژه → کمپین. مدیرها درخواست می‌سازند، تیم تبدیل به پروژه می‌کند.
+    REQUEST_CREATE = "request.create"
+    REQUEST_TRIAGE = "request.triage"
+    REQUEST_MANAGE = "request.manage"
+    EXPENSE_REQUEST = "expense.request"
+    EXPENSE_APPROVE = "expense.approve"
 
 
 class DataScopeLevel(StrEnum):
     ORGANIZATION = "organization"
     BRANCH = "branch"
     DEPARTMENT = "department"
+    TEAM_TREE = "team_tree"
     TEAM = "team"
     SELF = "self"
+
+
+# چهار قالب. قابلیت‌های اضافه (تأیید هزینه، قیمت، پرفورمنس) روی خود کاربر می‌نشینند، نه نقش جدا.
+ROLE_TEMPLATES: dict[str, tuple[str, str, tuple[str, ...]]] = {
+    "requester": (
+        "مدیر",
+        DataScopeLevel.SELF,
+        (
+            PermissionCode.REQUEST_CREATE,
+            PermissionCode.CONVERSATION_READ,
+            PermissionCode.CONVERSATION_WRITE,
+            PermissionCode.NOTIFICATION_READ,
+        ),
+    ),
+    "lead": (
+        "سرپرست",
+        DataScopeLevel.TEAM_TREE,
+        (
+            PermissionCode.REQUEST_TRIAGE,
+            PermissionCode.REQUEST_MANAGE,
+            PermissionCode.CONVERSATION_READ,
+            PermissionCode.CONVERSATION_WRITE,
+            PermissionCode.TASK_READ,
+            PermissionCode.TASK_WRITE,
+            PermissionCode.TASK_ASSIGN,
+            PermissionCode.WORK_ITEM_READ,
+            PermissionCode.NOTIFICATION_READ,
+            PermissionCode.EVENT_READ,
+            PermissionCode.EXPENSE_REQUEST,
+            PermissionCode.SEARCH,
+            PermissionCode.KB_READ,
+            PermissionCode.CAMPAIGN_READ,
+        ),
+    ),
+    "member": (
+        "عضو",
+        DataScopeLevel.TEAM,
+        (
+            PermissionCode.TASK_READ,
+            PermissionCode.TASK_WRITE,
+            PermissionCode.CONVERSATION_READ,
+            PermissionCode.CONVERSATION_WRITE,
+            PermissionCode.NOTIFICATION_READ,
+            PermissionCode.EXPENSE_REQUEST,
+        ),
+    ),
+}
 
 
 class AuthorizationError(Exception):

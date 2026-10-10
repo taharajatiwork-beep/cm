@@ -1,12 +1,12 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { DateText } from "../components/DateText";
-import { Badge, Button, Card, ErrorMessage, LoadingState, Muted, PageHeader, SectionHeader, Select, Table } from "../components/ui";
+import { Badge, Button, Card, Dialog, ErrorMessage, LoadingState, Muted, PageHeader, SectionHeader, Select, Table } from "../components/ui";
 import { useToast } from "../components/ui/Toast";
-import { Bi } from "../i18n";
+import { Bi, useBi } from "../i18n";
 import { downloadPerf, leadsLabel, perfApi, toman, type CampaignRow, type Sheet, type SmsSend, type Story } from "./api";
-import { FilePick } from "./bits";
+import { CampaignCode, exactError, FilePick, OutcomePop, type Outcome } from "./bits";
 import { ArrangeBar, choices, ShowMore, useArrange, type SortOption } from "./browse";
 import { CampaignEdit, CostEdit, RowActions, SmsEdit, StoryEdit, useRemove } from "./edit";
 
@@ -25,6 +25,9 @@ export function SheetPage() {
   const [smsEdit, setSmsEdit] = useState<SmsSend | null>(null);
   const [storyEdit, setStoryEdit] = useState<Story | null>(null);
   const [costEdit, setCostEdit] = useState<Sheet["costs"][number] | null>(null);
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [pushing, setPushing] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
   if (sheet.isLoading) return <LoadingState />;
   if (sheet.error || !sheet.data) return <ErrorMessage error={sheet.error instanceof Error ? sheet.error.message : "شیت خوانده نشد"} />;
   const data = sheet.data;
@@ -34,10 +37,23 @@ export function SheetPage() {
   const costs = focus ? data.costs.filter((row) => row.campaign_code === focus) : data.costs;
 
   function sync() {
+    setPushing(true);
     perfApi.syncSheets().then((result) => {
       qc.invalidateQueries({ queryKey: ["perf"] });
-      toast(result.pushed ? (result.reason || "گوگل‌شیت به‌روز شد و آمار از همان شیت خوانده می‌شود") : (result.reason || "گوگل‌شیت هنوز وصل نشده است"));
-    }).catch((error: Error) => toast(error.message));
+      setSyncOpen(false);
+      const s = result.sources ?? {};
+      const counts = `دفتر کمپین ${toman(s.register ?? 0)} · هزینه ${toman(s.costs ?? 0)} · پیامک ${toman(s.sms ?? 0)} · سوشال ${toman(s.social ?? 0)}`;
+      setOutcome({
+        ok: result.pushed,
+        title: result.pushed ? "ارسال به گوگل‌شیت موفق بود" : "ارسال به گوگل‌شیت ناموفق بود",
+        detail: result.pushed
+          ? `تب‌های شیت گزارش (پیامک، سوشال، ورودی، هزینه، گزارش) از نو نوشته شد.\nردیف تازه اضافه‌شده — ${counts}${result.reason ? `\n${result.reason}` : ""}${result.spreadsheet_url ? `\nشیت: ${result.spreadsheet_url}` : ""}`
+          : (result.reason || "گوگل‌شیت وصل نیست و ارسال انجام نشد. وضعیت اتصال را در صفحهٔ اتصالات ببینید."),
+      });
+    }).catch((error: unknown) => {
+      setPushing(false);
+      setOutcome({ ok: false, title: "ارسال به گوگل‌شیت ناموفق بود", detail: exactError(error) });
+    });
   }
 
   return (
@@ -57,7 +73,7 @@ export function SheetPage() {
           <div className="row">
             <Button type="button" variant="secondary" onClick={() => downloadPerf("/perf/excel/reporter", "reporter.xlsx")}><Bi en="Excel" fa="اکسل گزارش" /></Button>
             <Button type="button" variant="secondary" onClick={() => downloadPerf("/perf/excel/costs", "cost-tracking.xlsx")}><Bi en="Costs" fa="اکسل هزینه" /></Button>
-            <Button type="button" onClick={sync}><Bi en="Push" fa="بفرست به گوگل‌شیت" /></Button>
+            <Button type="button" onClick={() => setSyncOpen(true)}><Bi en="Push" fa="بفرست به گوگل‌شیت" /></Button>
           </div>
         }
       />
@@ -99,7 +115,7 @@ export function SheetPage() {
         scope={{ all: "همهٔ ارسال‌ها", cost: "فقط با هزینه", leads: "فقط با ورودی", pick: (row) => ({ cost: row.cost_toman, leads: row.leads }) }}
         text={(row) => [row.campaign_code]}
         columns={[
-          { key: "code", header: "کمپین", render: (row) => <Link to={`/perf/sheet?campaign=${row.campaign_code}`}>{row.campaign_code}</Link> },
+          { key: "code", header: "کمپین", render: (row) => <CampaignCode code={row.campaign_code} /> },
           { key: "when", header: "تاریخ", className: "cell-nowrap", render: (row) => <IsoDate value={row.sent_at} /> },
           { key: "n", header: "گیرنده", render: (row) => toman(row.recipient_count) },
           { key: "cost", header: "هزینه", render: (row) => toman(row.cost_toman) },
@@ -120,7 +136,7 @@ export function SheetPage() {
       <FoundTable
         icon="layers"
         title={<Bi en="Social" fa="سوشال" />}
-        extra={<Button variant="ghost" to="/perf/campaigns"><Bi en="In the campaign" fa="داخل کمپین" /></Button>}
+        extra={<Button variant="ghost" to={focus && byCode.get(focus) ? `/perf/social?campaign=${byCode.get(focus)?.id}` : "/perf/social"}><Bi en="Social" fa="سوشال" /></Button>}
         rows={stories}
         rowKey={(row) => row.id}
         sorts={STORY_SORTS}
@@ -128,7 +144,7 @@ export function SheetPage() {
         scope={{ all: "همهٔ قرارها", cost: "فقط با هزینه", leads: "فقط با ورودی", pick: (row) => ({ cost: row.cost_toman, leads: row.leads }) }}
         text={(row) => [row.campaign_code, row.page]}
         columns={[
-          { key: "code", header: "کمپین", render: (row) => row.campaign_code || "—" },
+          { key: "code", header: "کمپین", render: (row) => <CampaignCode code={row.campaign_code} /> },
           { key: "when", header: "تاریخ", className: "cell-nowrap", render: (row) => <IsoDate value={row.published_on} /> },
           { key: "page", header: "پیج", render: (row) => row.page },
           { key: "views", header: "نمایش", render: (row) => toman(row.views) },
@@ -149,7 +165,12 @@ export function SheetPage() {
       <FoundTable
         icon="briefcase"
         title={<Bi en="Costs" fa="هزینه" />}
-        extra={data.google_connected ? <Badge tone="ok">گوگل‌شیت</Badge> : <Badge>شیت پنل</Badge>}
+        extra={
+          <div className="row">
+            {data.google_connected ? <Badge tone="ok">گوگل‌شیت</Badge> : <Badge>شیت پنل</Badge>}
+            <Button variant="ghost" to={focus && byCode.get(focus) ? `/perf/money?campaign=${byCode.get(focus)?.id}` : "/perf/money"}><Bi en="Costs" fa="هزینه‌ها" /></Button>
+          </div>
+        }
         rows={costs}
         rowKey={(row) => String(row.cost_number) + row.campaign_code}
         sorts={COST_SORTS}
@@ -158,7 +179,7 @@ export function SheetPage() {
         columns={[
           { key: "n", header: "شماره", render: (row) => row.cost_number },
           { key: "when", header: "تاریخ", className: "cell-nowrap", render: (row) => <IsoDate value={row.spent_on} /> },
-          { key: "code", header: "کمپین", render: (row) => row.campaign_code },
+          { key: "code", header: "کمپین", render: (row) => <CampaignCode code={row.campaign_code} /> },
           { key: "brand", header: "برند", render: (row) => row.brand },
           { key: "amount", header: "مبلغ", render: (row) => toman(row.amount_toman) },
           { key: "detail", header: "شرح", render: (row) => row.detail || row.description },
@@ -192,7 +213,73 @@ export function SheetPage() {
       {smsEdit ? <SmsEdit row={smsEdit} onClose={() => setSmsEdit(null)} /> : null}
       {storyEdit ? <StoryEdit row={storyEdit} onClose={() => setStoryEdit(null)} /> : null}
       {costEdit ? <CostEdit row={costEdit} onClose={() => setCostEdit(null)} /> : null}
+      {syncOpen ? (
+        <SyncPop
+          connected={data.google_connected}
+          url={data.spreadsheet_url}
+          busy={pushing}
+          onPush={sync}
+          onClose={() => !pushing && setSyncOpen(false)}
+        />
+      ) : null}
+      <OutcomePop outcome={outcome} onClose={() => setOutcome(null)} />
     </>
+  );
+}
+
+const SOURCE_LINES = [
+  "تب‌های شیت گزارش خود پنل (پیامک، سوشال، ورودی، هزینه، گزارش) از نو نوشته می‌شود.",
+  "ردیف‌های تازه به شیت‌های منبع اضافه می‌شود: دفتر شمارهٔ کمپین، شیت هزینه، پیامک ریپورتر، استوری اینستاگرام. ردیف‌های قبلی پاک نمی‌شوند.",
+  "بعد از ارسال، آمار همین صفحه از روی شیت گوگل خوانده می‌شود.",
+  "اگر گوگل وصل نباشد ارسال کامل انجام نمی‌شود و دلیلش در پنجرهٔ نتیجه نوشته می‌شود.",
+];
+
+function SyncPop({
+  connected,
+  url,
+  busy,
+  onPush,
+  onClose,
+}: {
+  connected: boolean;
+  url?: string;
+  busy: boolean;
+  onPush: () => void;
+  onClose: () => void;
+}) {
+  const bi = useBi();
+  const titleId = useId();
+  return (
+    <Dialog onClose={onClose} className="form-pop" labelledBy={titleId} closeLabel={bi("Close", "بستن")} busy={busy}>
+        <SectionHeader
+          icon="upload"
+          title={<span id={titleId}><Bi en="Push to Google Sheets" fa="بفرست به گوگل‌شیت" /></span>}
+          action={<button type="button" className="kpi-more" onClick={onClose}><Bi en="Close" fa="بستن" /></button>}
+        />
+        {connected ? (
+          <p className="conn-note">
+            گوگل وصل است
+            {url ? <> · <a href={url} target="_blank" rel="noreferrer">باز کردن شیت</a></> : null}
+            . با زدن دکمهٔ زیر ارسال شروع می‌شود و نتیجه در پنجرهٔ «موفق یا ناموفق» با جزئیات نشان داده می‌شود.
+          </p>
+        ) : (
+          <ErrorMessage
+            friendly={false}
+            message="گوگل‌شیت وصل نیست. ارسال روی شیت گوگل انجام نمی‌شود؛ دلیل دقیق در پنجرهٔ نتیجه می‌آید. وضعیت را در صفحهٔ اتصالات چک کنید."
+          />
+        )}
+        <ul className="sync-steps">
+          {SOURCE_LINES.map((line) => <li key={line}>{line}</li>)}
+        </ul>
+        <div className="row perf-actions">
+          <Button type="button" onClick={onPush} disabled={busy}>
+            {busy ? <Bi en="Sending…" fa="در حال ارسال…" /> : <Bi en="Send now" fa="همین حالا بفرست" />}
+          </Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            <Bi en="Cancel" fa="بی‌خیال" />
+          </Button>
+        </div>
+    </Dialog>
   );
 }
 

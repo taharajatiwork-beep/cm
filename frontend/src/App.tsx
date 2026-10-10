@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
 import { Shell } from "./Shell";
 import { LoadingState } from "./components/ui";
@@ -12,6 +12,7 @@ import { HomePage } from "./pages/HomePage";
 import { KnowledgePage } from "./pages/KnowledgePage";
 import { LoginPage } from "./pages/LoginPage";
 import { MyWorkPage } from "./pages/MyWorkPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { PeoplePage } from "./pages/PeoplePage";
 import { PricingPage } from "./pages/PricingPage";
@@ -20,12 +21,19 @@ import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { VehiclesPage, VehicleDetailPage } from "./pages/VehiclesPage";
 import { WorkItemDetailPage, WorkItemsPage } from "./pages/WorkItemsPage";
+import { isPerformanceUser } from "./lib/navigation";
 import { PerfRoutes } from "./perf/PerfRoutes";
+import { ProjectPage } from "./requests/ProjectPage";
+import { TeamHomePage } from "./requests/TeamHomePage";
+import { ProjectsPage } from "./requests/ProjectsPage";
+import { RequestsPage } from "./requests/RequestsPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <LoadingState />;
-  if (!user) return <Navigate to="/login" replace />;
+  // مقصد اصلی کاربر را نگه می‌داریم تا بعد از ورود (یا رفرش صفحه) به همان صفحه برگردد
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
   return children;
 }
 
@@ -37,7 +45,7 @@ function SearchRoute() {
 
 function HomeRoute() {
   const { user } = useAuth();
-  if (user?.roleCode === "performance_marketing") return <Navigate to="/perf" replace />;
+  if (isPerformanceUser(user)) return <Navigate to="/perf" replace />;
   return <HomePage />;
 }
 
@@ -77,6 +85,11 @@ export default function App() {
           <Route path="agent" element={<AgentPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="perf/*" element={<PerfRoutes />} />
+          <Route path="requests" element={<RequestsPage />} />
+          <Route path="projects" element={<ProjectsPage />} />
+          <Route path="projects/:id" element={<ProjectPage />} />
+          <Route path="teams/:teamId" element={<TeamHomePage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </AuthProvider>

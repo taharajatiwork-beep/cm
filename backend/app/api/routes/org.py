@@ -469,7 +469,9 @@ async def list_teams(
     db: AsyncSession = Depends(get_db),
 ):
     require_any_permission(
-        ctx.permissions, PermissionCode.USER_READ, PermissionCode.WORK_ITEM_READ
+        ctx.permissions, PermissionCode.USER_READ, PermissionCode.WORK_ITEM_READ,
+        PermissionCode.REQUEST_CREATE, PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
     )
     return await OrgService(db).list_teams(ctx.organization_id)
 

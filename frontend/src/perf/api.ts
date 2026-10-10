@@ -1,4 +1,7 @@
 import { ApiError, getToken, setToken } from "../api";
+import { toman } from "../fa";
+
+export { toman };
 
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(init.headers);
@@ -34,11 +37,6 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   return res.json() as Promise<T>;
 }
 
-export function toman(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(Number(value))) return "—";
-  return new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 0 }).format(Math.round(Number(value)));
-}
-
 /** صفر در فهرست کمپین یعنی ورودی ثبت نشده، نه نتیجهٔ صفر. */
 export function leadsLabel(value: number | null | undefined): string {
   if (!value) return "—";
@@ -62,6 +60,8 @@ export const perfApi = {
     request<CampaignRow>(`/perf/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteCampaign: (id: string) => request<void>(`/perf/campaigns/${id}`, { method: "DELETE" }),
   campaign: (id: string) => request<CampaignDetail>(`/perf/campaigns/${id}`),
+  briefDraft: (id: string) =>
+    request<BriefDraft>(`/perf/campaigns/${id}/brief/draft`, { method: "POST", body: "{}" }),
   createCampaign: (body: Record<string, unknown>) =>
     request<CampaignRow>("/perf/campaigns", { method: "POST", body: JSON.stringify(body) }),
   campaignRegister: () =>
@@ -89,6 +89,11 @@ export const perfApi = {
     data.append("file", file);
     return request<{ delivered_count: number }>(`/perf/sms/sends/${id}/delivery`, { method: "POST", body: data });
   },
+  pishgamSendDelivery: (id: string, body: { message_id?: number | null; recipients: string[] }) =>
+    request<PishgamDelivery & { send_id: string }>(`/perf/sms/sends/${id}/pishgam-delivery`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   lists: () => request<RecipientList[]>("/perf/lists"),
   prepareList: (data: FormData) => request<RecipientList>("/perf/lists/prepare", { method: "POST", body: data }),
   blacklist: () => request<Array<{ id: string; phone: string; note: string }>>("/perf/blacklist"),
@@ -110,8 +115,8 @@ export const perfApi = {
       body: data,
     });
   },
-  advance: (id: string, action: string) =>
-    request<Payment>(`/perf/payments/${id}/advance`, { method: "POST", body: JSON.stringify({ action }) }),
+  advance: (id: string, action: string, seenAmount?: number) =>
+    request<Payment>(`/perf/payments/${id}/advance`, { method: "POST", body: JSON.stringify({ action, seen_amount_toman: seenAmount ?? null }) }),
   pages: () => request<PageRow[]>("/perf/pages"),
   createPage: (body: Record<string, unknown>) =>
     request<PageRow>("/perf/pages", { method: "POST", body: JSON.stringify(body) }),
@@ -161,6 +166,17 @@ export const perfApi = {
   syncSheets: () => request<{ pushed: boolean; reason?: string; spreadsheet_url?: string; sources?: Record<string, number> }>("/perf/integrations/sheets", { method: "POST", body: JSON.stringify({ kind: "costs" }) }),
   mizito: () => request<MizitoSnapshot>("/perf/integrations/mizito"),
   refreshMizito: () => request<MizitoSnapshot>("/perf/integrations/mizito/refresh", { method: "POST" }),
+  mizitoMissing: () => request<MizitoMissing>("/perf/integrations/mizito/missing"),
+  mizitoFinance: () => request<MizitoFinance>("/perf/integrations/mizito/finance"),
+  mizitoTriage: (days?: number | null) => request<MizitoTriage>(`/perf/integrations/mizito/triage${days ? `?days=${days}` : ""}`),
+  mizitoRequests: (status = "new") => request<MizitoRequests>(`/perf/integrations/mizito/requests?status=${encodeURIComponent(status)}`),
+  checkMizitoRequests: () => request<MizitoRequestCheck>("/perf/integrations/mizito/requests/check", { method: "POST" }),
+  approveMizitoRequest: (id: string, body: Record<string, unknown>) =>
+    request<{ request: MizitoRequest; campaign: CampaignRow }>(`/perf/integrations/mizito/requests/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  rejectMizitoRequest: (id: string) => request<MizitoRequest>(`/perf/integrations/mizito/requests/${id}/reject`, { method: "POST" }),
   connections: (live = false) => request<Connections>(`/perf/connections?live=${live ? "true" : "false"}`),
   saveMizito: (token: string) =>
     request<{ saved: boolean; hint: string }>("/perf/connections/mizito", { method: "PUT", body: JSON.stringify({ token }) }),
@@ -168,9 +184,158 @@ export const perfApi = {
     request<Record<string, unknown>>("/perf/integrations/isms", { method: "POST", body: JSON.stringify(body) }),
   pishgamBalance: (panelId: string) =>
     request<Record<string, unknown>>(`/perf/integrations/pishgam/balance?panel_id=${panelId}`),
+  pishgamDelivery: (body: PishgamDeliveryIn) =>
+    request<PishgamDelivery>("/perf/integrations/pishgam/delivery", { method: "POST", body: JSON.stringify(body) }),
 };
 
-export type MizitoCard = { project: string; board: string; title: string; code: string };
+export type PishgamDeliveryIn = {
+  panel_id: string;
+  message_id: number;
+  recipients: string[];
+};
+
+export type PishgamDelivery = {
+  ok: boolean;
+  reason: string;
+  rows: Array<{ to_number: string; status: number; text: string }>;
+  delivered_count: number;
+};
+
+export type MizitoCard = {
+  project: string;
+  board: string;
+  title: string;
+  code: string;
+  // فیلدهای زیر در عکس‌های قدیمی نیستند.
+  id?: string;
+  code_source?: string;
+  project_id?: string;
+  board_id?: string;
+  board_position?: number | null;
+  status?: string;
+  active?: boolean;
+  completed?: boolean;
+  completed_at?: string | null;
+  assignees?: string[];
+  owner?: string;
+  created_at?: string | null;
+  modified_at?: string | null;
+  deadline?: string | null;
+  checklist_done?: number;
+  checklist_total?: number;
+  checklist_items?: Array<{ title: string; checked: boolean }>;
+  progress?: number;
+  attachments?: number;
+  has_comments?: boolean;
+  last_comment_at?: string | null;
+};
+
+export const MIZITO_STATUS: Record<string, string> = {
+  idea: "ایده",
+  todo: "برای انجام",
+  in_progress: "در حال انجام",
+  review: "بررسی",
+  waiting_approval: "منتظر تأیید",
+  waiting_payment: "منتظر پرداخت",
+  paid: "پرداخت‌شده",
+  not_in_cost_tracking: "ثبت‌نشده در Cost Tracking",
+  done: "تمام‌شده",
+  cancelled: "کنسل",
+  paused: "متوقف",
+  info: "قانون/اطلاعیه",
+  other: "سایر",
+};
+
+export function mizitoStatus(card: { status?: string }): string {
+  return MIZITO_STATUS[card.status || "other"] || card.status || "—";
+}
+
+/** کد برای مقایسه: رقم فارسی/عربی به انگلیسی، حروف بزرگ، بدون فاصله. */
+export function mizitoCode(code: string | null | undefined): string {
+  return (code ?? "")
+    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+    .replace(/\s+/g, "")
+    .toUpperCase();
+}
+
+export type MizitoFinanceCard = {
+  id: string;
+  title: string;
+  board: string;
+  status: string;
+  code: string;
+  code_source: string;
+  completed: boolean;
+  modified_at?: string | null;
+  match: "suggested" | "no_cost_row" | "no_code";
+  suggested_costs: number[];
+};
+
+export type MizitoFinance = {
+  connected: boolean;
+  read_at?: string | null;
+  match_basis: string;
+  counts: Record<string, { total: number; open: number }>;
+  to_register: MizitoFinanceCard[];
+  to_register_count: number;
+  paid_without_cost: MizitoFinanceCard[];
+  paid_without_cost_count: number;
+  paid_suggested_count: number;
+  panel_without_card?: Array<{
+    campaign_code: string;
+    cost_number: number;
+    amount_toman: number | null;
+    kind: string;
+    description: string;
+  }>;
+  panel_without_card_count?: number;
+};
+
+export function triageLabel(flag: string, days: number): string {
+  if (flag === "stuck") return `بیش از ${toman(days)} روز بدون تغییر`;
+  return ({ no_code: "بدون کد", no_assignee: "بدون مسئول", overdue: "مهلت گذشته" } as Record<string, string>)[flag] || flag;
+}
+
+export type MizitoTriageCard = {
+  id: string;
+  title: string;
+  project: string;
+  board: string;
+  status: string;
+  code: string;
+  flags: string[];
+  days_since_change: number | null;
+  modified_at?: string | null;
+  deadline?: string | null;
+  assignees: number | null;
+};
+
+export type MizitoTriage = {
+  connected: boolean;
+  read_at?: string | null;
+  days: number;
+  checked: number;
+  counts: Record<string, number>;
+  total: number;
+  cards: MizitoTriageCard[];
+};
+
+export type MizitoMissing = {
+  connected: boolean;
+  read_at?: string | null;
+  codes: Array<{
+    code: string;
+    id?: string;
+    title: string;
+    project: string;
+    status: string;
+    active: boolean;
+    completed: boolean;
+    cards: number;
+    modified_at?: string | null;
+  }>;
+};
 
 export type MizitoSnapshot = {
   connected: boolean;
@@ -178,7 +343,9 @@ export type MizitoSnapshot = {
   projects: Array<{ title: string; id: string }>;
   cards: MizitoCard[];
   open_count: number;
+  total_count?: number;
   read_at?: string | null;
+  card_url_prefix?: string;
 };
 
 export type SheetLink = { configured: boolean; connected: boolean; title: string; reason: string };
@@ -187,9 +354,29 @@ export type Connections = {
   sheets_ready: boolean;
   service_account: string;
   sheets: Record<string, SheetLink>;
-  mizito: { saved: boolean; hint: string };
-  panels: Array<{ name: string; code: string; ready: boolean }>;
+  mizito: {
+    saved: boolean;
+    hint: string;
+    connected?: boolean;
+    reason?: string;
+    read_at?: string | null;
+    last_error_at?: string | null;
+    checked_at?: string | null;
+    open_count?: number;
+  };
+  panels: PanelStatus[];
   insight: { ready: boolean; provider: string };
+};
+
+export type PanelStatus = {
+  id: string;
+  name: string;
+  code: string;
+  ready: boolean;
+  detail?: string;
+  has_token?: boolean;
+  api_base?: string;
+  live?: { ok: boolean; reason: string; balance: string; credit_rial?: number; lines?: string[] } | null;
 };
 
 export type NextStep = {
@@ -227,6 +414,7 @@ export type CampaignRow = {
   budget_toman: number | null;
   status: string;
   channels: string[];
+  project_id?: string | null;
   cost_toman?: number;
   leads?: number;
   cpl?: number | null;
@@ -250,7 +438,24 @@ export type Report = {
   source?: "sheet" | "google";
 };
 
-export type CampaignDetail = CampaignRow & { report: Report };
+export type CampaignDetail = CampaignRow & { report: Report; brief?: CampaignBriefData };
+
+export type BriefPlanRow = { day: string; kind: string; details: string; place: string };
+export type BriefAdPhase = { name: string; goal: string; audience: string; budget_share: number | null; text: string };
+export type CampaignBriefData = {
+  slogan: string;
+  goals: string[];
+  angle: string;
+  content_plan: BriefPlanRow[];
+  caption: string;
+  reels: string[];
+  ad_phases: BriefAdPhase[];
+  ctas: string[];
+  hashtags: string[];
+  highlight: string;
+  pinned: string;
+};
+export type BriefDraft = { brief: CampaignBriefData; source: "llm" | "template" };
 
 export type Panel = {
   id: string;
@@ -296,6 +501,7 @@ export type SmsSend = {
   leads: number;
   sent_at: string | null;
   panel_name?: string;
+  pishgam_message_id?: number | null;
 };
 
 export type RecipientList = {
@@ -384,4 +590,73 @@ export type Story = {
   engagement: number | null;
   completion: number | null;
   exit_rate: number | null;
+};
+
+export type MizitoRequestFields = {
+  intent?: string;
+  brand?: string;
+  tag?: string;
+  cars?: string[];
+  offer?: {
+    no_price?: boolean;
+    delivery_days?: number | null;
+    prices?: string[];
+    prepayment?: string;
+    installments?: boolean;
+    no_budget_limit?: boolean;
+  };
+  channels?: string[];
+  branches?: string[];
+  dates?: string[];
+  code?: string;
+  card_title?: string;
+};
+
+export type CampaignBrief = { id: string; code: string; title: string; status: string };
+
+export type MizitoRequest = {
+  id: string;
+  kind: string;
+  status: string;
+  source_kind: string;
+  source_title: string;
+  msg_index: number | null;
+  happened_at: string | null;
+  created_at: string | null;
+  decided_at: string | null;
+  fields: MizitoRequestFields;
+  excerpt: string;
+  suggested: { title: string; tag: string; brand: string; channels: string[] };
+  campaign: CampaignBrief | null;
+  matched_campaign: CampaignBrief | null;
+};
+
+export type MizitoRequests = { requests: MizitoRequest[]; counts: Record<string, number>; checked_at: string | null };
+
+export type MizitoRequestCheck = {
+  checked: boolean;
+  reason: string;
+  added: number;
+  found?: number;
+  dialogs?: number;
+  pages?: number;
+  checked_at?: string;
+};
+
+export const MIZITO_REQUEST_KIND: Record<string, string> = {
+  start: "شروع/افزایش تبلیغ",
+  stop: "توقف",
+  sms: "پیامک",
+  circular: "بخشنامه",
+};
+
+export const MIZITO_CHANNEL: Record<string, string> = {
+  sms: "پیامک",
+  lbs: "LBS",
+  ig_story: "استوری/پیج",
+  influencer: "بلاگر",
+  divar: "دیوار",
+  google: "گوگل",
+  banner: "بنر",
+  content: "تولید محتوا",
 };

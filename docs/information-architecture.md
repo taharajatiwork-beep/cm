@@ -32,6 +32,8 @@ Not a pile of entities (WorkItem / Case / Task jargon on first paint).
 - Language switch
 - User / role / sign out
 
+نقش‌ها چهار قالب‌اند (ادمین، مدیر، سرپرست، عضو). جزئیات و نگاشت کاربران در `docs/roles-plan.md` است. خانهٔ بخش در `/teams/:teamId` است و گزارش‌ها جدا هستند.
+
 ---
 
 ## Communication inbox sections
@@ -91,6 +93,20 @@ Click → shared goal detail: people, actions, conversation, **next step**.
 | Manager | Waiting on me, overdue, branch requests, intervene |
 | Seller | Assigned to me, who waits for my reply, customer work |
 | Marketing | Campaigns, listing actions, what sales asked |
+
+---
+
+## Work spine
+
+```text
+/requests          queue and triage
+/projects          list
+/projects/:id      overview, tasks, links, chat, costs, activity, type
+/my-work           overdue, today, later, waiting
+/reports           KPIs plus GET /reports/work
+```
+
+Communication campaign labels say «موضوع گفتگو». Performance campaigns stay «کمپین».
 
 ---
 

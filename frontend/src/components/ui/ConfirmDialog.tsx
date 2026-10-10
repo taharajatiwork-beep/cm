@@ -1,19 +1,30 @@
 /* Provider file intentionally exports its hook beside the ConfirmDialog component. */
 /* eslint-disable react/only-export-components */
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useId, useState, type ReactNode } from "react";
 import { Button } from "./Button";
+import { Dialog } from "./Dialog";
 
-type Ask = { title: string; body: string; confirm: string; resolve: (ok: boolean) => void };
+export type ConfirmOptions = {
+  /** Destructive action (delete, anonymise…): red confirm button, alertdialog, Cancel focused first. */
+  danger?: boolean;
+};
 
-const ConfirmContext = createContext<(title: string, body: string, confirm?: string) => Promise<boolean>>(
-  async () => false,
-);
+type Ask = { title: string; body: string; confirm: string; danger: boolean; resolve: (ok: boolean) => void };
+
+type ConfirmFn = (title: string, body: string, confirm?: string, options?: ConfirmOptions) => Promise<boolean>;
+
+const ConfirmContext = createContext<ConfirmFn>(async () => false);
+
+/** Standard label for the confirm button of a delete question. */
+export const DELETE_CONFIRM_LABEL = "بله، حذف کن";
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [ask, setAsk] = useState<Ask | null>(null);
-  const confirm = useCallback((title: string, body: string, confirmLabel = "تأیید") => {
+  const titleId = useId();
+  const bodyId = useId();
+  const confirm = useCallback<ConfirmFn>((title, body, confirmLabel = "تأیید", options) => {
     return new Promise<boolean>((resolve) => {
-      setAsk({ title, body, confirm: confirmLabel, resolve });
+      setAsk({ title, body, confirm: confirmLabel, danger: Boolean(options?.danger), resolve });
     });
   }, []);
   function close(ok: boolean) {
@@ -24,21 +35,28 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       {ask ? (
-        <div className="sheet-root" role="dialog" aria-modal>
-          <div className="sheet-backdrop" onClick={() => close(false)} />
-          <aside className="sheet confirm-sheet">
-            <header className="sheet-head">
-              <h2>{ask.title}</h2>
-            </header>
-            <div className="sheet-body">{ask.body}</div>
-            <footer className="sheet-foot">
-              <Button variant="secondary" onClick={() => close(false)}>
-                انصراف
-              </Button>
-              <Button onClick={() => close(true)}>{ask.confirm}</Button>
-            </footer>
-          </aside>
-        </div>
+        <Dialog
+          onClose={() => close(false)}
+          role={ask.danger ? "alertdialog" : "dialog"}
+          labelledBy={titleId}
+          describedBy={bodyId}
+          className="form-pop confirm-pop"
+        >
+          <h2 id={titleId} className="confirm-title">
+            {ask.title}
+          </h2>
+          <p id={bodyId} className="confirm-body">
+            {ask.body}
+          </p>
+          <div className="confirm-actions">
+            <Button variant="secondary" onClick={() => close(false)} data-autofocus={ask.danger ? "" : undefined}>
+              انصراف
+            </Button>
+            <Button variant={ask.danger ? "danger" : "primary"} onClick={() => close(true)}>
+              {ask.confirm}
+            </Button>
+          </div>
+        </Dialog>
       ) : null}
     </ConfirmContext.Provider>
   );

@@ -1,3 +1,5 @@
+import { faDigits } from "./fa";
+
 export function gregorianToJalali(gy: number, gm: number, gd: number): [number, number, number] {
   const gDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   const jDays = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
@@ -43,6 +45,68 @@ const PERSIAN_MONTHS = [
   "اسفند",
 ];
 
+/** نام ماه در شیت‌ها گاهی بی‌مد یا با غلط تایپی نوشته شده؛ این‌ها هم شناخته می‌شوند. */
+const MONTH_ALIASES: Record<string, number> = {
+  ابان: 8,
+  اذر: 9,
+  شهرویر: 6,
+  اردیبهست: 2,
+};
+
+function monthNumber(name: string): number | null {
+  const clean = name.replace(/ي/g, "ی").replace(/ك/g, "ک").replace(/\u200c/g, "").trim();
+  const exact = PERSIAN_MONTHS.indexOf(clean);
+  if (exact >= 0) return exact + 1;
+  return MONTH_ALIASES[clean] ?? null;
+}
+
+function enDigits(text: string): string {
+  return text
+    .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+}
+
+function validDay(month: number, day: number): boolean {
+  if (month < 1 || month > 12 || day < 1) return false;
+  return day <= (month <= 6 ? 31 : 30);
+}
+
+/**
+ * تاریخ متنی شیت‌ها: «31 شهریور»، «4فروردین»، «20 اسفند 1404»، «1405/07/13».
+ * سال اگر در متن نباشد `null` است — حدس زده نمی‌شود تا سال اشتباه نشان داده نشود.
+ */
+export function parseJalaliText(text: unknown): { year: number | null; month: number; day: number } | null {
+  if (typeof text !== "string") return null;
+  const value = enDigits(text).replace(/\s+/g, " ").trim();
+  if (!value) return null;
+  const numeric = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/.exec(value);
+  if (numeric) {
+    const [year, month, day] = numeric.slice(1).map(Number);
+    if (year < 1300 || year > 1500 || !validDay(month, day)) return null;
+    return { year, month, day };
+  }
+  const named = /^(\d{1,2}) ?([^\d\s]+)(?: (\d{4}))?$/.exec(value);
+  if (!named) return null;
+  const day = Number(named[1]);
+  const month = monthNumber(named[2]);
+  const year = named[3] ? Number(named[3]) : null;
+  if (!month || !validDay(month, day)) return null;
+  if (year !== null && (year < 1300 || year > 1500)) return null;
+  return { year, month, day };
+}
+
+/**
+ * نمایش یکدست تاریخ متنی شیت به شکل «۳۱ شهریور ۱۴۰۴» (بی‌سال: «۳۱ شهریور»).
+ * متنی که خوانده نشود همان‌طور ولی با رقم فارسی برمی‌گردد.
+ */
+export function formatJalaliText(text: unknown): string {
+  if (typeof text !== "string" || !text.trim()) return "";
+  const parts = parseJalaliText(text);
+  if (!parts) return faDigits(text.trim());
+  const base = `${parts.day} ${PERSIAN_MONTHS[parts.month - 1]}`;
+  return faDigits(parts.year ? `${base} ${parts.year}` : base);
+}
+
 /** Accepts Date | ISO string | epoch ms; returns null for empty/invalid input. */
 function toDate(value: unknown): Date | null {
   if (value == null || value === "") return null;
@@ -75,12 +139,12 @@ function jalaliParts(value: unknown): [number, number, number] | null {
   return gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
-/** "1405/03/21" — Persian (Jalali) calendar date. */
+/** «۱۴۰۵/۰۳/۲۱» — تاریخ شمسی با رقم فارسی. */
 export function formatJalali(value: unknown): string | null {
   const parts = jalaliParts(value);
   if (!parts) return null;
   const [y, m, day] = parts;
-  return `${String(y).padStart(4, "0")}/${String(m).padStart(2, "0")}/${String(day).padStart(2, "0")}`;
+  return faDigits(`${String(y).padStart(4, "0")}/${String(m).padStart(2, "0")}/${String(day).padStart(2, "0")}`);
 }
 
 /** "21 خرداد 1405" — long Persian date, used where space allows. */
@@ -88,7 +152,7 @@ export function formatJalaliLong(value: unknown): string | null {
   const parts = jalaliParts(value);
   if (!parts) return null;
   const [y, m, day] = parts;
-  return `${day} ${PERSIAN_MONTHS[m - 1]} ${y}`;
+  return faDigits(`${day} ${PERSIAN_MONTHS[m - 1]} ${y}`);
 }
 
 /** "21 خرداد" — short Persian date (day + month, no year), for tight rows. */
@@ -96,35 +160,26 @@ export function formatJalaliShort(value: unknown): string | null {
   const parts = jalaliParts(value);
   if (!parts) return null;
   const [, m, day] = parts;
-  return `${day} ${PERSIAN_MONTHS[m - 1]}`;
+  return faDigits(`${day} ${PERSIAN_MONTHS[m - 1]}`);
 }
 
-/** "1405/03/21 14:30" — Persian date plus 24-hour local time.
+/** «۱۴۰۵/۰۳/۲۱ ۱۴:۳۰» — تاریخ شمسی به‌علاوهٔ ساعت ۲۴ساعته، هر دو با رقم فارسی.
  *
- * ساعت عمداً دستی ساخته می‌شود، نه با `toLocaleTimeString`:
- * آن تابع هم ارقام فارسی می‌دهد (ناسازگار با تاریخ لاتین کنارش) و هم
- * نشانگر AM/PM که در متن RTL جابه‌جا رندر می‌شود. */
+ * ساعت دستی ساخته می‌شود تا نشانگر AM/PM در متن راست‌به‌چپ جابه‌جا نشود. */
 export function formatJalaliDateTime(value: unknown): string | null {
   const d = toDate(value);
   if (!d) return null;
   const date = formatJalali(d);
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${date} ${hh}:${mm}`;
+  return faDigits(`${date} ${hh}:${mm}`);
 }
 
-/**
- * Locale-aware date string: Persian calendar under `fa`, Gregorian under `en`.
- * `fallback` keeps the original Gregorian rendering for empty/invalid input.
- */
+/** تاریخ همیشه شمسی است. زبان رابط تقویم را عوض نمی‌کند. */
 export function formatDateForLocale(
   value: unknown,
-  locale: string,
+  _locale?: string,
   fallback: string = "",
 ): string {
-  if (locale !== "fa") {
-    const d = toDate(value);
-    return d ? d.toLocaleDateString() : fallback;
-  }
   return formatJalali(value) ?? fallback;
 }

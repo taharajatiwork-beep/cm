@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Badge, Button, Card, Field, Input, Muted, PageHeader, SectionHeader, Segmented, Select, Table, TextArea } from "../components/ui";
+import { Badge, Button, Card, Dialog, Field, Input, Muted, PageHeader, SectionHeader, Segmented, Select, Table, TextArea } from "../components/ui";
 import { DateText } from "../components/DateText";
 import { useToast } from "../components/ui/Toast";
 import { Bi, useBi } from "../i18n";
 import { perfApi, toman, type PageRow, type Story } from "./api";
-import { FileButton } from "./bits";
+import { FileButton, RelatedLinks } from "./bits";
 import { ArrangeBar, hit, ShowMore, useArrange, type SortOption } from "./browse";
 import { PageEdit, RowActions, StoryEdit, useRemove } from "./edit";
 
@@ -167,21 +167,15 @@ function PageCatalog() {
 
 function FormPop({ title, onClose, children }: { title: ReactNode; onClose: () => void; children: ReactNode }) {
   const bi = useBi();
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const titleId = useId();
   return (
-    <div className="detail-pop form-pop" role="dialog" aria-modal="true">
-      <button type="button" className="detail-pop-backdrop" onClick={onClose} aria-label={bi("Close", "بستن")} />
-      <div className="detail-pop-card">
-        <SectionHeader title={title} action={<button type="button" className="kpi-more" onClick={onClose}><Bi en="Close" fa="بستن" /></button>} />
-        {children}
-      </div>
-    </div>
+    <Dialog onClose={onClose} className="form-pop" labelledBy={titleId} closeLabel={bi("Close", "بستن")}>
+      <SectionHeader
+        title={<span id={titleId}>{title}</span>}
+        action={<button type="button" className="kpi-more" onClick={onClose}><Bi en="Close" fa="بستن" /></button>}
+      />
+      {children}
+    </Dialog>
   );
 }
 
@@ -370,25 +364,16 @@ function PlacementTable({ rows, readonly, focus, candidates }: { rows: Story[]; 
 
 function NumbersPop({ row, onClose }: { row: Story; onClose: () => void }) {
   const bi = useBi();
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const titleId = useId();
   return (
-    <div className="detail-pop form-pop" role="dialog" aria-modal="true" aria-labelledby={`nums-${row.id}`}>
-      <button type="button" className="detail-pop-backdrop" onClick={onClose} aria-label={bi("Close", "بستن")} />
-      <div className="detail-pop-card">
-        <SectionHeader
-          icon="check"
-          title={<span id={`nums-${row.id}`}>{row.page || "پیج"}</span>}
-          action={<button type="button" className="kpi-more" onClick={onClose}><Bi en="Close" fa="بستن" /></button>}
-        />
-        <Publish row={row} onDone={onClose} />
-      </div>
-    </div>
+    <Dialog onClose={onClose} className="form-pop" labelledBy={titleId} closeLabel={bi("Close", "بستن")}>
+      <SectionHeader
+        icon="check"
+        title={<span id={titleId}>{row.page || "پیج"}</span>}
+        action={<button type="button" className="kpi-more" onClick={onClose}><Bi en="Close" fa="بستن" /></button>}
+      />
+      <Publish row={row} onDone={onClose} />
+    </Dialog>
   );
 }
 
@@ -451,6 +436,7 @@ export function SocialFlowPage() {
       <PageHeader
         title={<Bi en="Social" fa="سوشال" />}
         description={<Bi en="The manager lists the cars. Performance sets a budget. Pages and cost follow from that budget." fa="مدیر ماشین‌ها را می‌دهد. بودجه را اینجا می‌گذارید. پیج و هزینه از همان بودجه درمی‌آید." />}
+        actions={campaign ? <RelatedLinks id={campaign.id} code={campaign.code} here="social" /> : null}
       />
       <Card>
         <div className="perf-pick">

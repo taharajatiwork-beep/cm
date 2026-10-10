@@ -21,6 +21,16 @@ class CampaignIn(BaseModel):
     vehicle_ids: list[UUID] = []
     channels: list[str] = Field(default_factory=lambda: ["sms"])
     lead_stages: list[str] = []
+    project_id: UUID | None = None
+
+
+class MizitoRequestApprove(BaseModel):
+    """فرم «کمپین تازه» که از پیش‌نویس پر شده؛ هر فیلد خالی از پیشنهاد پیش‌نویس می‌آید."""
+
+    title: str = ""
+    tag: str = ""
+    brand: str = ""
+    channels: list[str] = []
 
 
 class CampaignPatch(BaseModel):
@@ -35,6 +45,8 @@ class CampaignPatch(BaseModel):
     vehicle_ids: list[UUID] | None = None
     channels: list[str] | None = None
     lead_stages: list[str] | None = None
+    project_id: UUID | None = None
+    brief: dict | None = None  # بریف کمپین، ساختار آزاد ولی نرمال‌شده ذخیره می‌شود
 
 
 class PanelIn(BaseModel):
@@ -86,6 +98,7 @@ class SmsSendPatch(BaseModel):
     calls: int | None = None
     leads: int | None = None
     sent_at: datetime | None = None
+    pishgam_message_id: int | None = None
 
 
 class SmsSendIn(BaseModel):
@@ -100,6 +113,7 @@ class SmsSendIn(BaseModel):
     delivered_count: int = 0
     calls: int = 0
     leads: int = 0
+    pishgam_message_id: int | None = None
 
 
 class BlacklistIn(BaseModel):
@@ -118,6 +132,9 @@ class PaymentIn(BaseModel):
     cost_center: str = ""
     mizito_url: str = ""
     note: str = ""
+    project_id: UUID | None = None
+    request_id: UUID | None = None
+    team_id: UUID | None = None
 
 
 class PaymentPatch(BaseModel):
@@ -129,6 +146,7 @@ class PaymentPatch(BaseModel):
 
 class PaymentAction(BaseModel):
     action: str  # approve | finance | pay | reject
+    seen_amount_toman: int | None = None  # مبلغی که تأییدکننده روی صفحه دیده؛ اگر عوض شده باشد رد می‌شود
 
 
 class CarRequestIn(BaseModel):
@@ -214,6 +232,12 @@ class PishgamSendIn(BaseModel):
     panel_id: UUID
     mobiles: list[str]
     body: str
+
+
+class PishgamDeliveryIn(BaseModel):
+    panel_id: UUID | None = None
+    message_id: int | None = None
+    recipients: list[str]
 
 
 class SheetSyncIn(BaseModel):

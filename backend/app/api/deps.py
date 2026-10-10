@@ -45,7 +45,7 @@ async def get_current_user(
     )
 
 
-_SCOPE_RANK = {"organization": 0, "branch": 1, "department": 2, "team": 3, "self": 4}
+_SCOPE_RANK = {"organization": 0, "branch": 1, "department": 2, "team_tree": 3, "team": 4, "self": 5}
 
 
 async def load_data_scope(db: AsyncSession, user: User, permissions: set[str]) -> DataScopeContext:
@@ -59,12 +59,18 @@ async def load_data_scope(db: AsyncSession, user: User, permissions: set[str]) -
         )
         if rows:
             level = min(rows, key=lambda r: _SCOPE_RANK.get(r.level, 9)).level
+    team_ids: tuple[UUID, ...] = ()
+    if level == "team_tree" and user.team_id:
+        from app.requests.spine import child_team_ids
+
+        team_ids = tuple(await child_team_ids(db, [user.team_id]))
     return DataScopeContext(
         level=level,
         user_id=user.id,
         branch_id=user.branch_id,
         department_id=user.department_id,
         team_id=user.team_id,
+        team_ids=team_ids,
         # org.admin opens the admin screens. Day-to-day lists still follow the
         # role's data scope, so a sales manager does not see marketing work.
         is_org_wide=level == "organization",

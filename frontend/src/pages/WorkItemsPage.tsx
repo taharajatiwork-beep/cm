@@ -24,7 +24,7 @@ import { Bi, useBi } from "../i18n";
 import { nextCursor } from "../lib/pagination";
 import { queryKeys } from "../lib/queryKeys";
 import { DateText } from "../components/DateText";
-import { ConceptHint, StatusLabel } from "../ux";
+import { StatusLabel } from "../ux";
 
 const EVENT_LABELS: Record<string, [string, string]> = {
   "work_item.created": ["Project created", "پروژه ساخته شد"],
@@ -82,7 +82,6 @@ export function WorkItemsPage() {
           </Button>
         }
       />
-      <ConceptHint kind="shared" />
       <ErrorMessage error={error} />
       {listQuery.hasNextPage ? (
         <Button variant="secondary" onClick={() => void listQuery.fetchNextPage()}>

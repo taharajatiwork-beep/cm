@@ -5,6 +5,7 @@
  */
 import { useState, type MouseEvent } from "react";
 import { Link } from "react-router-dom";
+import { faDigits, faNum } from "../fa";
 import { formatJalali } from "../jalali";
 
 export type ChartPoint = {
@@ -40,7 +41,7 @@ function PointPop({ items, series }: { items: ChartPoint[]; series?: string }) {
   );
 }
 
-/** نوارهای افقی — مناسب تفکیک‌ها (اولویت، وضعیت، نوع و…). RTL-دوست. */
+/** نوارهای افقی. دسته سمت چپ است و نوار از چپ به راست پر می‌شود. */
 export function HBars({
   data,
   color = "var(--accent)",
@@ -55,7 +56,7 @@ export function HBars({
   }
   const max = Math.max(1, ...data.map((d) => d.value));
   return (
-    <div className="chart-hbars">
+    <div className="chart-hbars" dir="ltr">
       {data.map((d) => (
         <div
           key={d.label}
@@ -96,9 +97,11 @@ export function GroupedBars({
   if (data.length === 0) {
     return <div className="chart-empty muted">—</div>;
   }
-  const max = Math.max(1, ...data.flatMap((d) => d.values));
+  const scale = axisScale(Math.max(1, ...data.flatMap((d) => d.values)));
+  const max = scale.max;
+  const ticks = scale.ticks;
   return (
-    <div className="chart-grouped" style={{ height }}>
+    <div className="chart-grouped" style={{ height }} dir="ltr">
       {legend && legend.length > 0 ? (
         <div className="chart-legend">
           {legend.map((item, i) => (
@@ -109,7 +112,13 @@ export function GroupedBars({
           ))}
         </div>
       ) : null}
-      <div className="chart-grouped-rows">
+      <div className="chart-plot">
+        <div className="chart-y" aria-hidden="true">
+          {ticks.map((tick) => (
+            <span key={tick}>{faDigits(compactFa(tick))}</span>
+          ))}
+        </div>
+        <div className="chart-grouped-rows">
         {data.map((d) => {
           const groups = (d.items ?? []).map((rows, i) => ({
             series: legend?.[i],
@@ -154,8 +163,9 @@ export function GroupedBars({
             </span>
             <span className="chart-col-label mono">{d.label}</span>
           </div>
-          );
+        );
         })}
+        </div>
       </div>
     </div>
   );
@@ -179,7 +189,7 @@ export function Donut({
   const radius = 15.9155;
   let acc = 0;
   return (
-    <div className="chart-donut-wrap">
+    <div className="chart-donut-wrap" dir="ltr">
       <div className="chart-donut-ring" style={{ width: size, height: size }}>
         <svg viewBox="0 0 42 42" width={size} height={size} role="img" aria-label="donut chart">
           <circle cx="21" cy="21" r={radius} fill="none" stroke="var(--line)" strokeWidth="6" />
@@ -208,7 +218,7 @@ export function Donut({
             : null}
         </svg>
         <span className="chart-donut-center">
-          {centerLabel ?? total.toLocaleString()}
+          {centerLabel ?? faNum(total)}
           {caption ? <small>{caption}</small> : null}
         </span>
       </div>
@@ -244,15 +254,17 @@ export function LineTrend({
   if (points.length === 0) return null;
   const width = 720;
   const height = 240;
-  const padL = 12;
-  const padR = 108;
+  const padL = 8;
+  const padR = 12;
   const padT = 16;
   const padB = 32;
   const innerW = width - padL - padR;
   const innerH = height - padT - padB;
-  const max = Math.max(...points.map((point) => point.value), 1);
-  const text = (value: number) => faDigits(format ? format(value) : String(Math.round(value)));
-  const ticks = [max, max / 2, 0];
+  const scale = axisScale(Math.max(...points.map((point) => point.value), 1));
+  const max = scale.max;
+  const ticks = scale.ticks;
+  const text = (value: number) => faDigits(format ? format(value) : compactFa(value));
+  const axis = (value: number) => faDigits(compactFa(value));
   const step = points.length === 1 ? 0 : innerW / (points.length - 1);
   const markEvery = Math.max(1, Math.ceil(points.length / 6));
   const coords = points.map((point, index) => {
@@ -265,9 +277,19 @@ export function LineTrend({
   const chosen = active != null ? coords[active] : null;
   const tip = chosen ? (chosen.detail || `${faDigits(formatJalali(chosen.label) || axisLabel(chosen.label))}: ${text(chosen.value)}`) : "";
   return (
-    <div className="chart-line-wrap">
+    <div className="chart-line-wrap" dir="ltr">
+      <div className="chart-line-plot">
+        <div className="chart-line-y" aria-hidden="true">
+          {ticks.map((tick) => {
+            const y = padT + innerH - (tick / max) * innerH;
+            return (
+              <span key={tick} style={{ top: `${(y / height) * 100}%` }}>{axis(tick)}</span>
+            );
+          })}
+        </div>
       <svg
         viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
         className="chart-line"
         role="img"
         aria-label={label}
@@ -275,17 +297,17 @@ export function LineTrend({
         onMouseMove={(event) => setActive(nearest(coords, event, width, height))}
         onClick={(event) => setActive(nearest(coords, event, width, height))}
       >
+        <line x1={padL} x2={padL} y1={padT} y2={padT + innerH} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
         {ticks.map((tick) => {
           const y = padT + innerH - (tick / max) * innerH;
           return (
             <g key={tick}>
-              <line x1={padL} x2={padL + innerW} y1={y} y2={y} stroke="var(--line)" strokeWidth="1" />
-              <text x={padL + innerW + 8} y={y + 4} fontSize="11" fill="currentColor">{text(tick)}</text>
+              <line x1={padL} x2={padL + innerW} y1={y} y2={y} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
             </g>
           );
         })}
         <path d={area} fill="var(--accent)" opacity="0.12" />
-        <path d={d} fill="none" stroke="var(--accent)" strokeWidth="2.5" />
+        <path d={d} fill="none" stroke="var(--accent)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
         {chosen ? <line x1={chosen.x} x2={chosen.x} y1={padT} y2={padT + innerH} stroke="var(--accent)" strokeDasharray="3 3" strokeWidth="1" /> : null}
         {coords.map((point) => {
           const showLabel = point.index % markEvery === 0 || point.index === coords.length - 1;
@@ -317,6 +339,7 @@ export function LineTrend({
           );
         })}
       </svg>
+      </div>
       {tip ? <p className="chart-line-tip">{tip}</p> : <p className="chart-line-tip muted">روی نقطه نگه دارید</p>}
     </div>
   );
@@ -344,8 +367,39 @@ function nearest(
   return bestDist < 36 * 36 ? best : null;
 }
 
-function faDigits(text: string): string {
-  return text.replace(/\d/g, (digit) => "۰۱۲۳۴۵۶۷۸۹"[Number(digit)]);
+function niceMax(value: number): number {
+  if (value <= 1) return 1;
+  const exp = 10 ** Math.floor(Math.log10(value));
+  const fraction = value / exp;
+  const nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+  return nice * exp;
+}
+
+function axisScale(value: number): { max: number; ticks: number[] } {
+  const top = niceMax(value);
+  if (top <= 10) {
+    const step = top <= 5 ? 1 : 2;
+    const max = Math.max(step, Math.ceil(value / step) * step);
+    const ticks: number[] = [];
+    for (let tick = max; tick >= 0; tick -= step) ticks.push(tick);
+    return { max, ticks };
+  }
+  return { max: top, ticks: [top, top * 0.75, top * 0.5, top * 0.25, 0] };
+}
+
+function compactFa(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  const scaled = (div: number) => {
+    const amount = abs / div;
+    const digits = amount >= 10 ? 0 : 1;
+    return amount.toFixed(digits).replace(/\.0$/, "");
+  };
+  if (abs >= 1_000_000_000) return `${sign}${scaled(1_000_000_000)} میلیارد`;
+  if (abs >= 1_000_000) return `${sign}${scaled(1_000_000)} میلیون`;
+  if (abs >= 10_000) return `${sign}${scaled(1_000)} هزار`;
+  if (!Number.isInteger(value)) return `${sign}${Number(value.toFixed(abs < 1 ? 2 : 1))}`;
+  return `${sign}${faNum(Math.round(abs))}`;
 }
 
 function axisLabel(label: string): string {

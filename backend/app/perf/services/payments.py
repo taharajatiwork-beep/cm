@@ -21,11 +21,14 @@ async def advance(
     action: str,
     perms: set[str],
     actor_id: UUID,
+    seen_amount_toman: int | None = None,
 ) -> PmPaymentRequest:
     if req.requester_id and actor_id == req.requester_id and action != "reject":
         raise PerfError("درخواست‌دهنده نمی‌تواند درخواست خودش را تأیید کند", 403)
     if action == "approve":
         raise PerfError("تأیید با مالی است، نه با مارکتینگ", 403)
+    if action in ("finance", "pay") and seen_amount_toman is not None and seen_amount_toman != req.amount_toman:
+        raise PerfError("مبلغ درخواست از وقتی دیدید عوض شده است؛ صفحه را تازه کنید و دوباره تصمیم بگیرید", 409)
     if action == "reject":
         if req.status in ("paid", "recorded", "rejected"):
             raise PerfError("این درخواست دیگر قابل رد نیست")
@@ -35,10 +38,26 @@ async def advance(
         req.updated_at = now()
         await db.flush()
         return req
+    linked = bool(req.project_id or req.request_id)
+    if action == "manager":
+        if not linked:
+            raise PerfError("این درخواست گام مدیر ندارد")
+        if req.status != "requested":
+            raise PerfError("وضعیت درخواست با این اقدام جور نیست")
+        allowed = PermissionCode.REQUEST_TRIAGE in perms or PermissionCode.EXPENSE_APPROVE in perms or PermissionCode.PRICE_WRITE in perms
+        if not allowed:
+            raise PerfError("تأیید مدیر تیم لازم است", 403)
+        req.status = "manager_ok"
+        req.updated_at = now()
+        await db.flush()
+        await _spine_note(db, req, "مدیر تیم هزینه را تأیید کرد")
+        return req
     if action not in ("finance", "pay"):
         raise PerfError("اقدام ناشناخته است")
     if req.status not in _OPEN:
         raise PerfError("وضعیت درخواست با این اقدام جور نیست")
+    if linked and req.status == "requested":
+        raise PerfError("اول مدیر تیم باید تأیید کند", 403)
     if PermissionCode.PRICE_WRITE not in perms:
         raise PerfError("تأیید با مالی است", 403)
     req.status = "paid"
@@ -47,6 +66,7 @@ async def advance(
     req.status = "recorded"
     await db.flush()
     await _notify_step(db, req)
+    await _spine_note(db, req, "هزینه ثبت شد")
     return req
 
 
@@ -128,3 +148,19 @@ async def notify_requested(db: AsyncSession, req: PmPaymentRequest) -> None:
         body=f"مبلغ {req.amount_toman:,} تومان منتظر تأیید مالی است.",
         entity_id=req.id,
     )
+
+
+async def _spine_note(db: AsyncSession, req: PmPaymentRequest, text: str) -> None:
+    if not req.requester_id or (not req.project_id and not req.request_id):
+        return
+    from app.requests.spine import ensure_thread, system_message
+
+    thread = await ensure_thread(
+        db,
+        organization_id=req.organization_id,
+        actor_id=req.requester_id,
+        project_id=req.project_id,
+        request_id=req.request_id,
+        topic="هزینه",
+    )
+    await system_message(db, thread, text)

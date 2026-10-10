@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <title>درخت تیم‌ها · CM</title>
+  <style>
+    :root { color-scheme: light; --ink: #1c1917; --muted: #57534e; --line: #e7e5e4; --paper: #fafaf9; --card: #fff; --lead: #0f766e; --member: #44403c; --boss: #9a3412; --admin: #1d4ed8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Vazirmatn", "Segoe UI", Tahoma, sans-serif; background: var(--paper); color: var(--ink); }
+    header { padding: 28px 32px 8px; }
+    h1 { margin: 0 0 6px; font-size: 1.4rem; }
+    p { margin: 0; color: var(--muted); }
+    main { padding: 16px 32px 48px; }
+    ul.tree, ul.tree ul { list-style: none; margin: 0; padding: 0 18px 0 0; }
+    ul.tree { padding: 0; }
+    li.team { margin: 10px 0; padding-right: 16px; border-right: 2px solid var(--line); }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+    .card h2 { margin: 0; font-size: 1rem; }
+    .code { color: var(--muted); font-size: 0.75rem; margin-right: 8px; }
+    ul.people { margin-top: 8px; }
+    ul.people li { margin: 4px 0; font-size: 0.92rem; }
+    .tag { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; background: #f5f5f4; }
+    .tag.lead { background: #ccfbf1; color: var(--lead); }
+    .tag.member { background: #f5f5f4; color: var(--member); }
+    .tag.requester { background: #ffedd5; color: var(--boss); }
+    .tag.admin { background: #dbeafe; color: var(--admin); }
+    .tag.viewer { background: #f5f5f4; color: var(--muted); }
+    .grant { color: var(--muted); font-size: 0.78rem; }
+    .loose { margin-top: 28px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>درخت تیم‌ها</h1>
+    <p>سازمان اتوکو. قالب نقش روی کاربر است؛ زیرتیم فقط زیر مارکتینگ است.</p>
+  </header>
+  <main>
+    <ul class="tree">
+      <li class="team">
+        <div class="card">
+          <h2>مارکتینگ <span class="code">MKT_T</span></h2>
+          <ul class="people">
+            <li>مینا مدیر مارکتینگ <span class="tag lead">سرپرست مارکتینگ</span></li>
+            <li>سارا بازاریابی <span class="tag member">مارکتینگ</span></li>
+          </ul>
+        </div>
+        <ul>
+          <li class="team">
+            <div class="card">
+              <h2>پرفورمنس <span class="code">MKT_PERF</span></h2>
+              <ul class="people">
+                <li>نادیا پرفورمنس <span class="tag lead">سرپرست</span> <span class="grant">perf.read · perf.write · campaign.write</span></li>
+              </ul>
+            </div>
+          </li>
+          <li class="team">
+            <div class="card">
+              <h2>طراحی <span class="code">MKT_DESIGN</span></h2>
+              <ul class="people">
+                <li>لیلا طراح <span class="tag member">عضو</span></li>
+              </ul>
+            </div>
+          </li>
+          <li class="team">
+            <div class="card">
+              <h2>فیلم‌برداری <span class="code">MKT_FILM</span></h2>
+              <ul class="people">
+                <li>کامران فیلم‌بردار <span class="tag member">عضو</span></li>
+              </ul>
+            </div>
+          </li>
+          <li class="team">
+            <div class="card">
+              <h2>تولید محتوا <span class="code">MKT_CONTENT</span></h2>
+              <ul class="people"><li><span class="grant">بدون عضو</span></li></ul>
+            </div>
+          </li>
+        </ul>
+      </li>
+      <li class="team">
+        <div class="card">
+          <h2>تیم فروش تهران <span class="code">SALES_T</span></h2>
+          <ul class="people">
+            <li>علی مدیر <span class="tag requester">مدیر فروش</span></li>
+            <li>رضا فروشنده <span class="tag member">فروشنده</span></li>
+          </ul>
+        </div>
+      </li>
+      <li class="team">
+        <div class="card">
+          <h2>مالی <span class="code">FIN_T</span></h2>
+          <ul class="people">
+            <li>ندا مالی <span class="tag lead">مالی</span> <span class="grant">expense.approve · price.write</span></li>
+          </ul>
+        </div>
+      </li>
+    </ul>
+    <section class="loose">
+      <div class="card">
+        <h2>بدون تیم</h2>
+        <ul class="people">
+          <li>ادمین سایت <span class="tag admin">ادمین سایت</span> <span class="grant">admin@autoco.example</span></li>
+          <li>مریم مدیر شعبه مشهد <span class="tag requester">مدیر</span> <span class="grant">شعبهٔ مشهد، بدون تیم</span></li>
+          <li>نیما عملیات <span class="tag member">عضو</span></li>
+          <li>بازدیدکننده محدود <span class="tag viewer">viewer</span></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -34,6 +34,7 @@ const paths = {
   branch: "M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9",
   activity: "M22 12h-4l-3 9L9 3l-3 9H2",
   filter: "M22 3H2l8 9.5V19l4 2v-8.5z",
+  menu: "M4 6h16M4 12h16M4 18h16",
 } as const;
 
 export type IconName = keyof typeof paths;

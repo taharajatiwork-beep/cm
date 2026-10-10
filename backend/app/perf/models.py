@@ -44,6 +44,8 @@ class PmCampaign(Base):
     vehicle_ids: Mapped[str] = mapped_column(Text, default="")
     channels: Mapped[str] = mapped_column(String(80), default="sms")  # sms,ig_story
     lead_stages: Mapped[str] = mapped_column(Text, default="")
+    brief: Mapped[str] = mapped_column(Text, default="")  # بریف کمپین (JSON)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("work_project.id", ondelete="SET NULL"))
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -134,6 +136,8 @@ class PmSmsSend(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cost_toman: Mapped[int] = mapped_column(BigInteger, default=0)
     delivered_count: Mapped[int] = mapped_column(Integer, default=0)
+    # شناسهٔ ارسال در پنل پیشگام؛ برای خواندن دلیوری با Messages/GetDelivery.
+    pishgam_message_id: Mapped[int | None] = mapped_column(BigInteger)
     calls: Mapped[int] = mapped_column(Integer, default=0)
     leads: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
@@ -226,6 +230,9 @@ class PmPaymentRequest(Base):
     mizito_url: Mapped[str] = mapped_column(String(400), default="")
     note: Mapped[str] = mapped_column(String(400), default="")
     requester_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    project_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    team_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -278,3 +285,46 @@ class PmIntegration(Base):
     mizito_snapshot: Mapped[str] = mapped_column(Text, default="")
     mizito_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PmMizitoCursor(Base):
+    """تا کجای هر گفتگو (msg_index) یا لیست کارت (زمان) میزیتو خوانده شده. متنی اینجا نیست."""
+
+    __tablename__ = "pm_mizito_cursor"
+    __table_args__ = (UniqueConstraint("organization_id", "source_key", name="uq_pm_mizito_cursor_source"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(120), nullable=False)  # dialog:<id> | tasks
+    position: Mapped[int | None] = mapped_column(Integer)
+    stamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PmMizitoRequest(Base):
+    """پیش‌نویس کمپین از یک درخواست تبلیغ در میزیتو. خودکار کمپین نمی‌شود؛ فقط با تایید کاربر.
+
+    از پیام فقط فیلدهای استخراج‌شده و خلاصهٔ کوتاه (حداکثر ۳۰۰ نویسه) نگه داشته می‌شود.
+    """
+
+    __tablename__ = "pm_mizito_request"
+    __table_args__ = (UniqueConstraint("organization_id", "source_key", name="uq_pm_mizito_request_source"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(160), nullable=False)  # dialog:<id>:<msg_index> | task:<id>:<time>
+    source_kind: Mapped[str] = mapped_column(String(20), default="dialog")  # dialog | task
+    source_id: Mapped[str] = mapped_column(String(64), default="")
+    source_title: Mapped[str] = mapped_column(String(120), default="")
+    msg_index: Mapped[int | None] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(20), default="start")  # start | stop | sms | circular
+    status: Mapped[str] = mapped_column(String(20), default="new")  # new | approved | rejected | duplicate
+    fields: Mapped[str] = mapped_column(Text, default="{}")
+    excerpt: Mapped[str] = mapped_column(String(400), default="")
+    digest: Mapped[str] = mapped_column(String(40), default="")
+    author_id: Mapped[str] = mapped_column(String(64), default="")
+    happened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pm_campaign.id", ondelete="SET NULL"))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

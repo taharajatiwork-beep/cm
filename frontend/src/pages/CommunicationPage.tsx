@@ -19,6 +19,7 @@ import {
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 import { Bi, useBi, useLocale } from "../i18n";
+import { faDigits } from "../fa";
 import { formatJalaliShort } from "../jalali";
 import { buildPersonMap, personName } from "../lib/collaboration";
 import { queryKeys } from "../lib/queryKeys";
@@ -37,20 +38,18 @@ const sections: Array<{ key: CommSection; en: string; fa: string; icon: IconName
   { key: "needs_me", en: "Waiting for my reply", fa: "منتظر جواب من", icon: "bell" },
   { key: "threads", en: "All messages", fa: "همه پیام‌ها", icon: "message" },
   { key: "branch", en: "Branch requests", fa: "درخواست‌های شعب", icon: "branch" },
-  { key: "campaigns", en: "Ad campaigns", fa: "کمپین‌های تبلیغاتی", icon: "megaphone" },
+  { key: "campaigns", en: "Conversation topic", fa: "موضوع گفتگو", icon: "megaphone" },
 ];
 
-function shortTime(v: unknown, locale: "en" | "fa" = "en"): string {
+function shortTime(v: unknown): string {
   if (!v) return "";
   const d = new Date(String(v));
   if (Number.isNaN(d.getTime())) return "";
   const today = d.toDateString() === new Date().toDateString();
   if (today) {
-    // ساعت ۲۴ساعته و قطعی — نه `toLocaleTimeString` که AM/PM می‌دهد
-    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    return faDigits(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
   }
-  if (locale === "fa") return formatJalaliShort(d) ?? "";
-  return `${d.getMonth() + 1}/${d.getDate()}`;
+  return formatJalaliShort(d) ?? "";
 }
 
 export function CommunicationPage() {
@@ -476,7 +475,7 @@ export function CommunicationPage() {
             <div className="thread-row-top">
               <span className="thread-row-title">{String(c.topic || withWhom(c) || c.id)}</span>
               <span className="muted fine">
-                {shortTime(lastAt, locale)}
+                {shortTime(lastAt)}
               </span>
             </div>
             {c.last_message_text ? (
@@ -777,7 +776,7 @@ export function CommunicationPage() {
                         <div className="msg-body">
                           <div className="msg-who">
                             <strong>{mine ? bi("You", "شما") : who}</strong>
-                            <span>{shortTime(m.created_at, locale)}</span>
+                            <span>{shortTime(m.created_at)}</span>
                           </div>
                           <div>{String(m.text)}</div>
                           {has("perf.write") && String(m.text || "").trim() ? (

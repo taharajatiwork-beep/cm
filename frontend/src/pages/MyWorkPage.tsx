@@ -1,12 +1,14 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { requestsApi } from "../requests/api";
 import { useAuth } from "../auth";
 import {
   Avatar,
   Button,
   Card,
+  Dialog,
   EmptyState,
   ErrorMessage,
   Field,
@@ -21,6 +23,7 @@ import {
 import { Bi, useBi, useLocale } from "../i18n";
 import { formatDeadline, isOverdue } from "../lib/collaboration";
 import { DateText } from "../components/DateText";
+import { faNum } from "../fa";
 import { StatusLabel } from "../ux";
 
 type Tab = "tasks" | "overdue" | "shared";
@@ -59,13 +62,7 @@ function ProjectStartPop({
   const [formError, setFormError] = useState("");
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const titleId = useId();
 
   function personName(id: string) {
     if (id === userId) return userName;
@@ -122,12 +119,18 @@ function ProjectStartPop({
   }
 
   return (
-    <div className="detail-pop project-pop" role="dialog" aria-modal="true" aria-labelledby="project-pop-title">
-      <button type="button" className="detail-pop-backdrop" onClick={onClose} aria-label={bi("Close", "بستن")} />
-      <form className="detail-pop-card" onSubmit={createShared}>
+    <Dialog
+      onClose={onClose}
+      className="project-pop"
+      labelledBy={titleId}
+      closeLabel={bi("Close", "بستن")}
+      busy={creating}
+      as="form"
+      onSubmit={createShared}
+    >
         <SectionHeader
           icon="plus"
-          title={<span id="project-pop-title"><Bi en="Start a project" fa="شروع یک پروژه" /></span>}
+          title={<span id={titleId}><Bi en="Start a project" fa="شروع یک پروژه" /></span>}
           action={
             <button type="button" className="kpi-more" onClick={onClose}>
               <Bi en="Close" fa="بستن" />
@@ -272,7 +275,32 @@ function ProjectStartPop({
             {creating ? <Bi en="Creating…" fa="در حال ساخت…" /> : <Bi en="Create" fa="ساختن" />}
           </Button>
         </div>
-      </form>
+    </Dialog>
+  );
+}
+
+function WorkBuckets() {
+  const buckets = useQuery({ queryKey: ["requests", "my-work"], queryFn: () => requestsApi.myWork() });
+  if (!buckets.data) return null;
+  const labels: Array<[string, string, string]> = [
+    ["overdue", "Late", "عقب‌افتاده"],
+    ["today", "Today", "امروز"],
+    ["later", "Later", "آینده"],
+    ["waiting", "Waiting on others", "منتظر دیگران"],
+    ["projects_without_tasks", "Team projects with no task", "پروژه بدون وظیفه"],
+  ];
+  return (
+    <div className="kpi-row kpi-row--4">
+      {labels.map(([key, en, fa]) => (
+        <Card key={key}>
+          <SectionHeader title={<Bi en={en} fa={fa} />} count={(buckets.data?.[key] ?? []).length} />
+          <ul className="plain-list">
+            {(buckets.data?.[key] ?? []).slice(0, 5).map((row) => (
+              <li key={row.id}>{row.title}</li>
+            ))}
+          </ul>
+        </Card>
+      ))}
     </div>
   );
 }
@@ -387,6 +415,7 @@ export function MyWorkPage() {
   return (
     <>
       <PageHeader title={<Bi en="My Work" fa="کارهای من" />} description={description} />
+      <WorkBuckets />
       <ErrorMessage error={error} />
 
       <div className="split">
@@ -550,9 +579,9 @@ export function MyWorkPage() {
           <Card className="progress-card">
             <SectionHeader icon="activity" title={<Bi en="Your progress" fa="پیشرفت شما" />} />
             <div className="progress-nums">
-              <strong>{pct}%</strong>
+              <strong>{faNum(pct)}٪</strong>
               <span className="muted">
-                {doneTasks}/{tasks.length} <Bi en="done" fa="انجام‌شده" />
+                {faNum(doneTasks)}/{faNum(tasks.length)} <Bi en="done" fa="انجام‌شده" />
               </span>
             </div>
             <div className="progress-bar" aria-hidden>
@@ -563,20 +592,20 @@ export function MyWorkPage() {
                 <span>
                   <Bi en="To do" fa="مانده" />
                 </span>
-                <strong>{openTasks.length + priceJobs.length}</strong>
+                <strong>{faNum(openTasks.length + priceJobs.length)}</strong>
               </div>
               <div className={`mini-stat${overdue.length ? " is-danger" : ""}`}>
                 <span>
                   <Bi en="Late" fa="دیر شده" />
                 </span>
-                <strong>{overdue.length}</strong>
+                <strong>{faNum(overdue.length)}</strong>
               </div>
               {canProjects ? (
                 <div className="mini-stat">
                   <span>
                     <Bi en="Projects" fa="پروژه‌ها" />
                   </span>
-                  <strong>{activeShared.length}</strong>
+                  <strong>{faNum(activeShared.length)}</strong>
                 </div>
               ) : null}
             </div>

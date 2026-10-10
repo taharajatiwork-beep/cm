@@ -115,6 +115,16 @@ async def _ensure_schema() -> None:
                 if "status" not in cols:
                     sync_conn.execute(text("ALTER TABLE pm_story ADD COLUMN status VARCHAR(20) DEFAULT 'published'"))
 
+            if "pm_campaign" in tables:
+                cols = {c["name"] for c in insp.get_columns("pm_campaign")}
+                if "brief" not in cols:
+                    sync_conn.execute(text("ALTER TABLE pm_campaign ADD COLUMN brief TEXT DEFAULT ''"))
+
+            if "pm_sms_send" in tables:
+                cols = {c["name"] for c in insp.get_columns("pm_sms_send")}
+                if "pishgam_message_id" not in cols:
+                    sync_conn.execute(text("ALTER TABLE pm_sms_send ADD COLUMN pishgam_message_id BIGINT"))
+
         await conn.run_sync(_patch_columns)
 
 
@@ -284,6 +294,9 @@ async def _ensure_org(db) -> dict:
             PC.PERF_READ,
             PC.PERF_WRITE,
             PC.PERF_APPROVE,
+            PC.REQUEST_TRIAGE,
+            PC.REQUEST_MANAGE,
+            PC.EXPENSE_REQUEST,
         ],
         "team",
     )
@@ -314,6 +327,8 @@ async def _ensure_org(db) -> dict:
         "finance",
         [
             PC.PRICE_WRITE,
+            PC.EXPENSE_REQUEST,
+            PC.EXPENSE_APPROVE,
             PC.INVENTORY_READ,
             PC.NOTIFICATION_READ,
             PC.CONVERSATION_READ,
@@ -325,6 +340,16 @@ async def _ensure_org(db) -> dict:
         ],
         "organization",
     )
+    maker_perms = [
+        PC.TASK_READ,
+        PC.TASK_WRITE,
+        PC.CONVERSATION_READ,
+        PC.CONVERSATION_WRITE,
+        PC.NOTIFICATION_READ,
+        PC.REQUEST_CREATE,
+    ]
+    design_role = await get_or_create_role("طراح", "designer", maker_perms, "team")
+    film_role = await get_or_create_role("فیلم‌بردار", "filmmaker", maker_perms, "team")
 
     async def get_or_create_user(
         email: str,
@@ -432,6 +457,102 @@ async def _ensure_org(db) -> dict:
         team_id=mkt_team.id,
         manager_id=mina.id,
     )
+    await get_or_create_user(
+        "leila@autoco.example",
+        "لیلا طراح",
+        design_role.id,
+        branch_id=branch.id,
+        department_id=mkt_dept.id,
+        team_id=mkt_team.id,
+        manager_id=mina.id,
+    )
+    await get_or_create_user(
+        "kamran@autoco.example",
+        "کامران فیلم‌بردار",
+        film_role.id,
+        branch_id=branch.id,
+        department_id=mkt_dept.id,
+        team_id=mkt_team.id,
+        manager_id=mina.id,
+    )
+
+    from app.core.permissions import ROLE_TEMPLATES
+    from app.models import DataScope
+
+    template_roles: dict[str, Role] = {}
+    for code, (name, scope, perms) in ROLE_TEMPLATES.items():
+        level = scope.value if hasattr(scope, "value") else str(scope)
+        role = await get_or_create_role(name, code, [item.value for item in perms], level)
+        if role.name != name:
+            role.name = name
+        scope_row = await db.scalar(select(DataScope).where(DataScope.role_id == role.id))
+        if scope_row and scope_row.level != level:
+            scope_row.level = level
+        template_roles[code] = role
+
+    role_names = {
+        "admin": "ادمین سایت",
+        "requester": "مدیر",
+        "lead": "سرپرست",
+        "member": "عضو",
+        "manager": "مدیر شعبه",
+        "seller": "فروشنده",
+        "marketing": "مارکتینگ",
+        "marketing_manager": "مدیر مارکتینگ",
+        "performance_marketing": "پرفورمنس مارکتینگ",
+        "finance": "مالی",
+        "designer": "طراح",
+        "filmmaker": "فیلم‌بردار",
+        "viewer": "بازدیدکننده",
+    }
+    for code, name in role_names.items():
+        named = await db.scalar(select(Role).where(Role.organization_id == org.id, Role.code == code))
+        if named and named.name != name:
+            named.name = name
+
+    async def team_under(name: str, code: str, dept_id, parent):
+        row = await get_or_create_team(name, code, dept_id)
+        if parent and row.parent_team_id != parent.id:
+            row.parent_team_id = parent.id
+            row.department_id = dept_id
+        return row
+
+    fin_team = await team_under("مالی", "FIN_T", fin_dept.id, None)
+    perf_team = await team_under("پرفورمنس", "MKT_PERF", mkt_dept.id, mkt_team)
+    design_team = await team_under("طراحی", "MKT_DESIGN", mkt_dept.id, mkt_team)
+    film_team = await team_under("فیلم‌برداری", "MKT_FILM", mkt_dept.id, mkt_team)
+    by_code = {
+        "SALES_T": sales_team,
+        "MKT_T": mkt_team,
+        "FIN_T": fin_team,
+        "MKT_PERF": perf_team,
+        "MKT_DESIGN": design_team,
+        "MKT_FILM": film_team,
+    }
+    # نگاشت صریح کاربران فعلی. ادمین و بازدیدکننده دست نمی‌خورند.
+    # (قالب، تیم، بخش، شعبه یا None یعنی شعبهٔ فعلی بماند، قابلیت‌ها)
+    assignment = {
+        "ali@autoco.example": ("requester", "SALES_T", sales_dept.id, branch.id, []),
+        "reza@autoco.example": ("member", "SALES_T", sales_dept.id, branch.id, []),
+        "sara@autoco.example": ("member", "MKT_T", mkt_dept.id, branch.id, []),
+        "mina@autoco.example": ("lead", "MKT_T", mkt_dept.id, branch.id, []),
+        "finance@autoco.example": ("lead", "FIN_T", fin_dept.id, branch.id, [PC.EXPENSE_APPROVE, PC.PRICE_WRITE]),
+        "maryam@autoco.example": ("requester", None, sales_dept.id, mashhad.id, []),
+        "nima@autoco.example": ("member", None, ops_dept.id, branch.id, []),
+        "nadia@autoco.example": ("lead", "MKT_PERF", mkt_dept.id, branch.id, [PC.PERF_READ, PC.PERF_WRITE, PC.CAMPAIGN_WRITE]),
+        "leila@autoco.example": ("member", "MKT_DESIGN", mkt_dept.id, branch.id, []),
+        "kamran@autoco.example": ("member", "MKT_FILM", mkt_dept.id, branch.id, []),
+    }
+    for email, (role_code, team_code, dept_id, branch_id, grants) in assignment.items():
+        person = await db.scalar(select(User).where(User.organization_id == org.id, User.email == email))
+        if not person:
+            continue
+        person.role_id = template_roles[role_code].id
+        person.department_id = dept_id
+        person.team_id = by_code[team_code].id if team_code else None
+        if branch_id:
+            person.branch_id = branch_id
+        await svc.set_user_grants(person.id, grants)
 
     # Relationships (ignore duplicates via try/existing check)
     async def ensure_rel(frm, to, typ):
@@ -1416,6 +1537,79 @@ async def _ensure_pricing_demo(db, ctx) -> int:
     return len(specs)
 
 
+async def _ensure_work_spine(db, ctx) -> str:
+    """یک درخواست تبلیغات با سه پروژه و یک درخواست عملیاتی قیمت. اگر کد موجود باشد دوباره ساخته نمی‌شود."""
+    from app.core.permissions import PermissionCode
+    from app.requests.models import WorkProject, WorkRequest
+    from app.requests.spine import ensure_thread
+
+    org = ctx["org"]
+    existing = await db.scalar(select(WorkRequest).where(WorkRequest.organization_id == org.id, WorkRequest.code == "REQ-ADS"))
+    if existing:
+        return "present"
+    ali = ctx["ali"]
+    mina = ctx["mina"]
+    team = ctx["mkt_team"]
+    ads = WorkRequest(
+        organization_id=org.id,
+        code="REQ-ADS",
+        title="تبلیغ فروش بهمن",
+        description="سه تیم: پرفورمنس، طراحی، فیلم",
+        kind="تبلیغات",
+        status="converted",
+        requested_by=ali.id,
+        team_id=team.id,
+        created_by=ali.id,
+    )
+    price = WorkRequest(
+        organization_id=org.id,
+        code="REQ-PRICE",
+        title="اصلاح قیمت امروز",
+        kind="قیمت و پست‌ها",
+        status="converted",
+        requested_by=ali.id,
+        team_id=team.id,
+        created_by=ali.id,
+    )
+    db.add(ads)
+    db.add(price)
+    await db.flush()
+    work = WorkService(db)
+    perms = {PermissionCode.TASK_WRITE.value}
+    for kind, title in (("پرفورمنس", "کمپین پرفورمنس"), ("طراحی", "طرح بنر"), ("فیلم‌برداری", "فیلم شعبه")):
+        project = WorkProject(
+            organization_id=org.id,
+            code=f"PRJ-{kind[:2]}",
+            title=title,
+            kind=kind,
+            request_id=ads.id,
+            team_id=team.id,
+            lead_user_id=mina.id,
+            status="in_progress",
+            created_by=mina.id,
+        )
+        db.add(project)
+        await db.flush()
+        await work.create_task(
+            organization_id=org.id,
+            title=f"شروع {title}",
+            owner_id=mina.id,
+            project_id=project.id,
+            request_id=ads.id,
+            actor_permissions=perms,
+        )
+        await ensure_thread(db, organization_id=org.id, actor_id=mina.id, project_id=project.id, topic=title)
+    await work.create_task(
+        organization_id=org.id,
+        title="اصلاح قیمت امروز",
+        owner_id=mina.id,
+        request_id=price.id,
+        actor_permissions=perms,
+    )
+    await db.flush()
+    return "added"
+
+
 async def seed(*, reset: bool = False) -> dict:
     if reset:
         async with engine.begin() as conn:
@@ -1439,6 +1633,7 @@ async def seed(*, reset: bool = False) -> dict:
             enriched = await _enrich_vehicle_details(db, org.id)
             stamped = await _stamp_sections(db, ctx)
             posts = await _ensure_pricing_demo(db, ctx)
+            spine = await _ensure_work_spine(db, ctx)
             await db.commit()
             return {
                 "status": "already_seeded",
@@ -1448,6 +1643,7 @@ async def seed(*, reset: bool = False) -> dict:
                 "vehicles_enriched": enriched,
                 "sections_stamped": stamped,
                 "posts_added": posts,
+                "work_spine": spine,
                 "login": _demo_logins(),
             }
 
@@ -1896,6 +2092,7 @@ async def seed(*, reset: bool = False) -> dict:
 
         await _stamp_sections(db, ctx)
         posts = await _ensure_pricing_demo(db, ctx)
+        spine = await _ensure_work_spine(db, ctx)
         await db.commit()
         return {
             "status": "ok",
@@ -1905,6 +2102,7 @@ async def seed(*, reset: bool = False) -> dict:
             "work_items": 4,
             "campaigns": 2,
             "posts_added": posts,
+            "work_spine": spine,
             "login": _demo_logins(),
         }
 
@@ -1919,6 +2117,8 @@ def _demo_logins() -> dict:
         "marketing_manager": "mina@autoco.example / password",
         "performance": "nadia@autoco.example / password",
         "finance": "finance@autoco.example / password",
+        "designer": "leila@autoco.example / password",
+        "filmmaker": "kamran@autoco.example / password",
         "mashhad": "maryam@autoco.example / password",
     }
 

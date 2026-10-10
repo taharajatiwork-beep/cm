@@ -116,6 +116,42 @@ async def post_message(
     )
 
 
+@router.post("/conversations/{conversation_id}/messages/{message_id}/task")
+async def task_from_message(
+    conversation_id: UUID,
+    message_id: UUID,
+    body: dict,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """ساخت وظیفه از پیام فقط با پیش‌نمایش و تأیید. از چت چیزی تأیید مالی نمی‌شود."""
+    from app.models import Conversation, Message
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.TASK_WRITE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    message = await db.get(Message, message_id)
+    conv = await db.get(Conversation, conversation_id)
+    if not message or not conv or message.conversation_id != conv.id or conv.organization_id != ctx.organization_id:
+        raise HTTPException(status_code=404, detail="پیام پیدا نشد")
+    title = (message.text or "").strip()[:120] or "پیگیری"
+    preview = {"title": title, "conversation_id": str(conv.id), "message_id": str(message.id)}
+    if not body.get("confirm"):
+        return {"preview": preview, "created": False}
+    task = await WorkService(db).create_task(
+        organization_id=ctx.organization_id,
+        title=title,
+        owner_id=ctx.user.id,
+        project_id=conv.project_id,
+        request_id=conv.request_id,
+        description=message.text or "",
+        actor_permissions=ctx.permissions,
+    )
+    message.task_id = task.id
+    return {"preview": preview, "created": True, "task_id": str(task.id)}
+
+
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageOut])
 async def list_messages(
     conversation_id: UUID,
@@ -287,6 +323,8 @@ async def list_conversations(
     work_item_id: UUID | None = None,
     case_id: UUID | None = None,
     campaign_id: UUID | None = None,
+    project_id: UUID | None = None,
+    request_id: UUID | None = None,
     archived: bool = False,
     envelope: bool = False,
     cursor: str | None = None,
@@ -309,6 +347,10 @@ async def list_conversations(
         archived=archived,
         viewer_id=None if see_all else ctx.user.id,
     )
+    if project_id:
+        rows = [row for row in rows if row.project_id == project_id]
+    if request_id:
+        rows = [row for row in rows if row.request_id == request_id]
     latest = await service.last_messages([row.id for row in rows])
     listed = []
     for row in rows:
@@ -538,6 +580,8 @@ async def create_task(
             owner_id=ctx.user.id,
             work_item_id=body.work_item_id,
             case_id=body.case_id,
+            project_id=body.project_id,
+            request_id=body.request_id,
             description=body.description,
             priority=body.priority,
             assignee_ids=body.assignee_ids,

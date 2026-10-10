@@ -1,7 +1,11 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Link, type LinkProps } from "react-router-dom";
 
-export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+/**
+ * "danger" = solid red, only for the final confirm of a destructive action.
+ * "danger-quiet" = red text, no fill: row-level delete buttons next to normal actions.
+ */
+export type ButtonVariant = "primary" | "secondary" | "danger" | "danger-quiet" | "ghost";
 
 type Common = {
   variant?: ButtonVariant;
@@ -26,6 +30,7 @@ function variantClass(variant: ButtonVariant): string {
   if (variant === "primary") return "btn";
   if (variant === "secondary") return "btn secondary";
   if (variant === "danger") return "btn btn-danger";
+  if (variant === "danger-quiet") return "btn btn-danger-quiet";
   return "btn btn-ghost";
 }
 

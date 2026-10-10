@@ -19,6 +19,30 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * کوکی refresh سمت سرور تک‌مصرف (rotate) است؛ اگر چند درخواست هم‌زمان 401 بگیرند
+ * (مثلاً انقضای توکن و رفرِ هم‌زمان چند query)، فقط باید یک refresh برود و بقیه
+ * همان نتیجه را بگیرند، وگرنه دومی 401 می‌خورد و نشست بی‌دلیل می‌پرد.
+ */
+let refreshInflight: Promise<string | null> | null = null;
+
+export function refreshSession(): Promise<string | null> {
+  if (!refreshInflight) {
+    refreshInflight = fetch("/api/auth/refresh", { method: "POST", credentials: "include" })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const body = (await res.json()) as { access_token: string };
+        setToken(body.access_token);
+        return body.access_token;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshInflight = null;
+      });
+  }
+  return refreshInflight;
+}
+
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData) && !headers.has("Content-Type")) {
@@ -29,10 +53,8 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
 
   const res = await fetch(`/api${path}`, { ...init, headers, credentials: "include" });
   if (res.status === 401 && retry && path !== "/auth/refresh" && path !== "/auth/login") {
-    const refreshed = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
-    if (refreshed.ok) {
-      const body = (await refreshed.json()) as { access_token: string };
-      setToken(body.access_token);
+    const refreshed = await refreshSession();
+    if (refreshed) {
       return request<T>(path, init, false);
     }
   }
@@ -190,8 +212,11 @@ export const api = {
       headers: totp ? { "X-Totp-Code": totp } : undefined,
       body: JSON.stringify({ organization_slug, email, password }),
     }),
-  refresh: () =>
-    request<{ access_token: string }>("/auth/refresh", { method: "POST" }, false),
+  refresh: async () => {
+    const access_token = await refreshSession();
+    if (!access_token) throw new ApiError(401, "Session refresh failed");
+    return { access_token };
+  },
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }, false),
   me: () =>
     request<{

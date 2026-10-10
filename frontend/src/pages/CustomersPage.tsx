@@ -229,7 +229,7 @@ export function CustomersPage() {
                           <Bi en="Export" fa="خروجی" />
                         </Button>
                         <Button
-                          variant="secondary"
+                          variant="danger-quiet"
                           onClick={() => {
                             void (async () => {
                               const first = await confirm(
@@ -241,7 +241,8 @@ export function CustomersPage() {
                               const second = await confirm(
                                 "تأیید نهایی",
                                 "این کار برگشت‌پذیر نیست. دوباره تأیید کنید.",
-                                "ناشناس کن",
+                                "بله، ناشناس کن",
+                                { danger: true },
                               );
                               if (!second || !selected) return;
                               await api.customers.erase(String(selected.id));

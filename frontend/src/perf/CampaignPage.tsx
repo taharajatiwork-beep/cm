@@ -1,16 +1,18 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Donut, LineTrend } from "../components/charts";
 import { Button, Card, ErrorMessage, List, ListItem, LoadingState, Muted, PageHeader, SectionHeader, Select, StatCard, Table, type Tone } from "../components/ui";
 import { DateText } from "../components/DateText";
 import { useToast } from "../components/ui/Toast";
 import { Bi } from "../i18n";
 import { formatJalali } from "../jalali";
-import { downloadPerf, leadsLabel, perfApi, toman, type Report } from "./api";
+import { downloadPerf, leadsLabel, mizitoCode, mizitoStatus, perfApi, toman, type MizitoCard, type Report } from "./api";
+import { CampaignBriefSection } from "./Brief";
 import { FilePick } from "./bits";
 import { ArrangeBar, ShowMore, useArrange, type SortOption } from "./browse";
 import { CampaignEdit, RowActions, useRemove } from "./edit";
+import { MizitoCardDialog, MizitoOpenButton, type MizitoCardLike } from "./MizitoCardDialog";
 
 export function CampaignPage() {
   const { id = "" } = useParams();
@@ -20,7 +22,6 @@ export function CampaignPage() {
   const remove = useRemove();
   const [editing, setEditing] = useState(false);
   const row = useQuery({ queryKey: ["perf", "campaign", id], queryFn: () => perfApi.campaign(id), enabled: Boolean(id) });
-  const mizito = useQuery({ queryKey: ["perf", "mizito"], queryFn: perfApi.mizito });
   const leads = useMutation({
     mutationFn: (file: File) => perfApi.importLeads(file),
     onSuccess: (result) => {
@@ -32,7 +33,6 @@ export function CampaignPage() {
   if (row.isLoading) return <LoadingState />;
   if (row.error || !row.data) return <ErrorMessage error={row.error instanceof Error ? row.error.message : "کمپین پیدا نشد"} />;
   const data = row.data;
-  const mizitoCards = (mizito.data?.cards ?? []).filter((card) => card.code === data.code);
   const report = data.report;
   const shift = periodShift(report.trend);
   const lines = decisionLines(report, shift);
@@ -61,7 +61,7 @@ export function CampaignPage() {
           <div className="row no-print">
             <Button variant="secondary" to={`/perf/sms?campaign=${data.id}`}><Bi en="SMS" fa="پیامک" /></Button>
             <Button variant="secondary" to={`/perf/social?campaign=${data.id}`}><Bi en="Social" fa="سوشال" /></Button>
-            <Button variant="secondary" to={`/perf/money?campaign=${data.id}`}><Bi en="Money" fa="پول" /></Button>
+            <Button variant="secondary" to={`/perf/money?campaign=${data.id}`}><Bi en="Costs" fa="هزینه‌ها" /></Button>
             <Button variant="secondary" to={`/perf/sheet?campaign=${data.code}`}><Bi en="Sheet" fa="شیت" /></Button>
             <Button type="button" variant="secondary" onClick={() => window.print()}><Bi en="Print" fa="چاپ" /></Button>
             <RowActions
@@ -71,6 +71,7 @@ export function CampaignPage() {
           </div>
         }
       />
+      <CampaignBriefSection campaign={data} brief={data.brief} />
       <div className="kpi-row kpi-row--4 kpi-row--even">
         <StatCard
           icon="activity"
@@ -101,22 +102,7 @@ export function CampaignPage() {
           hint={<>هزینهٔ هر نمایش · از {toman(report.views)} نمایش</>}
         />
       </div>
-      {mizitoCards.length ? (
-        <Card>
-          <SectionHeader
-            icon="briefcase"
-            title={<Bi en="Mizito" fa="میزیتو" />}
-            count={mizitoCards.length}
-            hint={<Bi en="Open cards whose title contains this campaign code." fa="کارت‌های بازی که کد این کمپین در عنوانشان است." />}
-            action={<Button variant="secondary" to="/perf/money"><Bi en="All cards" fa="همه در پول" /></Button>}
-          />
-          <List>
-            {mizitoCards.map((card) => (
-              <ListItem key={`${card.board}-${card.title}`}>{card.board ? `${card.board} — ` : ""}{card.title}</ListItem>
-            ))}
-          </List>
-        </Card>
-      ) : null}
+      <MizitoCards code={data.code} />
       {lines.length ? (
         <Card>
           <SectionHeader
@@ -157,7 +143,7 @@ export function CampaignPage() {
         <ChannelShare channels={report.channels} />
       </Card>
       <div className="no-print">
-      <BestPages pages={report.pages} />
+      <BestPages pages={report.pages} campaignId={data.id} />
       </div>
       <Card className="no-print">
         <SectionHeader
@@ -179,6 +165,63 @@ export function CampaignPage() {
       </Card>
       {editing ? <CampaignEdit row={data} onClose={() => setEditing(false)} /> : null}
     </div>
+  );
+}
+
+function MizitoCards({ code }: { code: string }) {
+  const mizito = useQuery({ queryKey: ["perf", "mizito"], queryFn: perfApi.mizito });
+  const [openCard, setOpenCard] = useState<MizitoCardLike | null>(null);
+  if (mizito.isLoading) return null;
+  const key = mizitoCode(code);
+  const cards = (mizito.data?.cards ?? [])
+    .filter((card) => key && mizitoCode(card.code) === key)
+    .sort((a, b) => Number(a.active === false) - Number(b.active === false) || (b.modified_at || "").localeCompare(a.modified_at || ""));
+  return (
+    <Card>
+      <SectionHeader
+        icon="briefcase"
+        title={<Bi en="Mizito" fa="میزیتو" />}
+        count={cards.length || undefined}
+        hint={<Bi en="Mizito cards whose title has this campaign code: active first, then most recently changed. Read-only." fa="کارت‌های میزیتو که کد این کمپین در عنوانشان است؛ اول فعال‌ها، بعد تازه‌ترها. فقط خواندنی." />}
+        action={<Button variant="secondary" to="/perf/money"><Bi en="All cards" fa="همه در هزینه‌ها" /></Button>}
+      />
+      {cards.length === 0 ? (
+        <Muted as="p">
+          {mizito.data?.read_at
+            ? `کارتی با کد ${code} در میزیتو پیدا نشد.`
+            : "هنوز از میزیتو خوانده نشده؛ در صفحهٔ هزینه‌ها «به‌روز از میزیتو» را بزنید."}
+        </Muted>
+      ) : (
+        <Table
+          rows={cards}
+          rowKey={(card: MizitoCard) => card.id || `${card.project}|${card.board}|${card.title}`}
+          onRowClick={(card: MizitoCard) => setOpenCard(card)}
+          columns={[
+            { key: "project", header: "پروژه", className: "hide-sm", render: (card: MizitoCard) => card.project },
+            { key: "board", header: "برد", render: (card: MizitoCard) => card.board || "—" },
+            {
+              key: "status",
+              header: "وضعیت",
+              render: (card: MizitoCard) => (
+                <>
+                  {mizitoStatus(card)}
+                  {card.completed ? <span className="muted"> · تکمیل‌شده</span> : null}
+                </>
+              ),
+            },
+            { key: "title", header: "کارت", render: (card: MizitoCard) => <MizitoOpenButton title={card.title} onOpen={() => setOpenCard(card)} /> },
+            {
+              key: "checklist",
+              header: "چک‌لیست",
+              render: (card: MizitoCard) => (card.checklist_total ? `${toman(card.checklist_done ?? 0)} از ${toman(card.checklist_total)}` : "—"),
+            },
+            { key: "modified", header: "آخرین تغییر", render: (card: MizitoCard) => (card.modified_at ? <DateText value={card.modified_at} /> : "—") },
+            { key: "people", header: "مسئول", className: "hide-sm", render: (card: MizitoCard) => (card.assignees?.length ? toman(card.assignees.length) : "—") },
+          ]}
+        />
+      )}
+      {openCard ? <MizitoCardDialog card={openCard} onClose={() => setOpenCard(null)} /> : null}
+    </Card>
   );
 }
 
@@ -364,7 +407,7 @@ function PageStatus({ page, avg }: { page: ReportPage; avg: number | null }) {
   return <span className="perf-delta is-worse">↑ {toman(pct)}٪ بدتر از میانه</span>;
 }
 
-function BestPages({ pages }: { pages: ReportPage[] }) {
+function BestPages({ pages, campaignId }: { pages: ReportPage[]; campaignId: string }) {
   const [band, setBand] = useState("all");
   const priced = pages.filter((page) => page.cpl != null);
   const avg = median(priced.map((page) => page.cpl || 0));
@@ -398,7 +441,7 @@ function BestPages({ pages }: { pages: ReportPage[] }) {
           rows={list.windowed.rows}
           rowKey={(item) => item.name}
           columns={[
-            { key: "name", header: "پیج", render: (item) => item.name },
+            { key: "name", header: "پیج", render: (item) => <Link to={`/perf/social?campaign=${campaignId}`}>{item.name}</Link> },
             { key: "cost", header: "هزینه", className: "perf-num", render: (item) => compactToman(item.cost) },
             { key: "views", header: "نمایش", className: "perf-num hide-sm", render: (item) => toman(item.views) },
             { key: "leads", header: "ورودی", className: "perf-num", render: (item) => leadsLabel(item.leads) },

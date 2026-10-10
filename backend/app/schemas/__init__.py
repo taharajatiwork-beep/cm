@@ -91,6 +91,7 @@ class TeamOut(BaseModel):
     name: str
     code: str
     department_id: UUID | None
+    parent_team_id: UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -267,6 +268,8 @@ class TaskCreate(BaseModel):
     description: str | None = None
     work_item_id: UUID | None = None
     case_id: UUID | None = None
+    project_id: UUID | None = None
+    request_id: UUID | None = None
     priority: Priority = Priority.MEDIUM
     assignee_ids: list[UUID] = []
     assignment_target_type: AssignmentTargetType | None = None
@@ -287,6 +290,8 @@ class TaskOut(BaseModel):
     organization_id: UUID
     work_item_id: UUID | None
     case_id: UUID | None
+    project_id: UUID | None = None
+    request_id: UUID | None = None
     title: str
     description: str | None
     status: TaskStatus

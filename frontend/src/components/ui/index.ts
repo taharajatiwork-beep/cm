@@ -15,6 +15,7 @@ export {
 } from "./Feedback";
 export { Input, TextArea, Select, Field, Toolbar } from "./FormControls";
 export { Icon, type IconName } from "./Icon";
+export { Dialog, type DialogProps } from "./Dialog";
 export {
   StatCard,
   Segmented,

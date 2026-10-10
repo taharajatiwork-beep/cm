@@ -116,9 +116,15 @@ class Settings(BaseSettings):
 
     # Performance marketing. External calls stay off until a panel or webhook is set.
     isms_send_url: str = "https://panel.isms.ir/sendWS"
-    pishgam_send_path: str = "/send"
-    pishgam_balance_path: str = "/balance"
-    pishgam_report_path: str = "/report"
+    isms_credit_url: str = "https://panel.isms.ir/creditWS"
+    # پیشگامان (pishgamrayan). مسیرهای رسمی از swagger خود سرویس: smsapi.pishgamrayan.com/swagger
+    pishgam_send_path: str = "/Messages/Send"
+    pishgam_balance_path: str = "/Messages/GetCredit"
+    pishgam_lines_path: str = "/Messages/PrivateNumberList"
+    pishgam_report_path: str = "/Messages/GetDelivery"
+    # توکن پیشگامان در .env است (PISHGAM_SMS_*). فقط خواندن موجودی/گزارش؛ ارسال از CM ممنوع تا اطلاع بعدی.
+    pishgam_sms_api_url: str = ""
+    pishgam_sms_token: str = ""
     perf_sheets_webhook: str = ""
     # Google Sheet. Both are required before a write. The id is the /d/{id}/ part of the URL.
     perf_sheets_spreadsheet_id: str = ""
@@ -130,6 +136,21 @@ class Settings(BaseSettings):
     # Mizito session. Empty token means no network call. Read-only.
     perf_mizito_base: str = "https://app.mizito.ir"
     perf_mizito_token: str = ""
+    # Mizito triage: an active card unchanged for more than this many days is "stuck" (1..365).
+    perf_mizito_stuck_days: int = 14
+    # Optional: the Mizito workspace id, only used to build "open in Mizito" links (no API call).
+    perf_mizito_web: str = "https://office.mizito.ir"
+    perf_mizito_workspace_id: str = ""
+    # درخواست‌های تبلیغ از میزیتو (فقط خواندن). «اسم گفتگو=نقش» (cards|texts|both) جدا با ویرگول؛ بردها "<board_id>=circular,<board_id>=sms".
+    perf_mizito_request_dialogs: str = "پرفورمنس مارکتینگ=cards,بخشنامه های فروش=texts"
+    perf_mizito_task_boards: str = ""
+    perf_mizito_requester_ids: str = ""
+    perf_mizito_ignore_ids: str = ""
+    perf_mizito_car_models: str = ""
+    perf_mizito_branches: str = ""
+    perf_mizito_lookback_days: int = 7
+    perf_mizito_respect_unread: bool = True
+    perf_mizito_history_pages: int = 20
 
 
 @lru_cache

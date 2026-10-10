@@ -5,6 +5,7 @@ import { api } from "./api";
 import { useAuth } from "./auth";
 import { Avatar, Icon, type IconName } from "./components/ui";
 import { Bi, LangSwitch, useBi, useLocale } from "./i18n";
+import { isPerformanceUser, orderNavGroups } from "./lib/navigation";
 
 type NavItem = {
   to: string;
@@ -27,6 +28,8 @@ const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
     items: [
       { to: "/", icon: "home", labelEn: "Home", labelFa: "خانه", hintEn: "What needs you today", hintFa: "امروز چه چیزی به شما نیاز دارد", end: true },
       { to: "/my-work", icon: "check", labelEn: "My Work", labelFa: "کارهای من", hintEn: "Things you need to do", hintFa: "کارهایی که باید انجام دهید" },
+      { to: "/requests", icon: "megaphone", labelEn: "Requests", labelFa: "درخواست‌ها", hintEn: "Manager asks, team builds projects", hintFa: "درخواست مدیر به تیم", end: true, permAny: ["request.create", "request.triage", "request.manage", "org.admin"] },
+      { to: "/projects", icon: "layers", labelEn: "Projects", labelFa: "پروژه‌ها", hintEn: "One request, one or more projects", hintFa: "از هر درخواست یک یا چند پروژه", permAny: ["request.triage", "request.manage", "task.read", "org.admin"] },
       { to: "/pricing", icon: "megaphone", labelEn: "Price and posts", labelFa: "قیمت و پست‌ها", hintEn: "Confirm the price before a post goes out", hintFa: "قیمت را قبل از پست تأیید کنید", permAny: ["price.write", "campaign.read"] },
       { to: "/communication", icon: "message", labelEn: "Messages", labelFa: "پیام‌ها", hintEn: "Talk with colleagues", hintFa: "گفتگو با همکاران", perm: "conversation.read" },
       { to: "/vehicles", icon: "car", labelEn: "Vehicles", labelFa: "خودروها", hintEn: "Cars in stock and their details", hintFa: "خودروهای موجود و مشخصاتشان", perm: "inventory.read" },
@@ -36,14 +39,14 @@ const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
     ],
   },
   {
-    en: "Performance",
-    fa: "پرفورمنس",
+    en: "Marketing",
+    fa: "مارکتینگ",
     items: [
-      { to: "/perf", icon: "activity", labelEn: "Performance home", labelFa: "خانه پرفورمنس", hintEn: "Today's campaigns and balances", hintFa: "کمپین و موجودی امروز", end: true, permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
+      { to: "/perf", icon: "activity", labelEn: "Performance", labelFa: "پرفورمنس", hintEn: "Campaigns, costs and results", hintFa: "کمپین‌ها، هزینه و نتیجه", end: true, permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
       { to: "/perf/campaigns", icon: "megaphone", labelEn: "Campaigns", labelFa: "کمپین‌ها", hintEn: "Cost, leads and CPL", hintFa: "هزینه، ورودی و هزینه هر ورودی", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
       { to: "/perf/sms", icon: "message", labelEn: "SMS", labelFa: "پیامک", hintEn: "Write, lists and sends", hintFa: "نوشتن، لیست و ثبت ارسال", permAny: ["perf.read", "perf.write"] },
       { to: "/perf/social", icon: "flag", labelEn: "Social", labelFa: "سوشال", hintEn: "Cars, budget, then pages", hintFa: "ماشین، بودجه، بعد پیج", permAny: ["perf.read", "perf.write"] },
-      { to: "/perf/money", icon: "briefcase", labelEn: "Money", labelFa: "پول", hintEn: "Charges and payments", hintFa: "شارژ و پرداخت", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
+      { to: "/perf/money", icon: "briefcase", labelEn: "Costs", labelFa: "هزینه‌ها", hintEn: "Charges and payments", hintFa: "شارژ و پرداخت", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
       { to: "/perf/sheet", icon: "book", labelEn: "Sheet", labelFa: "شیت", hintEn: "The live cost and result sheet", hintFa: "شیت زنده هزینه و نتیجه", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
       { to: "/perf/connections", icon: "settings", labelEn: "Connections", labelFa: "اتصالات", hintEn: "Sheets, Mizito and the rest", hintFa: "شیت، میزیتو و بقیه", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
     ],
@@ -55,7 +58,7 @@ const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
       { to: "/people", icon: "users", labelEn: "Colleagues", labelFa: "همکاران", hintEn: "Who does what", hintFa: "چه کسی چه کاری می‌کند", perm: "user.read", managerOnly: true },
       { to: "/knowledge", icon: "book", labelEn: "Rules & guides", labelFa: "قوانین و راهنماها", hintEn: "Company rules and how-tos", hintFa: "قوانین شرکت و روش انجام کارها", adminOnly: true },
       { to: "/cases", icon: "briefcase", labelEn: "Cases", labelFa: "پرونده‌ها", hintEn: "Track one subject in your section", hintFa: "پیگیری یک موضوع در بخش شما", perm: "case.read", adminOnly: true },
-      { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "KPIs", hintFa: "شاخص‌ها", perm: "event.read", adminOnly: true },
+      { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "Your own numbers, or your team's", hintFa: "عددهای خودتان یا تیمتان", permAny: ["event.read", "request.create", "request.triage", "org.admin"] },
       { to: "/admin", icon: "settings", labelEn: "Admin", labelFa: "مدیریت", hintEn: "Overview, users, audit", hintFa: "نمای کلی، کاربران، ممیزی", perm: "org.admin" },
     ],
   },
@@ -63,13 +66,18 @@ const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
 
 const roleFa: Record<string, string> = {
   admin: "ادمین سایت",
-  manager: "مدیر",
+  requester: "مدیر",
+  lead: "سرپرست",
+  member: "عضو",
+  manager: "مدیر شعبه",
   seller: "فروشنده",
-  marketing: "بازاریابی",
-  finance: "مالی",
-  viewer: "بازدیدکننده",
-  performance_marketing: "پرفورمنس",
+  marketing: "مارکتینگ",
   marketing_manager: "مدیر مارکتینگ",
+  performance_marketing: "پرفورمنس مارکتینگ",
+  finance: "مالی",
+  designer: "طراح",
+  filmmaker: "فیلم‌بردار",
+  viewer: "بازدیدکننده",
 };
 
 export function Shell() {
@@ -80,7 +88,14 @@ export function Shell() {
   const { pathname } = useLocation();
   const searchRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
-  const [drawer, setDrawer] = useState(false);
+  // منوی کشویی موبایل: مسیری که منو در آن باز شد. با عوض شدن مسیر، منو خودبه‌خود بسته است.
+  const [drawerAt, setDrawerAt] = useState<string | null>(null);
+  if (drawerAt !== null && drawerAt !== pathname) setDrawerAt(null);
+  const drawer = drawerAt === pathname;
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  const closeDrawer = () => setDrawerAt(null);
   const notes = useQuery({
     queryKey: ["notifications", "badge"],
     queryFn: () => api.notifications(),
@@ -99,14 +114,40 @@ export function Shell() {
     locale === "fa"
       ? roleFa[user?.roleCode || ""] || roleFa[roleHint] || roleHint
       : user?.roleCode || roleHint;
-  const orderedGroups =
-    user?.roleCode === "performance_marketing"
-      ? [...navGroups].sort((a, b) => Number(b.en === "Performance") - Number(a.en === "Performance"))
-      : navGroups;
+  // گروه پرفورمنس در منو «Marketing» نام دارد؛ مقایسهٔ قبلی با «Performance» هیچ‌وقت درست درنمی‌آمد
+  const orderedGroups = orderNavGroups(navGroups, isPerformanceUser(user));
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
+
+  // باز: فوکوس داخل منو، اسکرول صفحه قفل، Esc می‌بندد. بسته: فوکوس به دکمهٔ منو برمی‌گردد.
+  useEffect(() => {
+    if (!drawer) {
+      if (wasOpen.current) toggleRef.current?.focus();
+      wasOpen.current = false;
+      return;
+    }
+    wasOpen.current = true;
+    closeRef.current?.focus();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerAt(null);
+    };
+    // اگر صفحه پهن شود منوی کناری عادی دیده می‌شود؛ کشو و قفل اسکرول نباید بماند
+    const wide = window.matchMedia("(min-width: 861px)");
+    const onWide = () => {
+      if (wide.matches) setDrawerAt(null);
+    };
+    window.addEventListener("keydown", onKey);
+    wide.addEventListener("change", onWide);
+    return () => {
+      document.body.style.overflow = overflow;
+      window.removeEventListener("keydown", onKey);
+      wide.removeEventListener("change", onWide);
+    };
+  }, [drawer]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -127,21 +168,38 @@ export function Shell() {
 
   return (
     <div className={`app-shell${drawer ? " nav-open" : ""}`}>
-      <button type="button" className="nav-toggle" onClick={() => setDrawer((v) => !v)} aria-label={bi("Menu", "منو")}>
-        <Bi en="Menu" fa="منو" />
-      </button>
-      <aside className="nav">
-        <Link to="/" className="brand">
-          <span className="brand-mark">CM</span>
-          <span className="brand-text">
-            <strong>
-              <Bi en="CM Ops" fa="عملیات CM" />
-            </strong>
-            <span>
-              <Bi en="Automotive workspace" fa="فضای کار خودرو" />
+      {drawer ? (
+        <button type="button" className="nav-backdrop" tabIndex={-1} aria-hidden onClick={closeDrawer} />
+      ) : null}
+      <aside
+        className="nav"
+        id="app-nav"
+        aria-label={bi("Main menu", "منوی اصلی")}
+        {...(drawer ? { role: "dialog", "aria-modal": true } : {})}
+      >
+        <div className="brand-row">
+          <Link to="/" className="brand">
+            <span className="brand-mark">CM</span>
+            <span className="brand-text">
+              <strong>
+                <Bi en="CM Ops" fa="عملیات CM" />
+              </strong>
+              <span>
+                <Bi en="Automotive workspace" fa="فضای کار خودرو" />
+              </span>
             </span>
-          </span>
-        </Link>
+          </Link>
+          <button
+            ref={closeRef}
+            type="button"
+            className="icon-btn nav-close"
+            onClick={closeDrawer}
+            aria-label={bi("Close menu", "بستن منو")}
+            title={bi("Close menu", "بستن منو")}
+          >
+            <Icon name="x" />
+          </button>
+        </div>
 
         <nav className="nav-primary">
           {orderedGroups.map((g) => {
@@ -159,8 +217,14 @@ export function Shell() {
                     <Bi en={g.en} fa={g.fa} />
                   </div>
                 ) : null}
+                {g.en === "" && user?.team_id && (has("request.triage") || has("task.read") || has("org.admin")) ? (
+                  <NavLink to={`/teams/${user.team_id}`} title={bi("Your section's home", "خانهٔ بخش شما")} onClick={closeDrawer}>
+                    <Icon name="layers" />
+                    <span><Bi en="Section home" fa="خانهٔ بخش" /></span>
+                  </NavLink>
+                ) : null}
                 {items.map((l) => (
-                  <NavLink key={l.to} to={l.to} end={l.end} title={bi(l.hintEn, l.hintFa)} onClick={() => setDrawer(false)}>
+                  <NavLink key={l.to} to={l.to} end={l.end} title={bi(l.hintEn, l.hintFa)} onClick={closeDrawer}>
                     <Icon name={l.icon} />
                     <span>
                       <Bi en={l.labelEn} fa={l.labelFa} />
@@ -173,7 +237,7 @@ export function Shell() {
         </nav>
 
         <div className="nav-footer">
-          <NavLink to="/settings" className="nav-settings">
+          <NavLink to="/settings" className="nav-settings" onClick={closeDrawer}>
             <Icon name="settings" />
             <span>
               <Bi en="Settings" fa="تنظیمات" />
@@ -198,8 +262,20 @@ export function Shell() {
         </div>
       </aside>
 
-      <div className="shell-main">
+      <div className="shell-main" inert={drawer || undefined}>
         <header className="shell-top">
+          <button
+            ref={toggleRef}
+            type="button"
+            className="icon-btn nav-toggle"
+            onClick={() => setDrawerAt(drawer ? null : pathname)}
+            aria-label={bi("Menu", "منو")}
+            title={bi("Menu", "منو")}
+            aria-expanded={drawer}
+            aria-controls="app-nav"
+          >
+            <Icon name="menu" size={18} />
+          </button>
           <form className="global-search" onSubmit={onSearch} role="search">
             <Icon name="search" className="global-search-icon" />
             <input

@@ -1,10 +1,12 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Button, Field, Input, SectionHeader, Select, TextArea } from "../components/ui";
-import { useConfirm } from "../components/ui/ConfirmDialog";
+import { useId, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Dialog, Field, Input, SectionHeader, Select, TextArea } from "../components/ui";
+import { DELETE_CONFIRM_LABEL, useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 import { Bi, useBi } from "../i18n";
-import { perfApi, type CampaignRow, type SmsSend, type Story } from "./api";
+import { requestsApi } from "../requests/api";
+import { perfApi, type CampaignRow, type PishgamDelivery, type SmsSend, type Story } from "./api";
+import { ErrorMessage, Table } from "../components/ui";
 
 type CostRow = {
   id: string;
@@ -17,15 +19,20 @@ type CostRow = {
   description: string;
 };
 
-export function RowActions({ onEdit, onDelete }: { onEdit?: () => void; onDelete: () => void }) {
+export function RowActions({ onEdit, onDelete, onDelivery }: { onEdit?: () => void; onDelete: () => void; onDelivery?: () => void }) {
   return (
     <div className="row-actions" onClick={(event) => event.stopPropagation()}>
+      {onDelivery ? (
+        <Button type="button" variant="secondary" className="btn-sm" onClick={onDelivery}>
+          <Bi en="Delivery" fa="دلیوری" />
+        </Button>
+      ) : null}
       {onEdit ? (
         <Button type="button" variant="secondary" className="btn-sm" onClick={onEdit}>
           <Bi en="Edit" fa="ویرایش" />
         </Button>
       ) : null}
-      <Button type="button" variant="danger" className="btn-sm" onClick={onDelete}>
+      <Button type="button" variant="danger-quiet" className="btn-sm" onClick={onDelete}>
         <Bi en="Delete" fa="حذف" />
       </Button>
     </div>
@@ -37,7 +44,7 @@ export function useRemove() {
   const qc = useQueryClient();
   const toast = useToast();
   return async (label: string, run: () => Promise<unknown>) => {
-    const ok = await confirm("حذف", `${label} حذف شود؟`, "حذف");
+    const ok = await confirm("حذف", `${label} حذف شود؟`, DELETE_CONFIRM_LABEL, { danger: true });
     if (!ok) return;
     try {
       await run();
@@ -49,23 +56,17 @@ export function useRemove() {
   };
 }
 
-function EditPop({ title, onClose, children }: { title: ReactNode; onClose: () => void; children: ReactNode }) {
+export function EditPop({ title, onClose, children }: { title: ReactNode; onClose: () => void; children: ReactNode }) {
   const bi = useBi();
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const titleId = useId();
   return (
-    <div className="detail-pop form-pop" role="dialog" aria-modal="true">
-      <button type="button" className="detail-pop-backdrop" onClick={onClose} aria-label={bi("Close", "بستن")} />
-      <div className="detail-pop-card">
-        <SectionHeader title={title} action={<button type="button" className="kpi-more" onClick={onClose}><Bi en="Close" fa="بستن" /></button>} />
-        {children}
-      </div>
-    </div>
+    <Dialog onClose={onClose} className="form-pop" labelledBy={titleId} closeLabel={bi("Close", "بستن")}>
+      <SectionHeader
+        title={<span id={titleId}>{title}</span>}
+        action={<button type="button" className="kpi-more" onClick={onClose}><Bi en="Close" fa="بستن" /></button>}
+      />
+      {children}
+    </Dialog>
   );
 }
 
@@ -85,12 +86,14 @@ function saved(toast: (text: string) => void, qc: ReturnType<typeof useQueryClie
 export function CampaignEdit({ row, onClose }: { row: CampaignRow; onClose: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
+  const projects = useQuery({ queryKey: ["requests", "work-projects"], queryFn: () => requestsApi.projects() });
   const [code, setCode] = useState(row.code);
   const [title, setTitle] = useState(row.title);
   const [brand, setBrand] = useState(row.brand);
   const [goal, setGoal] = useState(row.goal);
   const [budget, setBudget] = useState(row.budget_toman ? String(row.budget_toman) : "");
   const [status, setStatus] = useState(row.status || "active");
+  const [projectId, setProjectId] = useState(row.project_id || "");
   const [busy, setBusy] = useState(false);
   function save() {
     setBusy(true);
@@ -101,6 +104,7 @@ export function CampaignEdit({ row, onClose }: { row: CampaignRow; onClose: () =
       goal: goal.trim(),
       status,
       budget_toman: budget === "" ? null : Number(budget),
+      project_id: projectId || null,
     }).then(saved(toast, qc, onClose)).catch((error: Error) => toast(error.message)).finally(() => setBusy(false));
   }
   return (
@@ -117,7 +121,79 @@ export function CampaignEdit({ row, onClose }: { row: CampaignRow; onClose: () =
           <option value="done">تمام</option>
         </Select>
       </Field>
+      <Field label="پروژهٔ مرتبط">
+        <Select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+          <option value="">— بدون پروژه —</option>
+          {(projects.data ?? []).map((project) => (
+            <option key={project.id} value={project.id}>{project.code} — {project.title}</option>
+          ))}
+        </Select>
+      </Field>
       <Button type="button" disabled={!title.trim() || !code.trim() || busy} onClick={save}><Bi en="Save" fa="ذخیره" /></Button>
+    </EditPop>
+  );
+}
+
+export function SmsDelivery({ row, onClose }: { row: SmsSend; onClose: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [messageId, setMessageId] = useState(row.pishgam_message_id ? String(row.pishgam_message_id) : "");
+  const [recipients, setRecipients] = useState("");
+  const [result, setResult] = useState<PishgamDelivery | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [savingId, setSavingId] = useState(false);
+  function check() {
+    const numbers = recipients.split(/[\s,،]+/).map((item) => item.trim()).filter(Boolean);
+    setBusy(true);
+    perfApi.pishgamSendDelivery(row.id, { message_id: Number(messageId) || null, recipients: numbers })
+      .then((data) => {
+        setResult(data);
+        if (data.ok) toast(`${data.delivered_count} رسیده به گوشی ثبت شد`);
+        void qc.invalidateQueries({ queryKey: ["perf"] });
+      })
+      .catch((error: Error) => toast(error.message))
+      .finally(() => setBusy(false));
+  }
+  function saveIdOnly() {
+    setSavingId(true);
+    perfApi.patchSend(row.id, { pishgam_message_id: Number(messageId) || null })
+      .then(saved(toast, qc, onClose))
+      .catch((error: Error) => toast(error.message))
+      .finally(() => setSavingId(false));
+  }
+  return (
+    <EditPop title={<Bi en="Delivery status" fa="بررسی دلیوری پیشگام" />} onClose={onClose}>
+      <p className="muted">
+        شناسهٔ ارسال را از صف ارسال یا صندوق ارسال پنل پیشگام بردارید و حداکثر ۱۰۰ شمارهٔ گیرنده بنویسید. تعداد «رسیده به گوشی» روی همین رکورد ارسال و شیت پیامک می‌نشیند.
+      </p>
+      <Field label="شناسهٔ ارسال پیشگام">
+        <Input type="number" dir="ltr" value={messageId} placeholder="مثلاً ۱۲۳۴۵۶" onChange={(event) => setMessageId(event.target.value)} />
+      </Field>
+      <Field label="شمارهٔ گیرنده‌ها">
+        <TextArea dir="ltr" rows={4} value={recipients} placeholder="هر شماره یک خط یا با ویرگول" onChange={(event) => setRecipients(event.target.value)} />
+      </Field>
+      <div className="row perf-actions">
+        <Button type="button" disabled={busy || !messageId.trim() || !recipients.trim()} onClick={check}>
+          {busy ? <Bi en="Checking" fa="در حال بررسی…" /> : <Bi en="Check and save" fa="بررسی و ثبت" />}
+        </Button>
+        <Button type="button" variant="secondary" disabled={savingId || !messageId.trim()} onClick={saveIdOnly}>
+          <Bi en="Save id only" fa="فقط ذخیرهٔ شناسه" />
+        </Button>
+      </div>
+      {result ? (
+        result.ok ? (
+          <Table
+            rows={result.rows}
+            rowKey={(item) => item.to_number || item.text}
+            columns={[
+              { key: "number", header: "شماره", className: "cell-nowrap", render: (item: PishgamDelivery["rows"][number]) => <span dir="ltr">{item.to_number}</span> },
+              { key: "text", header: "وضعیت", render: (item) => item.text || "—" },
+            ]}
+          />
+        ) : (
+          <ErrorMessage friendly={false} message={result.reason} />
+        )
+      ) : null}
     </EditPop>
   );
 }

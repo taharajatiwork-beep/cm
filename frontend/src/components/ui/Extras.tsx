@@ -1,5 +1,8 @@
-import { useEffect, type ReactNode } from "react";
+import { useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { faNum } from "../../fa";
+import { nextTabIndex } from "../../lib/tabs";
+import { Dialog } from "./Dialog";
 import { Icon, type IconName } from "./Icon";
 
 export type Tone = "neutral" | "accent" | "ok" | "warn" | "danger" | "ai";
@@ -33,7 +36,7 @@ export function StatCard({
         </span>
         <span className="kpi-text">
           <span className="kpi-label">{label}</span>
-          <span className="kpi-value">{value}</span>
+          <span className="kpi-value">{typeof value === "number" ? faNum(value) : value}</span>
           {hint ? <span className="kpi-hint">{hint}</span> : null}
         </span>
       </span>
@@ -62,29 +65,58 @@ export function StatCard({
   return <div className={className}>{body}</div>;
 }
 
+/**
+ * تب/فیلتر کوچک. با idBase تب واقعی است: هر دکمه id و aria-controls به پنل
+ * `${idBase}-panel-${key}` دارد، فقط تب فعال در ترتیب Tab است و فلش‌ها/Home/End جابه‌جا می‌کنند.
+ * attention شمارهٔ تب را پررنگ می‌کند (مثلاً درخواست تصمیم‌نگرفته) و attentionLabel برای صفحه‌خوان است.
+ */
 export function Segmented<K extends string>({
   value,
   onChange,
   items,
+  ariaLabel,
+  idBase,
 }: {
   value: K;
   onChange: (k: K) => void;
-  items: Array<{ key: K; label: ReactNode; count?: number; icon?: IconName }>;
+  items: Array<{ key: K; label: ReactNode; count?: number; icon?: IconName; attention?: boolean; attentionLabel?: string }>;
+  ariaLabel?: string;
+  idBase?: string;
 }) {
+  const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!idBase) return;
+    const current = refs.current.findIndex((node) => node === document.activeElement);
+    const rtl = getComputedStyle(event.currentTarget).direction === "rtl";
+    const next = nextTabIndex(current < 0 ? items.findIndex((it) => it.key === value) : current, items.length, event.key, rtl);
+    if (next === null) return;
+    event.preventDefault();
+    onChange(items[next].key);
+    refs.current[next]?.focus();
+  }
   return (
-    <div className="segmented" role="tablist">
-      {items.map((it) => (
+    <div className="segmented" role="tablist" aria-label={ariaLabel} onKeyDown={idBase ? onKeyDown : undefined}>
+      {items.map((it, index) => (
         <button
           key={it.key}
+          ref={(node) => {
+            refs.current[index] = node;
+          }}
           type="button"
           role="tab"
+          id={idBase ? `${idBase}-tab-${it.key}` : undefined}
+          aria-controls={idBase ? `${idBase}-panel-${it.key}` : undefined}
+          tabIndex={idBase ? (value === it.key ? 0 : -1) : undefined}
           aria-selected={value === it.key}
           className={value === it.key ? "seg active" : "seg"}
           onClick={() => onChange(it.key)}
         >
           {it.icon ? <Icon name={it.icon} size={14} /> : null}
           <span>{it.label}</span>
-          {typeof it.count === "number" ? <span className="seg-count">{it.count}</span> : null}
+          {typeof it.count === "number" ? (
+            <span className={it.attention ? "seg-count seg-count-attn" : "seg-count"}>{faNum(it.count)}</span>
+          ) : null}
+          {it.attention && it.attentionLabel ? <span className="seg-sr">{it.attentionLabel}</span> : null}
         </button>
       ))}
     </div>
@@ -104,28 +136,19 @@ export function Sheet({
   children: ReactNode;
   footer?: ReactNode;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
+  const titleId = useId();
   if (!open) return null;
   return (
-    <div className="sheet-root" role="dialog" aria-modal>
-      <div className="sheet-backdrop" onClick={onClose} />
-      <aside className="sheet">
-        <header className="sheet-head">
-          <h2>{title}</h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="بستن">
-            <Icon name="x" />
-          </button>
-        </header>
-        <div className="sheet-body">{children}</div>
-        {footer ? <footer className="sheet-foot">{footer}</footer> : null}
-      </aside>
-    </div>
+    <Dialog onClose={onClose} layout="sheet" as="aside" labelledBy={titleId}>
+      <header className="sheet-head">
+        <h2 id={titleId}>{title}</h2>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="بستن">
+          <Icon name="x" />
+        </button>
+      </header>
+      <div className="sheet-body">{children}</div>
+      {footer ? <footer className="sheet-foot">{footer}</footer> : null}
+    </Dialog>
   );
 }
 
@@ -178,7 +201,7 @@ export function SectionHeader({
         <h2>
           {icon ? <Icon name={icon} size={15} /> : null}
           {title}
-          {typeof count === "number" ? <span className="section-count">{count}</span> : null}
+          {typeof count === "number" ? <span className="section-count">{faNum(count)}</span> : null}
         </h2>
         {hint ? <p className="section-hint">{hint}</p> : null}
       </div>

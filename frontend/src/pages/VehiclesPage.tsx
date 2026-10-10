@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
@@ -8,6 +8,7 @@ import { useConfirm } from "../components/ui/ConfirmDialog";
 import {
   Button,
   Card,
+  Dialog,
   EmptyState,
   ErrorMessage,
   Field,
@@ -24,6 +25,7 @@ import {
   Table,
   TextArea,
 } from "../components/ui";
+import { faNum, tomanText } from "../fa";
 import { Bi, useBi } from "../i18n";
 import { useToast } from "../components/ui/Toast";
 import { nextCursor } from "../lib/pagination";
@@ -168,20 +170,12 @@ function QuickEditPop({
   onSave: (id: string, fields: Record<string, unknown>) => void;
 }) {
   const bi = useBi();
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const titleId = useId();
 
   return (
-    <div className="detail-pop quick-edit-pop" role="dialog" aria-modal="true">
-      <button type="button" className="detail-pop-backdrop" onClick={onClose} aria-label={bi("Close", "بستن")} />
-      <div className="detail-pop-card">
+    <Dialog onClose={onClose} className="quick-edit-pop" labelledBy={titleId} closeLabel={bi("Close", "بستن")}>
         <SectionHeader
-          title={<Bi en="Quick edit" fa="ویرایش سریع" />}
+          title={<span id={titleId}><Bi en="Quick edit" fa="ویرایش سریع" /></span>}
           count={rows.length}
           action={
             <button type="button" className="kpi-more" onClick={onClose}>
@@ -233,8 +227,7 @@ function QuickEditPop({
             );
           })}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -335,7 +328,8 @@ export function VehiclesPage() {
     const ok = await confirm(
       bi("Delete this vehicle?", "این خودرو حذف شود؟"),
       bi(`${name} will be removed from the list.`, `${name} از فهرست حذف می‌شود.`),
-      bi("Delete", "حذف"),
+      bi("Yes, delete", "بله، حذف کن"),
+      { danger: true },
     );
     if (!ok) return;
     deleteMutation.mutate(String(v.id));
@@ -584,7 +578,7 @@ export function VehiclesPage() {
                   <span className="cell-sub">
                     {[
                       v.color,
-                      v.mileage != null ? `${Number(v.mileage).toLocaleString()} km` : null,
+                      v.mileage != null ? `${faNum(Number(v.mileage))} km` : null,
                       v.transmission,
                       v.fuel_type,
                     ]
@@ -599,9 +593,7 @@ export function VehiclesPage() {
                 header: <Bi en="Price" fa="قیمت" />,
                 render: (v) =>
                   v.sale_price != null ? (
-                    <span className="num">
-                      {Number(v.sale_price).toLocaleString()}
-                    </span>
+                    <span className="num">{tomanText(Number(v.sale_price))}</span>
                   ) : (
                     <Muted>—</Muted>
                   ),
@@ -628,7 +620,7 @@ export function VehiclesPage() {
                             <Bi en="Edit" fa="ویرایش" />
                           </Button>
                           <Button
-                            variant="danger"
+                            variant="danger-quiet"
                             className="btn-sm"
                             disabled={deleteMutation.isPending}
                             onClick={() => void removeVehicle(v)}
@@ -884,8 +876,7 @@ export function VehicleDetailPage() {
   if (!ctx) return <LoadingState />;
 
   const v = ctx.vehicle;
-  const currency = String(v.currency || "IRR");
-  const money = (n: unknown) => (n != null ? `${Number(n).toLocaleString()} ${currency}` : null);
+  const money = (n: unknown) => (n != null ? tomanText(Number(n)) : null);
   const margin =
     v.sale_price != null && v.purchase_price != null
       ? Number(v.sale_price) - Number(v.purchase_price)
@@ -953,7 +944,7 @@ export function VehicleDetailPage() {
           <Card>
             <SectionHeader icon="layers" title={<Bi en="Specifications" fa="مشخصات" />} />
             <dl className="spec-grid">
-              <Spec label={bi("Mileage", "کیلومتر")} value={v.mileage != null ? `${Number(v.mileage).toLocaleString()} km` : null} />
+              <Spec label={bi("Mileage", "کیلومتر")} value={v.mileage != null ? `${faNum(Number(v.mileage))} km` : null} />
               <Spec label={bi("Body", "بدنه")} value={v.body_type} />
               <Spec label={bi("Transmission", "گیربکس")} value={v.transmission} />
               <Spec label={bi("Fuel", "سوخت")} value={v.fuel_type} />
@@ -1054,7 +1045,7 @@ export function VehicleDetailPage() {
                   <Bi en="Purchase" fa="خرید" />
                 </span>
                 <strong className="stat-num">
-                  {v.purchase_price != null ? Number(v.purchase_price).toLocaleString() : "—"}
+                  {v.purchase_price != null ? tomanText(Number(v.purchase_price)) : "—"}
                 </strong>
               </div>
               <div className="mini-stat">
@@ -1062,7 +1053,7 @@ export function VehicleDetailPage() {
                   <Bi en="Margin" fa="حاشیه سود" />
                 </span>
                 <strong className="stat-num">
-                  {margin != null ? margin.toLocaleString() : "—"}
+                  {margin != null ? tomanText(margin) : "—"}
                 </strong>
               </div>
             </div>

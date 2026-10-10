@@ -68,6 +68,31 @@
 .chart-line {
   width: 100%;
   height: 280px;
+  display: block;
+}
+
+.chart-line-plot {
+  display: grid;
+  grid-template-columns: 4.8rem minmax(0, 1fr);
+  column-gap: 0.35rem;
+  align-items: stretch;
+  direction: ltr;
+}
+
+.chart-line-y {
+  position: relative;
+}
+
+.chart-line-y span {
+  position: absolute;
+  inset-inline: 0 0.15rem;
+  transform: translateY(-50%);
+  text-align: end;
+  font-size: 0.66rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  white-space: nowrap;
 }
 
 .chart-line-wrap {
@@ -79,6 +104,8 @@
 .chart-line-tip {
   margin: 0;
   min-height: 1.4em;
+  direction: rtl;
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
@@ -580,6 +607,12 @@
   .perf-report .segmented {
     display: none;
   }
+
+  .brief-plan,
+  .brief-phase {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }
 
 .perf-steps {
@@ -587,4 +620,432 @@
   padding-inline-start: 1.2rem;
   display: grid;
   gap: 0.35rem;
+}
+
+/* پنجرهٔ جزئیات کارت میزیتو */
+.mizito-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.mizito-open:hover,
+.mizito-open:focus-visible {
+  color: var(--accent-ink);
+  text-decoration: underline;
+}
+
+.mizito-pop .detail-pop-card {
+  width: min(40rem, 100%);
+}
+
+.mizito-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.mizito-facts dt {
+  color: var(--muted, #667085);
+}
+
+.mizito-facts dd {
+  margin: 0;
+}
+
+.mizito-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mizito-progress progress {
+  width: 8rem;
+}
+
+.mizito-pop .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* درخواست‌های جدید از میزیتو */
+.mizito-requests {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* بدون minmax(0, 1fr) ستون به اندازهٔ طولانی‌ترین محتوای کارت پهن می‌شد و صفحهٔ موبایل از عرض بیرون می‌زد */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.mizito-request {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+.mizito-request > * {
+  min-width: 0;
+}
+
+/* چیپ‌های کارت درخواست (مدل، مهلت، …) در موبایل باید به خط بعد بروند؛ در جدول‌ها همچنان یک‌خطی‌اند */
+.mizito-request .perf-chips {
+  flex-wrap: wrap;
+}
+
+.mizito-request-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.mizito-request-excerpt {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted, #6b7280);
+  font-size: 0.9em;
+}
+
+/* متن بلند درخواست: سه خط، با «بیشتر» باز می‌شود */
+.mizito-request-excerpt.is-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.mizito-request .kpi-more {
+  justify-self: start;
+}
+
+.mizito-request-meta {
+  margin-inline-start: auto;
+  font-size: 0.75rem;
+}
+
+.mizito-status {
+  font-size: 0.7rem;
+}
+
+.mizito-request .muted,
+.mizito-request p {
+  margin: 0;
+}
+
+.mizito-kind-stop {
+  background: var(--danger-soft, #fee2e2);
+}
+
+.mizito-kind-circular,
+.mizito-kind-sms {
+  background: var(--info-soft);
+}
+
+.mizito-request-actions {
+  gap: 6px;
+}
+
+/* تب‌های صفحهٔ کمپین‌ها */
+.campaign-tabpanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4, 16px);
+  min-width: 0;
+}
+
+.campaign-tabpanel[hidden] {
+  display: none;
+}
+
+.outcome-detail {
+  white-space: pre-wrap;
+  margin: var(--space-3) 0 0;
+}
+
+.conn-note {
+  margin: 0.35rem 0 0;
+}
+
+.sync-steps {
+  margin: var(--space-3) 0;
+  padding-inline-start: 1.2rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.sync-steps li {
+  margin: 4px 0;
+}
+
+.conn-fresh {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.conn-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+@media (min-width: 860px) {
+  .conn-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.conn-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-inline-start: 3px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.conn-tile[data-tone="ok"] {
+  border-inline-start-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 6%, var(--surface));
+}
+
+.conn-tile[data-tone="warn"] {
+  border-inline-start-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 7%, var(--surface));
+}
+
+.conn-tile[data-tone="danger"] {
+  border-inline-start-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+}
+
+.conn-tile[data-tone="busy"] {
+  border-inline-start-color: var(--accent, #3b6fd8);
+}
+
+.conn-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.conn-tile h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.conn-help {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.conn-tile .conn-help,
+.conn-tile .muted {
+  margin: 0;
+}
+
+.conn-tile .ui-error {
+  margin: 0;
+}
+
+.conn-side {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-3);
+}
+
+/* بریف کمپین */
+.brief-source {
+  font-size: 0.78rem;
+}
+
+.brief-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.brief-slogan {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--accent-ink);
+}
+
+.brief-block h4 {
+  margin: 0 0 var(--space-2);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.brief-block ul,
+.brief-block ol {
+  margin: 0;
+  padding-inline-start: 1.2rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.brief-plan {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.brief-plan th,
+.brief-plan td {
+  border: 1px solid var(--line);
+  padding: 0.4rem 0.6rem;
+  text-align: start;
+  font-size: 0.85rem;
+  vertical-align: top;
+}
+
+.brief-plan th {
+  background: var(--accent-soft);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.brief-day {
+  white-space: nowrap;
+  font-weight: 650;
+}
+
+.brief-caption {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+.brief-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.brief-chip {
+  padding: 0 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--surface);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.brief-hashtags {
+  margin: 0.35rem 0 0;
+  color: var(--accent-ink);
+}
+
+.brief-phase {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.brief-phase:last-child {
+  margin-bottom: 0;
+}
+
+.brief-phase p {
+  margin: 0;
+}
+
+.brief-phase-name {
+  font-weight: 650;
+}
+
+.brief-phase-text {
+  line-height: 1.7;
+}
+
+.brief-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.brief-edit-plan,
+.brief-edit-phases {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.brief-edit h5 {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.brief-plan-row {
+  display: grid;
+  grid-template-columns: 4.5rem repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.brief-plan-day {
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.brief-phase-edit {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.panel-probe-form {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: var(--space-2);
+}
+
+.conn-tile .panel-probe-form .btn {
+  justify-self: start;
+}
+
+@media print {
+  .panel-probe-form {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .brief-plan-row,
+  .brief-phase-edit {
+    grid-template-columns: 1fr;
+  }
 }

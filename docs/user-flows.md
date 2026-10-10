@@ -68,6 +68,21 @@ Standalone `/agent` remains for power users.
 
 ---
 
+## Flow H — Request to project to report
+
+```text
+Manager → /requests → new request (ads / price / general)
+  → marketing triage
+      → project (one or more, team + kind) → /projects/:id
+      → or one operational task (price)
+  → tasks, thread, cost (manager then finance)
+  → /reports?scope=me|team|team_tree|org
+```
+
+Success: the requester reads the project and writes in its thread. Payment and price confirmation stay on their own pages.
+
+---
+
 ## First-time user checklist
 
 1. Find what’s happening — Home story cards  

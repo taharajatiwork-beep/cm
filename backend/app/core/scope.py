@@ -28,6 +28,7 @@ class DataScopeContext:
     department_id: UUID | None
     team_id: UUID | None
     is_org_wide: bool
+    team_ids: tuple[UUID, ...] = ()
 
 
 def apply_scope(stmt: Select, model, scope: DataScopeContext | None) -> Select:
@@ -68,6 +69,11 @@ def _level_clause(model, scope: DataScopeContext):
         return _match_nullable(model, cols, "branch_id", scope.branch_id, scope)
     if level == "department":
         return _match_nullable(model, cols, "department_id", scope.department_id, scope)
+    if level == "team_tree":
+        ids = scope.team_ids or ((scope.team_id,) if scope.team_id else ())
+        if "team_id" not in cols or not ids:
+            return _self_clause(model, cols, scope)
+        return or_(model.team_id.in_(ids), model.team_id.is_(None))
     if level == "team":
         return _match_nullable(model, cols, "team_id", scope.team_id, scope)
     if level == "self":
