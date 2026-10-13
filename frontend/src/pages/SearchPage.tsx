@@ -9,6 +9,7 @@ import {
   Input,
   List,
   ListItem,
+  LoadingState,
   Muted,
   PageHeader,
   Toolbar,
@@ -27,6 +28,7 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
   const hits = searchQuery.data?.hits ?? [];
   const error = searchQuery.isError ? String((searchQuery.error as Error).message) : "";
   const ran = submitted.trim().length > 0;
+  const fetching = ran && searchQuery.isFetching;
 
   function runQuery(query: string) {
     setSubmitted(query);
@@ -41,7 +43,6 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
     const t = String(h.entity_type);
     const id = String(h.entity_id);
     if (t === "vehicle") return `/vehicles/${id}`;
-    if (t === "work_item") return `/work-items/${id}`;
     if (t === "user") return `/people`;
     return null;
   }
@@ -88,6 +89,8 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
             bodyEn="Use the top bar or this page to search across the company."
             bodyFa="از نوار بالا یا همین صفحه در همه اطلاعات شرکت جستجو کنید."
           />
+        ) : fetching ? (
+          <LoadingState />
         ) : hits.length === 0 ? (
           <EmptyState
             titleEn="No matches"

@@ -24,7 +24,7 @@ function navFocus(user: FocusNavUser): FocusRole {
   return user.roleHint ?? focusRoleFromCode(user.roleCode);
 }
 
-const DAILY_LIMIT = 6;
+const DAILY_LIMIT = 12;
 
 export function focusCan(user: FocusNavUser, perm: string): boolean {
   const focus = navFocus(user);
@@ -109,6 +109,7 @@ export function dailyPaths(user: FocusNavUser): string[] {
 
   if (code === "finance") {
     push("/perf/money", has("campaign.read") || has("expense.request") || has("perf.read"));
+    push("/pricing", pricing());
     push("/reports");
     push("/communication", has("conversation.read"));
     push("/calendar", calendar());
@@ -118,6 +119,7 @@ export function dailyPaths(user: FocusNavUser): string[] {
   if (code === "requester") {
     push("/requests", has("request.create"));
     push("/projects", projects());
+    push("/vehicles", has("inventory.read"));
     push("/pricing", pricing());
     push("/communication", has("conversation.read"));
     push("/reports");
@@ -309,7 +311,7 @@ export function suggestTeamId(teams: TeamChoice[], userTeamId: string | null | u
   return mine.id;
 }
 
-export const DEFAULT_REQUEST_KIND = "تبلیغات";
+export const DEFAULT_REQUEST_KIND = "عمومی";
 export const DEFAULT_REQUEST_PRIORITY = "normal";
 export const DEFAULT_PROJECT_KIND = "پرفورمنس";
 

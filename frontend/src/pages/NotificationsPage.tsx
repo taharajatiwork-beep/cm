@@ -14,9 +14,12 @@ import {
 import { Bi } from "../i18n";
 import { DateText } from "../components/DateText";
 import { queryKeys } from "../lib/queryKeys";
+import { useNotificationTitle } from "../lib/notificationTitles";
+import { notificationHref } from "../lib/notificationLinks";
 
 export function NotificationsPage() {
   const qc = useQueryClient();
+  const formatTitle = useNotificationTitle();
   const q = useQuery({
     queryKey: queryKeys.notifications,
     queryFn: () => api.notifications(),
@@ -54,19 +57,18 @@ export function NotificationsPage() {
           />
         ) : (
           <List variant="timeline">
-            {rows.map((n) => (
+            {rows.map((n) => {
+              const href = notificationHref(String(n.entity_type || ""), n.entity_id ? String(n.entity_id) : null);
+              return (
               <ListItem key={String(n.id)}>
-                <strong>{String(n.title)}</strong>
+                <strong>{formatTitle(String(n.title))}</strong>
                 <div>{String(n.body)}</div>
                 <div>
                   <Muted>
                     <DateText value={n.created_at} withTime />
                   </Muted>
-                  {n.entity_type === "work_item" && n.entity_id ? (
-                    <Link className="btn btn-ghost" to={`/work-items/${String(n.entity_id)}`}>باز کردن</Link>
-                  ) : null}
-                  {n.entity_type === "conversation" && n.entity_id ? (
-                    <Link className="btn btn-ghost" to={`/communication?c=${String(n.entity_id)}`}>باز کردن</Link>
+                  {href ? (
+                    <Link className="btn btn-ghost" to={href}>باز کردن</Link>
                   ) : null}
                   {!n.is_read ? (
                     <button type="button" className="btn btn-ghost" onClick={() => mark.mutate(String(n.id))}>
@@ -75,7 +77,8 @@ export function NotificationsPage() {
                   ) : null}
                 </div>
               </ListItem>
-            ))}
+            );
+            })}
           </List>
         )}
       </Card>

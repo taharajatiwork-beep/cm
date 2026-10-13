@@ -1,0 +1,18 @@
+# Copy to ../secrets/server-deploy.env (gitignored) and fill in values.
+# Used for SSH updates only — never commit the real file.
+
+CM_SERVER_HOST=192.168.17.4
+CM_SERVER_USER=didar
+CM_SERVER_PASSWORD=
+CM_SERVER_PROJECT_DIR=CM
+
+# Internal server (didar@192.168.17.4): app runs from ~/CM via cm-apply-update.sh
+# (uvicorn :8001 + vite :5173), not docker-compose.prod, when GitHub pull is unavailable.
+#
+# From repo root after pushing main:
+#   git archive -o cm-update.tar.gz HEAD
+#   uv run python deploy/remote-update.py
+#
+# Docker path (only if .env + CORS_ORIGINS are set on the host):
+#   cd ~/CM && docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml exec -T api alembic upgrade head

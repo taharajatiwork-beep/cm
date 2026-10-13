@@ -69,7 +69,7 @@ export function TeamHomePage() {
           <ul>
             {data.requests.map((row) => (
               <li key={row.id}>
-                <Link to="/requests">{row.code}</Link> {row.title} <Muted>{requestStatusLabel(row.status)}</Muted>
+                <Link to={`/requests/${row.id}`}>{row.code}</Link> {row.title} <Muted>{requestStatusLabel(row.status)}</Muted>
               </li>
             ))}
           </ul>

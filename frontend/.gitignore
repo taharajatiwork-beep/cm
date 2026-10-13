@@ -12,9 +12,6 @@ dist
 dist-ssr
 *.local
 
-# Synthetic user reports (local runs)
-synthetic/reports/
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -41,8 +41,18 @@ export type WorkProject = {
   team_id: string | null;
   team_name: string;
   status: string;
+  task_total?: number;
+  task_done?: number;
+  requester_acceptance?: string | null;
   created_at: string;
   updated_at: string | null;
+};
+
+export type RequestDetail = {
+  request: WorkRequest;
+  projects: WorkProject[];
+  tasks: Array<{ id: string; title: string; status: string; project_id?: string | null }>;
+  spine: Array<{ at?: string; kind: string; label: string; status?: string; code?: string }>;
 };
 
 export type CampaignReportRow = {
@@ -100,6 +110,7 @@ export type TeamOption = { id: string; name: string; code: string; parent_team_i
 export const requestsApi = {
   list: (status: string = "") =>
     request<WorkRequest[]>(`/requests${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  get: (id: string) => request<RequestDetail>(`/requests/${id}`),
   create: (body: Record<string, unknown>) => request<WorkRequest>("/requests", { method: "POST", body: JSON.stringify(body) }),
   patch: (id: string, body: Record<string, unknown>) =>
     request<WorkRequest>(`/requests/${id}`, { method: "PATCH", body: JSON.stringify(body) }),

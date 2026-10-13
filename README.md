@@ -49,10 +49,7 @@ catch a hardcoded secret or an unsafe production default before it ships.
 cd frontend
 npx tsc -b && npm run lint && npm test && npm run build
 npm run e2e        # starts its own API + web server
-npm run synthetic:ci   # demo seed + scripted AI-user journeys (mock LLM)
 ```
-
-Synthetic UX users (Playwright + optional LLM debrief): see `frontend/synthetic/README.md` and `docs/synthetic-users-goals.md`.
 
 ### Load test
 

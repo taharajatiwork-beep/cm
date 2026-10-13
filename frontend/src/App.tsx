@@ -23,6 +23,7 @@ import { PerfRoutes } from "./perf/PerfRoutes";
 import { ProjectPage } from "./requests/ProjectPage";
 import { TeamHomePage } from "./requests/TeamHomePage";
 import { ProjectsPage } from "./requests/ProjectsPage";
+import { RequestPage } from "./requests/RequestPage";
 import { RequestsPage } from "./requests/RequestsPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -80,8 +81,14 @@ export default function App() {
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="agent" element={<AgentPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="campaigns" element={<Navigate to="/perf/campaigns" replace />} />
+          <Route path="campaigns/*" element={<Navigate to="/perf/campaigns" replace />} />
+          <Route path="money" element={<Navigate to="/perf/money" replace />} />
+          <Route path="sheet" element={<Navigate to="/perf/sheet" replace />} />
+          <Route path="stories" element={<Navigate to="/perf/social" replace />} />
           <Route path="perf/*" element={<PerfRoutes />} />
           <Route path="requests" element={<RequestsPage />} />
+          <Route path="requests/:id" element={<RequestPage />} />
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="projects/:id" element={<ProjectPage />} />
           <Route path="teams/:teamId" element={<TeamHomePage />} />

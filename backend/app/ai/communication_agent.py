@@ -350,7 +350,7 @@ class CommunicationAgent:
                     "send_notification",
                     {
                         "user_id": person["id"],
-                        "title": "New task assigned",
+                        "title": "کار جدید به شما سپرده شد",
                         "body": task_title,
                         "entity_type": "task",
                         "entity_id": t_result["data"]["id"],

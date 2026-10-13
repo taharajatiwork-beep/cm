@@ -4,6 +4,7 @@ export { Card, CardTitle, type CardProps } from "./Card";
 export { Table, type Column } from "./Table";
 export { LoadingState, type LoadingStateProps } from "./LoadingState";
 export { ErrorMessage, ErrorBoundaryFallback, type ErrorMessageProps } from "./ErrorMessage";
+export { ForbiddenState } from "./ForbiddenState";
 export {
   Badge,
   EmptyState,

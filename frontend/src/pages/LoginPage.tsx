@@ -6,8 +6,7 @@ import { Button, Card, ErrorMessage, LoadingState, Muted } from "../components/u
 import { Bi, LangSwitch, useBi } from "../i18n";
 import { friendlyError } from "../lib/errors";
 import { loginRedirectTarget, type LoginFrom } from "../lib/navigation";
-import symbolUrl from "../../../assets/sotoodeh-brand-kit/assets/sotoodeh-symbol.png";
-import wordmarkUrl from "../../../assets/sotoodeh-brand-kit/assets/sotoodeh-wordmark.png";
+import { symbolUrl, wordmarkUrl } from "../brand/logos";
 
 // حساب نمایشی فقط در حالت توسعه پیش‌پر می‌شود. در build تولید import.meta.env.DEV برابر false است
 // و این رشته‌ها کلاً از باندل حذف می‌شوند.
@@ -81,7 +80,6 @@ export function LoginPage() {
             <ul>
               <li><span dir="ltr">admin@</span> — <Bi en="Site admin" fa="ادمین سایت" /></li>
               <li><span dir="ltr">ali@</span> — <Bi en="Manager" fa="مدیر" /></li>
-              <li><span dir="ltr">maryam@</span> — <Bi en="Mashhad branch manager" fa="مدیر شعبه مشهد" /></li>
               <li><span dir="ltr">mina@</span> — <Bi en="Marketing lead" fa="سرپرست مارکتینگ" /></li>
               <li><span dir="ltr">nadia@</span> — <Bi en="Performance marketing" fa="پرفورمنس مارکتینگ" /></li>
               <li><span dir="ltr">finance@</span> — <Bi en="Lead" fa="سرپرست" /></li>

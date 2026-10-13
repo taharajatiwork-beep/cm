@@ -440,8 +440,8 @@ export function AdminPage() {
         <Card>
           <Muted>
             <Bi
-              en="You need the org.admin permission to manage users, roles and teams."
-              fa="برای مدیریت کاربران، نقش‌ها و تیم‌ها به مجوز org.admin نیاز دارید."
+              en="Only the system admin can manage users, roles and teams."
+              fa="فقط مدیر سیستم می‌تواند کاربران، نقش‌ها و تیم‌ها را مدیریت کند."
             />
           </Muted>
         </Card>

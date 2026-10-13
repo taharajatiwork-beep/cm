@@ -9,12 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "e2e": "playwright test",
-    "synthetic": "tsx synthetic/run.ts",
-    "synthetic:probe": "tsx synthetic/scripts/probe-llm.ts",
-    "synthetic:models": "tsx synthetic/scripts/list-models.ts",
-    "synthetic:aggregate": "tsx synthetic/aggregate.ts",
-    "synthetic:ci": "playwright test -c playwright.synthetic.config.ts"
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "^5.3.0",

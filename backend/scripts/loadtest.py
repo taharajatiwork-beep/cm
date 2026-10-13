@@ -72,7 +72,7 @@ DEMO_EMAILS = (
     "ali@autoco.example",
     "sara@autoco.example",
     "reza@autoco.example",
-    "maryam@autoco.example",
+    "nima@autoco.example",
 )
 
 

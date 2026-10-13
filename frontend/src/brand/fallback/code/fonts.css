@@ -1,0 +1,8 @@
+/* Fallback: system UI fonts when brand kit is not present */
+:root {
+  --font-sans: system-ui, "Segoe UI", Tahoma, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+}

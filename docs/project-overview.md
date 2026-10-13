@@ -70,7 +70,6 @@
 | مالی (`finance`) | `finance@autoco.example` | `price.approve` و `expense.pay`؛ قیمت/پست و `/perf/money` |
 | ادمین | `admin@autoco.example` | کاربران، نقش‌ها، ساختار تیم‌ها، مشتریان، دید کامل |
 | بازدیدکننده | `viewer@autoco.example` | فقط مشاهدهٔ محدود |
-| شعبه دیگر | `maryam@autoco.example` | مدیر شعبهٔ مشهد؛ درخواست بدون تیم |
 
 رمز همهٔ حساب‌های دمو: `password`  
 سازمان دمو: `autoco`  

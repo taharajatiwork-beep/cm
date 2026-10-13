@@ -31,6 +31,7 @@ import { Bi, useBi } from "../i18n";
 import { useToast } from "../components/ui/Toast";
 import { nextCursor } from "../lib/pagination";
 import { queryKeys } from "../lib/queryKeys";
+import { useVehicleLabel } from "../lib/vehicleLabels";
 import { StatusLabel } from "../ux";
 
 type VehicleForm = {
@@ -235,6 +236,7 @@ function QuickEditPop({
 export function VehiclesPage() {
   const { has } = useAuth();
   const bi = useBi();
+  const vehicleLabel = useVehicleLabel();
   const toast = useToast();
   const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -462,10 +464,17 @@ export function VehiclesPage() {
       <PageHeader
         title={<Bi en="Vehicles" fa="خودروها" />}
         description={
-          <Bi
-            en="All cars you have. Click a car to see its details, or add a new one."
-            fa="همه خودروهای شما. روی هر خودرو بزنید تا جزئیاتش را ببینید، یا خودروی جدید اضافه کنید."
-          />
+          has("inventory.write") ? (
+            <Bi
+              en="All cars you have. Click a car to see its details, or add a new one."
+              fa="همه خودروهای شما. روی هر خودرو بزنید تا جزئیاتش را ببینید، یا خودروی جدید اضافه کنید."
+            />
+          ) : (
+            <Bi
+              en="Cars in stock. Click a row to see details."
+              fa="خودروهای موجود. روی هر ردیف بزنید تا جزئیات را ببینید."
+            />
+          )
         }
         actions={
           has("inventory.write") ? (
@@ -508,7 +517,7 @@ export function VehiclesPage() {
               >
                 {bi(en, fa)}
                 <span className="chip-count">
-                  {key === "ALL" ? rows.length : statusCounts[key] || 0}
+                  {faNum(key === "ALL" ? rows.length : statusCounts[key] || 0)}
                 </span>
               </button>
             ))}
@@ -580,10 +589,10 @@ export function VehiclesPage() {
                 render: (v) => (
                   <span className="cell-sub">
                     {[
-                      v.color,
+                      v.color ? vehicleLabel(String(v.color)) : null,
                       v.mileage != null ? `${faNum(Number(v.mileage))} km` : null,
-                      v.transmission,
-                      v.fuel_type,
+                      v.transmission ? vehicleLabel(String(v.transmission)) : null,
+                      v.fuel_type ? vehicleLabel(String(v.fuel_type)) : null,
                     ]
                       .filter(Boolean)
                       .map(String)
@@ -822,18 +831,28 @@ function VehicleOps({ id }: { id: string }) {
   );
 }
 
-function Spec({ label, value }: { label: ReactNode; value: unknown }) {
+function Spec({
+  label,
+  value,
+  formatValue,
+}: {
+  label: ReactNode;
+  value: unknown;
+  formatValue?: (raw: string) => string;
+}) {
   if (value == null || value === "") return null;
+  const text = formatValue ? formatValue(String(value)) : String(value);
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{String(value)}</dd>
+      <dd>{text}</dd>
     </div>
   );
 }
 
 export function VehicleDetailPage() {
   const { id = "" } = useParams();
+  const vehicleLabel = useVehicleLabel();
   const { has } = useAuth();
   const bi = useBi();
   const navigate = useNavigate();
@@ -948,9 +967,9 @@ export function VehicleDetailPage() {
             <SectionHeader icon="layers" title={<Bi en="Specifications" fa="مشخصات" />} />
             <dl className="spec-grid">
               <Spec label={bi("Mileage", "کیلومتر")} value={v.mileage != null ? `${faNum(Number(v.mileage))} km` : null} />
-              <Spec label={bi("Body", "بدنه")} value={v.body_type} />
-              <Spec label={bi("Transmission", "گیربکس")} value={v.transmission} />
-              <Spec label={bi("Fuel", "سوخت")} value={v.fuel_type} />
+              <Spec label={bi("Body", "بدنه")} value={v.body_type} formatValue={vehicleLabel} />
+              <Spec label={bi("Transmission", "گیربکس")} value={v.transmission} formatValue={vehicleLabel} />
+              <Spec label={bi("Fuel", "سوخت")} value={v.fuel_type} formatValue={vehicleLabel} />
               <Spec label={bi("Engine", "موتور")} value={v.engine} />
               <Spec label={bi("Plate", "پلاک")} value={v.plate_number} />
               <Spec label={bi("Doors", "درب")} value={v.doors} />

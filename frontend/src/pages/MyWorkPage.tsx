@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { requestsApi } from "../requests/api";
 import { useAuth } from "../auth";
@@ -11,18 +11,21 @@ import {
   ErrorMessage,
   Icon,
   LoadingState,
+  Muted,
   PageHeader,
   SectionHeader,
   Segmented,
+  Sheet,
   type IconName,
 } from "../components/ui";
+import { canSeeProjects } from "../lib/access";
 import { useToast } from "../components/ui/Toast";
 import { filledWorkBuckets, workEmptyTarget, WORK_BUCKETS, type WorkBucket } from "../lib/focus";
 import { Bi, useBi, useLocale } from "../i18n";
 import { canFinishTask, formatDeadline, isOverdue } from "../lib/collaboration";
 import { DateText } from "../components/DateText";
 import { faNum } from "../fa";
-import { ConceptHint, StatusLabel } from "../ux";
+import { StatusLabel } from "../ux";
 import { useWorkParentLookups, WorkListKindBadge, WorkParentContext } from "../lib/workContext";
 
 type QueueFilter = "all" | WorkBucket;
@@ -38,6 +41,20 @@ type Slot = {
 
 function carName(slot: Slot): string {
   return [slot.brand, slot.model].filter(Boolean).join(" ") || "خودرو";
+}
+
+function isDueToday(deadline: string | null | undefined): boolean {
+  if (!deadline) return false;
+  const day = deadline.slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  return day === today;
+}
+
+function taskUrgencyRank(t: { deadline?: string | null; status?: string }) {
+  if (isOverdue(t.deadline, t.status)) return 0;
+  if (isDueToday(t.deadline)) return 1;
+  if (t.deadline) return 2;
+  return 3;
 }
 
 const BUCKET_LABEL: Record<WorkBucket, [string, string]> = {
@@ -117,9 +134,39 @@ function WorkBucketFilters({
 export function MyWorkPage() {
   const { user, roleHint, has } = useAuth();
   const bi = useBi();
+  const { locale } = useLocale();
   const qc = useQueryClient();
   const toast = useToast();
   const [justDone, setJustDone] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(searchParams.get("task"));
+  useEffect(() => {
+    const id = searchParams.get("task");
+    setDetailTaskId(id);
+  }, [searchParams]);
+  const showProjectLink = canSeeProjects(
+    { roleCode: user?.roleCode, permissions: user?.permissions ?? [] },
+    has,
+  );
+  const taskDetail = useQuery({
+    queryKey: ["task", detailTaskId],
+    enabled: Boolean(detailTaskId),
+    queryFn: () => api.tasks.get(detailTaskId!),
+  });
+  const people = useQuery({
+    queryKey: ["people", "names"],
+    queryFn: () => api.people.list(),
+    enabled: Boolean(detailTaskId),
+  });
+  const nameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of people.data ?? []) {
+      const id = String(row.id ?? "");
+      const name = String(row.full_name ?? row.name ?? "");
+      if (id && name) map.set(id, name);
+    }
+    return map;
+  }, [people.data]);
   const canPrice = has("price.approve") || has("price.write");
   const canPost = has("campaign.write");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
@@ -170,9 +217,13 @@ export function MyWorkPage() {
 
   const openTasks = tasks.filter((t) => t.status !== "COMPLETED");
   const openSorted = [...openTasks].sort((a, b) => {
-    const la = isOverdue(a.deadline, a.status) ? 0 : 1;
-    const lb = isOverdue(b.deadline, b.status) ? 0 : 1;
-    return la - lb;
+    const ra = taskUrgencyRank(a);
+    const rb = taskUrgencyRank(b);
+    if (ra !== rb) return ra - rb;
+    if (a.deadline && b.deadline) return String(a.deadline).localeCompare(String(b.deadline));
+    if (a.deadline) return -1;
+    if (b.deadline) return 1;
+    return String(a.title ?? "").localeCompare(String(b.title ?? ""), "fa");
   });
   const bucketCounts = Object.fromEntries(
     WORK_BUCKETS.map((key) => [key, (buckets.data?.[key] ?? []).length]),
@@ -194,10 +245,23 @@ export function MyWorkPage() {
     (row) => String(row.status || "pending") === "pending" && String(row.kind || "").startsWith("ai."),
   );
 
-  const description = bi(
-    "Jobs that need you, including a price to confirm or a post to publish.",
-    "کارهایی که باید انجام دهید، از جمله تأیید قیمت یا انتشار پست.",
-  );
+  const description = bi("Tasks by deadline, plus prices and assistant items in their own groups.", "کارها بر اساس مهلت؛ قیمت و دستیار در گروه جدا.");
+  function openTask(id: string) {
+    setDetailTaskId(id);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("task", id);
+      return next;
+    });
+  }
+  function closeTask() {
+    setDetailTaskId(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("task");
+      return next;
+    });
+  }
 
   function TaskRow({ t, late }: { t: Row; late?: boolean }) {
     const { locale } = useLocale();
@@ -222,7 +286,9 @@ export function MyWorkPage() {
           <span className="check-mark" aria-hidden>○</span>
         )}
         <div className="row-main">
-          <span className="row-title">{String(t.title)}</span>
+          <button type="button" className="row-title row-title-btn" onClick={() => openTask(String(t.id))}>
+            {String(t.title)}
+          </button>
           <span className="row-meta">
             {t.status !== "ASSIGNED" && t.status !== "OPEN" ? <StatusLabel status={String(t.status)} /> : null}
             {deadline ? (
@@ -248,7 +314,6 @@ export function MyWorkPage() {
   return (
     <>
       <PageHeader title={<Bi en="My Work" fa="کارهای من" />} description={description} />
-      <ConceptHint kind="followup" />
       <ErrorMessage error={error} />
       <ErrorMessage error={buckets.isError ? String((buckets.error as Error).message) : ""} />
 
@@ -262,14 +327,9 @@ export function MyWorkPage() {
               loading={buckets.isLoading}
             />
           </div>
-          <p className="help-text">
-            {queueFilter === "all"
-              ? bi(
-                  "One list by urgency. Each row is labeled (task, price, assistant) and shows request → project when linked. Tap the circle when done.",
-                  "یک فهرست بر اساس فوریت. هر ردیف نوعش را دارد (کار، قیمت، دستیار) و در صورت اتصال، درخواست → پروژه را نشان می‌دهد. با دایره «انجام شد» بزنید.",
-                )
-              : bi(BUCKET_HELP[queueFilter][0], BUCKET_HELP[queueFilter][1])}
-          </p>
+          {queueFilter !== "all" ? (
+            <p className="help-text">{bi(BUCKET_HELP[queueFilter][0], BUCKET_HELP[queueFilter][1])}</p>
+          ) : null}
 
           <Card padded={false}>
             {listLoading ? <LoadingState /> : null}
@@ -309,6 +369,11 @@ export function MyWorkPage() {
             ) : null}
             {!listLoading && showUnified && !unifiedEmpty ? (
               <ul className="rows">
+                {priceJobs.length > 0 ? (
+                  <li className="row-section-head" aria-hidden>
+                    <SectionHeader icon="megaphone" title={<Bi en="Prices & posts" fa="قیمت و پست‌ها" />} />
+                  </li>
+                ) : null}
                 {priceJobs.map((slot) => {
                   const confirm = slot.status === "requested" || slot.status === "needs_recheck";
                   return (
@@ -348,6 +413,11 @@ export function MyWorkPage() {
                     </li>
                   );
                 })}
+                {pendingAi.length > 0 ? (
+                  <li className="row-section-head" aria-hidden>
+                    <SectionHeader icon="sparkles" title={<Bi en="Assistant" fa="دستیار" />} />
+                  </li>
+                ) : null}
                 {pendingAi.map((row) => (
                   <li key={`ai-${String(row.id)}`} className="row-item">
                     <span className="row-lead">
@@ -389,6 +459,11 @@ export function MyWorkPage() {
                     </div>
                   </li>
                 ))}
+                {openSorted.length > 0 ? (
+                  <li className="row-section-head" aria-hidden>
+                    <SectionHeader icon="check" title={<Bi en="Tasks" fa="کارها" />} />
+                  </li>
+                ) : null}
                 {openSorted.map((t) => (
                   <TaskRow key={String(t.id)} t={t} late={isOverdue(t.deadline, t.status)} />
                 ))}
@@ -404,7 +479,7 @@ export function MyWorkPage() {
                     <li key={row.id} className="row-item">
                       <div className="row-main">
                         <span className="row-title">
-                          {projectId ? <Link to={`/projects/${projectId}`}>{title}</Link> : title}
+                          {projectId && showProjectLink ? <Link to={`/projects/${projectId}`}>{title}</Link> : title}
                         </span>
                         <WorkParentContext
                           kind={isProject ? "project" : "task"}
@@ -471,6 +546,60 @@ export function MyWorkPage() {
           </Card>
         </aside>
       </div>
+
+      <Sheet
+        open={Boolean(detailTaskId)}
+        onClose={closeTask}
+        title={taskDetail.data?.title ? String(taskDetail.data.title) : bi("Task details", "جزئیات کار")}
+        footer={
+          detailTaskId && taskDetail.data && canFinishTask(taskDetail.data, user?.id) ? (
+            <Button
+              onClick={() =>
+                void complete(String(detailTaskId)).then(() => closeTask())
+              }
+            >
+              <Bi en="Mark done" fa="انجام شد" />
+            </Button>
+          ) : undefined
+        }
+      >
+        {taskDetail.isLoading ? (
+          <LoadingState block={false} />
+        ) : taskDetail.error ? (
+          <ErrorMessage error={taskDetail.error} />
+        ) : taskDetail.data ? (
+          <div className="stack">
+            {taskDetail.data.description ? (
+              <p>{String(taskDetail.data.description)}</p>
+            ) : (
+              <Muted>
+                <Bi en="No extra notes on this task." fa="یادداشت اضافه‌ای برای این کار نیست." />
+              </Muted>
+            )}
+            {formatDeadline(taskDetail.data.deadline, bi, locale) ? (
+              <p className="row-meta">
+                <Icon name="clock" size={12} />
+                {formatDeadline(taskDetail.data.deadline, bi, locale)}
+              </p>
+            ) : null}
+            <WorkParentContext
+              kind="task"
+              {...parentLookups.resolve({
+                project_id: taskDetail.data.project_id as string | null,
+                request_id: taskDetail.data.request_id as string | null,
+              })}
+            />
+            {(taskDetail.data.assignee_ids as string[] | undefined)?.length ? (
+              <p className="row-meta">
+                <Bi en="Assignees" fa="مسئول‌ها" />:{" "}
+                {(taskDetail.data.assignee_ids as string[])
+                  .map((id) => nameById.get(id) || id)
+                  .join("، ")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </Sheet>
     </>
   );
 }

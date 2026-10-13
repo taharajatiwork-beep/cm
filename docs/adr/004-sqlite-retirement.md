@@ -9,11 +9,11 @@ CI و تولید روی Postgres بودند؛ dev و pytest هنوز `sqlite+aio
 
 ## تصمیم
 
-Postgres اجباری است برای API، pytest، e2e، synthetic و loadtest.
+Postgres اجباری است برای API، pytest، e2e و loadtest.
 
 - پیش‌فرض `DATABASE_URL`: `postgresql+asyncpg://cm:cm@localhost:5432/cm`
 - تست‌ها: `cm_test` (دموی `autoco` روی `cm` پاک نمی‌شود)
-- e2e: `cm_e2e` — synthetic: `cm_synthetic`
+- e2e: `cm_e2e`
 
 خواندن فایل‌های dump قدیمی (مثل import تاریخچهٔ کمپین از `.db` خارجی) جدا است و دیتابیس اپ نیست.
 

@@ -7,8 +7,6 @@
 - **گزارش کار:** `GET /reports/work` با اسکوپ `self` — فقط درخواست‌ها و پروژه‌های مرتبط با خودش.
 - **قیمت و پست‌ها:** منوی «قیمت و پست‌ها» برای مدیر و نقش‌های مارکتینگ (نه مالی خالص).
 
-ارزیابی UX با کاربر مصنوعی (Playwright): [`synthetic-users-goals.md`](synthetic-users-goals.md).
-
 ## فید خانه (`/`)
 
 منطق در `frontend/src/lib/focus.ts` و `HomePage.tsx`:

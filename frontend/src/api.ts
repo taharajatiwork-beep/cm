@@ -410,6 +410,7 @@ export const api = {
       const q = sp.toString();
       return request<Array<Record<string, unknown>>>(`/tasks${q ? `?${q}` : ""}`);
     },
+    get: (id: string) => request<Record<string, unknown>>(`/tasks/${id}`),
     complete: (id: string) =>
       request<Record<string, unknown>>(`/tasks/${id}/complete`, { method: "POST" }),
     create: (body: Record<string, unknown>) =>

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { DateText } from "../components/DateText";
 import { useConfirm } from "../components/ui/ConfirmDialog";
@@ -10,6 +10,8 @@ import {
   Card,
   EmptyState,
   ErrorMessage,
+  ForbiddenState,
+  LoadingState,
   Field,
   Icon,
   Input,
@@ -48,7 +50,10 @@ export function CustomersPage() {
     getNextPageParam: (last) => nextCursor(last),
   });
   const rows = listQuery.data?.pages.flatMap((page) => page.items) ?? [];
-  const listError = listQuery.isError ? String((listQuery.error as Error).message) : "";
+  const listForbidden = listQuery.isError && listQuery.error instanceof ApiError && listQuery.error.status === 403;
+  const listError =
+    listQuery.isError && !listForbidden ? String((listQuery.error as Error).message) : "";
+  const canAddCustomer = has("customer.write") || has("org.admin");
 
   const createMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.customers.create(body),
@@ -100,8 +105,12 @@ export function CustomersPage() {
         }
       />
       <SheetsSyncCard />
-      <ErrorMessage error={error || listError} />
-
+      <ErrorMessage error={error} />
+      {listForbidden ? (
+        <ForbiddenState />
+      ) : listQuery.isLoading ? (
+        <LoadingState />
+      ) : (
       <div className="split">
         <Card padded={false}>
           <div className="card-bar">
@@ -150,18 +159,24 @@ export function CustomersPage() {
               },
             ]}
             empty={
+              listError ? (
+                <ErrorMessage error={listError} />
+              ) : (
               <EmptyState
                 titleEn="No customers yet"
                 titleFa="هنوز مشتری‌ای نیست"
                 bodyEn="Add a buyer or seller to get started."
                 bodyFa="یک خریدار یا فروشنده اضافه کنید."
                 action={
-                  <Button variant="secondary" onClick={() => setShowAdd(true)}>
-                    <Icon name="plus" size={14} />
-                    <Bi en="Add customer" fa="افزودن مشتری" />
-                  </Button>
+                  canAddCustomer ? (
+                    <Button variant="secondary" onClick={() => setShowAdd(true)}>
+                      <Icon name="plus" size={14} />
+                      <Bi en="Add customer" fa="افزودن مشتری" />
+                    </Button>
+                  ) : undefined
                 }
               />
+              )
             }
           />
         </Card>
@@ -270,6 +285,7 @@ export function CustomersPage() {
           </Card>
         </aside>
       </div>
+      )}
 
       <Sheet
         open={showAdd}

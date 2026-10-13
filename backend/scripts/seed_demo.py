@@ -417,13 +417,6 @@ async def _ensure_org(db) -> dict:
         department_id=ops_dept.id,
         manager_id=ali.id,
     )
-    maryam = await get_or_create_user(
-        "maryam@autoco.example",
-        "مریم مدیر شعبه مشهد",
-        manager_role.id,
-        branch_id=mashhad.id,
-        department_id=sales_dept.id,
-    )
     viewer = await get_or_create_user(
         "viewer@autoco.example",
         "بازدیدکننده محدود",
@@ -593,13 +586,12 @@ async def _ensure_org(db) -> dict:
     # نگاشت صریح کاربران فعلی. ادمین و بازدیدکننده دست نمی‌خورند.
     # (قالب، تیم، بخش، شعبه یا None یعنی شعبهٔ فعلی بماند، قابلیت‌ها)
     assignment = {
-        "ali@autoco.example": ("requester", "SALES_T", sales_dept.id, branch.id, []),
+        "ali@autoco.example": ("requester", "SALES_T", sales_dept.id, branch.id, ["task.read"]),
         "reza@autoco.example": ("seller", "SALES_T", sales_dept.id, branch.id, []),
         "sara@autoco.example": ("marketing", "MKT_T", mkt_dept.id, branch.id, []),
         "mina@autoco.example": ("marketing_manager", "MKT_T", mkt_dept.id, branch.id, []),
         "finance@autoco.example": ("finance", "FIN_T", fin_dept.id, branch.id, []),
-        "maryam@autoco.example": ("requester", None, sales_dept.id, mashhad.id, []),
-        "nima@autoco.example": ("member", None, ops_dept.id, branch.id, []),
+        "nima@autoco.example": ("member", None, ops_dept.id, branch.id, ["request.create"]),
         "nadia@autoco.example": ("performance_marketing", "MKT_PERF", mkt_dept.id, branch.id, []),
         "leila@autoco.example": ("designer", "MKT_DESIGN", mkt_dept.id, branch.id, []),
         "kamran@autoco.example": ("filmmaker", "MKT_FILM", mkt_dept.id, branch.id, []),
@@ -652,7 +644,6 @@ async def _ensure_org(db) -> dict:
         "reza": reza,
         "sara": sara,
         "nima": nima,
-        "maryam": maryam,
         "viewer": viewer,
         "finance": finance,
         "mina": mina,
@@ -1280,7 +1271,6 @@ async def _cover_operations(
     reza,
     sara,
     nima,
-    maryam,
     viewer,
     branch,
     now,
@@ -1289,7 +1279,6 @@ async def _cover_operations(
     inv,
     kb,
     elantra,
-    case_mashhad,
     t_done,
     **_unused,
 ) -> None:
@@ -1386,9 +1375,6 @@ async def _cover_operations(
     )
     opportunity.sla_state = SlaState.BREACHED
 
-    case_mashhad.deadline = now - timedelta(days=1)
-    case_mashhad.sla_state = SlaState.BREACHED
-
     if t_done.completed_at:
         t_done.completed_at = now - timedelta(days=3)
         t_done.created_at = now - timedelta(days=5)
@@ -1404,19 +1390,6 @@ async def _cover_operations(
         },
         approver_ids=[ali.id],
     )
-    if maryam is not None:
-        await EnterpriseService(db).request_approval(
-            organization_id=org.id,
-            requester_id=maryam.id,
-            kind="transfer",
-            title="انتقال پژو ۲۰۷ قرمز به شعبهٔ مشهد",
-            payload={
-                "stock_number": "307",
-                "reason": "مشتری شعبهٔ مشهد آمادهٔ تحویل است و خودرو باید از تهران منتقل شود.",
-            },
-            approver_ids=[ali.id],
-        )
-
     from app.models.knowledge import DocumentCategory
 
     await kb.upload(
@@ -1471,7 +1444,7 @@ async def _cover_operations(
             user_id=reza.id,
             provider="telegram",
             event_type="task.assigned",
-            text="بررسی انتقال پژو ۲۰۷ به مشهد به شما سپرده شد.",
+            text="پیگیری رزرو پژو ۲۰۷ به شما سپرده شد.",
             entity_type="task",
             status="failed",
             last_error="پیام به تلگرام نرسید، چون حساب رضا هنوز به ربات وصل نشده است.",
@@ -1684,9 +1657,8 @@ async def _unify_conversations(db, ctx) -> str:
 
     ali, reza, sara = ctx["ali"], ctx["reza"], ctx["sara"]
     mina, nadia = ctx["mina"], ctx["nadia"]
-    maryam, nima, finance = ctx["maryam"], ctx["nima"], ctx["finance"]
+    nima, finance = ctx["nima"], ctx["finance"]
     await attach("هماهنگی فروش تویوتا کمری ۱۲۴", "PRJ-124-V", "REQ-124", (ali, reza, sara))
-    await attach("درخواست انتقال پژو ۲۰۷ به مشهد", "PRJ-MHD", "REQ-MHD", (ali, reza, maryam, nima))
     await attach("هماهنگی آگهی هیوندای توسان", "PRJ-TUC", "REQ-TUC", (sara, mina))
     await attach("درخواست استوری تیگو ۸", "PRJ-PERF", "REQ-BAHMAN", (mina, nadia), campaign)
     nowruz = await db.scalar(
@@ -1752,12 +1724,6 @@ async def _unify_conversations(db, ctx) -> str:
         "REQ-210",
         (reza, ali),
         [(reza, "مشخصات النترا برای فاطمه رضایی ارسال شد. برای تست‌درایو هنوز وقتی نگرفته است.")],
-    )
-    await say(
-        "PRJ-MHD-IN",
-        "REQ-MHD-IN",
-        (maryam, nima),
-        [(maryam, "اگر تهران انتقال ۲۰۷ را تأیید کرد، جای پارک و تحویل در مشهد را هماهنگ می‌کنم.")],
     )
     await say(
         "PRJ-DSGN",
@@ -1837,7 +1803,6 @@ async def _ensure_work_spine(db, ctx) -> str:
     sara = ctx["sara"]
     mina = ctx["mina"]
     nadia = ctx["nadia"]
-    maryam = ctx["maryam"]
     nima = ctx["nima"]
     finance = ctx["finance"]
     leila = await db.scalar(select(User).where(User.email == "leila@autoco.example"))
@@ -2048,78 +2013,6 @@ async def _ensure_work_spine(db, ctx) -> str:
         item=work_item("النترا"),
     )
 
-    mashhad = await request(
-        "REQ-MHD",
-        "انتقال پژو ۲۰۷ قرمز به شعبهٔ مشهد",
-        "انتقال بین شعبه",
-        "in_review",
-        ali,
-        sales,
-        "مشهد مشتری حاضر دارد. موجودی در تهران است و مهلت بررسی گذشته.",
-        days=2,
-    )
-    move = await project(
-        "PRJ-MHD",
-        "امکان‌سنجی انتقال ۲۰۷",
-        "عملیات",
-        mashhad,
-        sales,
-        nima,
-        [nima, reza, maryam, ali],
-        "موجودی، مدارک خروج و آمادگی مشهد برای دریافت خودرو.",
-        days=2,
-    )
-    await task(
-        "بررسی و تأیید امکان انتقال به مشهد",
-        ali,
-        move,
-        mashhad,
-        now - timedelta(hours=6),
-        assignee=reza,
-        priority=Priority.URGENT,
-        item=work_item("۲۰۷"),
-        description="مهلت این بررسی گذشته است. موجودی و قول فروش تهران را چک کنید.",
-    )
-    await task(
-        "آماده‌سازی مدارک خروج از انبار تهران",
-        nima,
-        move,
-        mashhad,
-        now + timedelta(days=1),
-        priority=Priority.HIGH,
-        item=work_item("۲۰۷"),
-    )
-    receive_req = await request(
-        "REQ-MHD-IN",
-        "دریافت پژو ۲۰۷ در شعبهٔ مشهد",
-        "انتقال بین شعبه",
-        "in_review",
-        maryam,
-        sales,
-        "اگر تهران انتقال را تأیید کرد، مشهد باید تحویل را هماهنگ کند.",
-        days=4,
-    )
-    receive = await project(
-        "PRJ-MHD-IN",
-        "تحویل در شعبهٔ مشهد",
-        "فروش",
-        receive_req,
-        sales,
-        maryam,
-        [maryam, nima],
-        "جای پارک و زمان تحویل به مشتری مشهد.",
-        days=4,
-    )
-    await task(
-        "هماهنگی دریافت خودرو در شعبهٔ مشهد",
-        maryam,
-        receive,
-        receive_req,
-        now + timedelta(days=3),
-        item=work_item("۲۰۷"),
-        description="اگر انتقال تأیید شد، جای پارک و تحویل به مشتری مشهد را هماهنگ کنید.",
-    )
-
     ads = await request(
         "REQ-BAHMAN",
         "کمپین فروش بهمن، شعب مرزداران و کاشانی",
@@ -2312,7 +2205,6 @@ async def seed(*, reset: bool = False) -> dict:
         ctx = await _ensure_org(db)
         org = ctx["org"]
         ali, reza, sara = ctx["ali"], ctx["reza"], ctx["sara"]
-        maryam = ctx["maryam"]
         branch, mashhad = ctx["branch"], ctx["mashhad"]
         mkt_team = ctx["mkt_team"]
 
@@ -2621,33 +2513,22 @@ async def seed(*, reset: bool = False) -> dict:
         # —— Overdue task for demo ——
         wi_old = await work.create_work_item(
             organization_id=org.id,
-            title="پاسخ به درخواست انتقال پژو ۲۰۷ به مشهد",
+            title="پیگیری رزرو پژو ۲۰۷ قرمز",
             owner_id=ali.id,
             priority=Priority.URGENT,
-            branch_id=mashhad.id if mashhad else branch.id,
+            branch_id=branch.id,
             vehicle_id=peugeot.id,
-            participant_ids=[reza.id, maryam.id] if maryam else [reza.id],
+            participant_ids=[reza.id, ali.id],
         )
         await work.create_task(
             organization_id=org.id,
-            title="بررسی و تأیید امکان انتقال به مشهد",
+            title="تماس با مشتری رزرو پژو ۲۰۷",
             owner_id=ali.id,
             work_item_id=wi_old.id,
             assignee_ids=[reza.id],
             deadline=now - timedelta(hours=6),  # overdue
             priority=Priority.URGENT,
             actor_permissions=perms,
-        )
-        case_mashhad = await work.create_case(
-            organization_id=org.id,
-            subject="درخواست شعبهٔ مشهد برای انتقال پژو ۲۰۷ قرمز",
-            case_type=CaseType.BRANCH_REQUEST,
-            created_by=maryam.id if maryam else ali.id,
-            work_item_id=wi_old.id,
-            owner_id=reza.id,
-            priority=Priority.HIGH,
-            branch_id=mashhad.id if mashhad else branch.id,
-            vehicle_id=peugeot.id,
         )
 
         # —— Marketing-only listing work ——
@@ -2711,17 +2592,17 @@ async def seed(*, reset: bool = False) -> dict:
         conv2 = await comm.create_conversation(
             organization_id=org.id,
             channel=Channel.WEB,
-            participant_ids=[ali.id, maryam.id] if maryam else [ali.id, reza.id],
-            topic="درخواست انتقال پژو ۲۰۷ به مشهد",
+            participant_ids=[ali.id, reza.id],
+            topic="پیگیری رزرو پژو ۲۰۷",
             work_item_id=wi_old.id,
             vehicle_id=peugeot.id,
-            actor_id=maryam.id if maryam else ali.id,
+            actor_id=ali.id,
         )
         await comm.post_message(
             organization_id=org.id,
             conversation_id=conv2.id,
-            sender_id=maryam.id if maryam else ali.id,
-            text="شعبهٔ مشهد برای این پژو ۲۰۷ قرمز مشتری دارد. لطفاً امکان انتقال خودرو را بررسی کنید.",
+            sender_id=ali.id,
+            text="رضا، امروز با مشتری رزرو پژو ۲۰۷ تماس بگیر و وضعیت قطعی را مشخص کن.",
             channel=Channel.WEB,
         )
 
@@ -2753,10 +2634,8 @@ async def seed(*, reset: bool = False) -> dict:
             reza=reza,
             sara=sara,
             nima=ctx["nima"],
-            maryam=maryam,
             viewer=ctx["viewer"],
             branch=branch,
-            mashhad=mashhad,
             now=now,
             perms=perms,
             work=work,
@@ -2769,7 +2648,6 @@ async def seed(*, reset: bool = False) -> dict:
             tucson=tucson,
             c1=c1,
             c2=c2,
-            case_mashhad=case_mashhad,
             t_done=t_done,
         )
 
@@ -2778,8 +2656,8 @@ async def seed(*, reset: bool = False) -> dict:
             db,
             organization_id=org.id,
             user_id=ali.id,
-            title="انتقال پژو ۲۰۷ به مشهد هنوز باز است",
-            body="مهلت بررسی انتقال گذشته است. لطفاً امروز دربارهٔ امکان انتقال تصمیم بگیرید.",
+            title="پیگیری رزرو پژو ۲۰۷ هنوز باز است",
+            body="مهلت تماس با مشتری گذشته است. لطفاً امروز وضعیت رزرو را مشخص کنید.",
             entity_type="work_item",
             entity_id=wi_old.id,
         )
@@ -2833,7 +2711,6 @@ def _demo_logins() -> dict:
         "designer": "leila@autoco.example / password",
         "filmmaker": "kamran@autoco.example / password",
         "reporter": "reporter@autoco.example / password",
-        "mashhad": "maryam@autoco.example / password",
     }
 
 

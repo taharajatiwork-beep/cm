@@ -63,13 +63,18 @@ export function HomePage() {
           has("request.create") && !has("request.triage") && !has("request.manage") && !has("task.read");
         const canSeeProjects =
           has("request.create") || has("request.triage") || has("request.manage") || has("task.read");
+        let loadPartial = false;
+        const fail = () => {
+          loadPartial = true;
+          return [] as never[];
+        };
         const [myTasks, projects, camps, conversations] = await Promise.all([
           user?.id && has("task.read")
-            ? api.tasks.list({ assignee_id: user.id }).catch(() => [])
+            ? api.tasks.list({ assignee_id: user.id }).catch(fail)
             : Promise.resolve([]),
-          canSeeProjects ? requestsApi.projects().catch(() => []) : Promise.resolve([]),
-          !isRequester && has("campaign.read") ? api.campaigns.list().catch(() => []) : Promise.resolve([]),
-          api.conversations.list().catch(() => []),
+          canSeeProjects ? requestsApi.projects().catch(fail) : Promise.resolve([]),
+          !isRequester && has("campaign.read") ? api.campaigns.list().catch(fail) : Promise.resolve([]),
+          api.conversations.list().catch(fail),
         ]);
         const openMine = myTasks.filter((t) => t.status !== "COMPLETED");
         const projectById = new Map(projects.map((p) => [String(p.id), p]));
@@ -167,12 +172,13 @@ export function HomePage() {
 
         const waitingReply = conversations.filter((c) => Boolean(c.needs_reply)).length;
 
-        return { stories: ranked.slice(0, 8), roleHintLine, waitingReply };
+        return { stories: ranked.slice(0, 8), roleHintLine, waitingReply, loadPartial };
     },
   });
   const stories = inbox.data?.stories ?? [];
   const roleHintLine = inbox.data?.roleHintLine ?? "";
   const waitingReply = inbox.data?.waitingReply ?? 0;
+  const loadPartial = inbox.data?.loadPartial ?? false;
   const pricing = useQuery({
     queryKey: ["pricing-board", "home"],
     queryFn: () => api.pricing.board(),
@@ -258,6 +264,14 @@ export function HomePage() {
       )}
 
       <ErrorMessage error={error} />
+      {!loading && loadPartial ? (
+        <p className="banner banner-warn">
+          <Bi en="Some data could not be loaded." fa="بخشی از داده بارگذاری نشد." />
+          <Button type="button" variant="ghost" className="btn-sm" onClick={() => void inbox.refetch()}>
+            <Bi en="Try again" fa="تلاش دوباره" />
+          </Button>
+        </p>
+      ) : null}
 
       {!loading && (
         <Card className={`next-step${next ? "" : " is-clear"}`}>
@@ -269,14 +283,20 @@ export function HomePage() {
               <Bi en="Your next step" fa="قدم بعدی شما" />
             </span>
             <strong>
-              {next ? next.title : bi("Nothing urgent — you’re all caught up.", "کار فوری ندارید — همه‌چیز مرتب است.")}
+              {next
+                ? next.title
+                : loadPartial
+                  ? bi("We could not confirm your full queue.", "نمی‌توانیم همهٔ صف را تأیید کنیم.")
+                  : bi("Nothing urgent — you’re all caught up.", "کار فوری ندارید — همه‌چیز مرتب است.")}
             </strong>
             <span className="muted">
               {next
                 ? next.tone === "danger"
                   ? bi("This is late. Start here.", "این کار دیر شده؛ از همین شروع کنید.")
                   : bi("This is the most important item right now.", "مهم‌ترین مورد همین الان.")
-                : bi("The next useful page is ready. Nothing else is waiting.", "صفحهٔ بعدی آماده است. چیز دیگری منتظر شما نیست.")}
+                : loadPartial
+                  ? bi("Retry loading or open My Work directly.", "دوباره بارگذاری کنید یا مستقیم به کارهای من بروید.")
+                  : bi("The next useful page is ready. Nothing else is waiting.", "صفحهٔ بعدی آماده است. چیز دیگری منتظر شما نیست.")}
             </span>
           </div>
           <Button to={next ? next.href : clearTarget}>

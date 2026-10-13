@@ -14,7 +14,7 @@ import {
   Badge,
   Button,
   Card,
-  EmptyState,
+  ForbiddenState,
   Field,
   Input,
   QueryState,
@@ -223,11 +223,11 @@ export function CalendarPage() {
 
   if (!allowed) {
     return (
-      <EmptyState
-        titleEn="Calendar is for the site admin"
-        titleFa="تقویم فقط برای ادمین سایت است"
-        bodyEn="Your work still shows up on My Work and in reports."
-        bodyFa="کارهای خودتان در «کارهای من» و گزارش‌ها دیده می‌شود."
+      <ForbiddenState
+        titleEn="Calendar isn’t available for your role"
+        titleFa="تقویم برای نقش شما فعال نیست"
+        bodyEn="Content planning is for managers and marketing leads. Your own tasks stay on My Work."
+        bodyFa="برنامهٔ محتوا برای مدیر و سرپرست مارکتینگ است. کارهای خودتان در «کارهای من» می‌ماند."
       />
     );
   }

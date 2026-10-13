@@ -4,6 +4,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
+from app.models import Task
+from app.models.enums import TaskStatus
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_current_user, handle_authz
@@ -56,8 +58,10 @@ def _project_out(
     request_code: str = "",
     request_title: str = "",
     team_name: str = "",
+    task_total: int | None = None,
+    task_done: int | None = None,
 ) -> dict:
-    return {
+    out = {
         "id": str(row.id),
         "code": row.code,
         "title": row.title,
@@ -72,9 +76,66 @@ def _project_out(
         "due_date": iso(row.due_date),
         "planned_budget": row.planned_budget,
         "lead_user_id": str(row.lead_user_id) if row.lead_user_id else None,
+        "requester_acceptance": row.requester_acceptance,
         "created_at": iso(row.created_at),
         "updated_at": iso(row.updated_at),
     }
+    if task_total is not None:
+        out["task_total"] = task_total
+        out["task_done"] = task_done or 0
+    return out
+
+
+async def _task_counts_for_projects(db: AsyncSession, organization_id: UUID, project_ids: set[UUID]) -> dict[UUID, tuple[int, int]]:
+    if not project_ids:
+        return {}
+    rows = (
+        await db.scalars(
+            select(Task).where(
+                Task.organization_id == organization_id,
+                Task.project_id.in_(project_ids),
+            )
+        )
+    ).all()
+    counts: dict[UUID, tuple[int, int]] = {}
+    for task in rows:
+        if not task.project_id or task.status == TaskStatus.CANCELLED:
+            continue
+        total, done = counts.get(task.project_id, (0, 0))
+        total += 1
+        if task.status == TaskStatus.COMPLETED:
+            done += 1
+        counts[task.project_id] = (total, done)
+    return counts
+
+
+async def _ensure_request_visible(db: AsyncSession, ctx: AuthContext, request_id: UUID) -> WorkRequest:
+    row = await db.get(WorkRequest, request_id)
+    if not row or row.organization_id != ctx.organization_id:
+        raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
+    if _is_requester_only(ctx):
+        if row.requested_by != ctx.user.id:
+            raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
+        return row
+    if _is_triage(ctx):
+        if ctx.user.team_id and PermissionCode.ORG_ADMIN not in ctx.permissions:
+            tree = await _tree_ids(db, ctx)
+            if tree is not None and row.team_id and row.team_id not in tree:
+                raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
+        return row
+    if PermissionCode.TASK_READ in ctx.permissions:
+        visible = await _member_project_ids(db, ctx)
+        if visible:
+            linked = await db.scalar(
+                select(WorkProject.id).where(
+                    WorkProject.request_id == request_id,
+                    WorkProject.id.in_(visible),
+                )
+            )
+            if linked:
+                return row
+        raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
+    raise HTTPException(status_code=403, detail="دسترسی نیست")
 
 
 def iso(value: date | datetime | None) -> str | None:
@@ -291,6 +352,70 @@ async def patch_request(
     return _request_out(row)
 
 
+@router.get("/{request_id}")
+async def get_request(
+    request_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """جزئیات یک درخواست با پروژه‌ها و کارهای مستقیم."""
+    _need(
+        ctx,
+        PermissionCode.REQUEST_CREATE,
+        PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
+        PermissionCode.TASK_READ,
+        PermissionCode.ORG_ADMIN,
+    )
+    row = await _ensure_request_visible(db, ctx, request_id)
+    requester_name = ""
+    if row.requested_by:
+        user = await db.get(User, row.requested_by)
+        requester_name = user.full_name if user else ""
+    team_name = ""
+    if row.team_id:
+        team = await db.get(Team, row.team_id)
+        team_name = team.name if team else ""
+    projects = list(
+        (await db.scalars(select(WorkProject).where(WorkProject.request_id == request_id))).all()
+    )
+    task_counts = await _task_counts_for_projects(db, ctx.organization_id, {p.id for p in projects})
+    teams: dict[UUID, str] = {}
+    team_ids = {p.team_id for p in projects if p.team_id}
+    if team_ids:
+        for team in (await db.scalars(select(Team).where(Team.id.in_(team_ids)))).all():
+            teams[team.id] = team.name
+    from app.requests.spine import build_spine_timeline, tasks_for
+
+    direct_tasks = await tasks_for(db, ctx.organization_id, request_id=request_id)
+    spine = await build_spine_timeline(db, ctx.organization_id, request_id=request_id)
+    return {
+        "request": _request_out(row, requester_name, team_name),
+        "projects": [
+            _project_out(
+                project,
+                request_code=row.code,
+                request_title=row.title,
+                team_name=teams.get(project.team_id, "") if project.team_id else "",
+                task_total=task_counts.get(project.id, (0, 0))[0],
+                task_done=task_counts.get(project.id, (0, 0))[1],
+            )
+            for project in projects
+        ],
+        "tasks": [
+            {
+                "id": str(task.id),
+                "title": task.title,
+                "status": task.status.value if hasattr(task.status, "value") else str(task.status),
+                "project_id": str(task.project_id) if task.project_id else None,
+            }
+            for task in direct_tasks
+            if not task.project_id
+        ],
+        "spine": spine,
+    }
+
+
 @router.get("/{request_id}/spine")
 async def request_spine(
     request_id: UUID,
@@ -306,16 +431,13 @@ async def request_spine(
         PermissionCode.TASK_READ,
         PermissionCode.ORG_ADMIN,
     )
-    row = await db.get(WorkRequest, request_id)
-    if not row or row.organization_id != ctx.organization_id:
-        raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
-    if _is_requester_only(ctx) and row.requested_by != ctx.user.id:
-        raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
-    if not _is_triage(ctx) and not _is_requester_only(ctx):
-        raise HTTPException(status_code=403, detail="دسترسی نیست")
+    await _ensure_request_visible(db, ctx, request_id)
     from app.requests.spine import build_spine_timeline
 
-    return {"request_id": str(request_id), "items": await build_spine_timeline(db, ctx.organization_id, request_id=request_id)}
+    return {
+        "request_id": str(request_id),
+        "items": await build_spine_timeline(db, ctx.organization_id, request_id=request_id),
+    }
 
 
 @router.delete("/{request_id}", status_code=204)
@@ -429,6 +551,7 @@ async def list_projects(
         if tree is not None:
             query = query.where(WorkProject.team_id.in_(tree))
     rows = (await db.scalars(query.order_by(WorkProject.created_at.desc()))).all()
+    task_counts = await _task_counts_for_projects(db, ctx.organization_id, {row.id for row in rows})
     req_meta: dict[UUID, tuple[str, str]] = {}
     req_ids = {row.request_id for row in rows if row.request_id}
     if req_ids:
@@ -445,6 +568,8 @@ async def list_projects(
             request_code=req_meta.get(row.request_id, ("", ""))[0] if row.request_id else "",
             request_title=req_meta.get(row.request_id, ("", ""))[1] if row.request_id else "",
             team_name=teams.get(row.team_id, "") if row.team_id else "",
+            task_total=task_counts.get(row.id, (0, 0))[0],
+            task_done=task_counts.get(row.id, (0, 0))[1],
         )
         for row in rows
     ]
@@ -1142,10 +1267,42 @@ async def project_acceptance(
     decision = str(body.get("decision") or "").strip()
     if decision not in ("accepted", "returned"):
         raise HTTPException(status_code=422, detail="تصمیم باید accepted یا returned باشد")
-    row.requester_acceptance = decision
-    row.requester_acceptance_note = str(body.get("note") or "").strip()
-    row.updated_at = now()
-    await db.flush()
+    note = str(body.get("note") or "").strip()
+    if decision == "returned" and not note:
+        raise HTTPException(status_code=422, detail="برای برگشت، یادداشت لازم است")
+    if decision == "returned":
+        row.status = "in_progress"
+        row.requester_acceptance = None
+        row.requester_acceptance_note = note
+        row.updated_at = now()
+        await db.flush()
+        from app.requests.spine import ensure_thread, system_message
+        from app.services import notify
+
+        thread = await ensure_thread(
+            db,
+            organization_id=ctx.organization_id,
+            actor_id=ctx.user.id,
+            project_id=row.id,
+            request_id=row.request_id,
+            topic=row.title,
+        )
+        await system_message(db, thread, f"درخواست‌دهنده تحویل را برگرداند: {note}")
+        if row.lead_user_id:
+            await notify(
+                db,
+                organization_id=ctx.organization_id,
+                user_id=row.lead_user_id,
+                title="تحویل پروژه برگشت خورد",
+                body=note,
+                entity_type="project",
+                entity_id=row.id,
+            )
+    else:
+        row.requester_acceptance = decision
+        row.requester_acceptance_note = note
+        row.updated_at = now()
+        await db.flush()
     return {"ok": True, "requester_acceptance": row.requester_acceptance, "note": row.requester_acceptance_note}
 
 

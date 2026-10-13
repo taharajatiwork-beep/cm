@@ -140,6 +140,8 @@ export function ReportsPage() {
       {work.data ? (
         <WorkDetail
           data={work.data}
+          requestId={requestId}
+          projectId={projectId}
           focused={Boolean(projectId || requestId)}
           onBack={() => {
             const next = new URLSearchParams(params);
@@ -303,7 +305,13 @@ function CampaignBoard({
         <Input value={query} onChange={(event) => setQuery(event.target.value)} />
       </Field>
       {shown.length === 0 ? (
-        <Muted as="p"><Bi en="No campaign matches." fa="کمپینی با این عبارت نیست." /></Muted>
+        <Muted as="p">
+          {needle ? (
+            <Bi en="No campaign matches." fa="کمپینی با این عبارت نیست." />
+          ) : (
+            <Bi en="No campaigns in this range." fa="کمپینی در این محدوده نیست." />
+          )}
+        </Muted>
       ) : (
         <div className="report-board">
           {shown.map((row: CampaignLine) => {
@@ -344,13 +352,28 @@ function asRequests(data: Record<string, unknown>): RequestLine[] {
 function WorkDetail({
   data,
   focused,
+  requestId,
+  projectId,
   onBack,
 }: {
   data: Record<string, unknown>;
   focused: boolean;
+  requestId: string;
+  projectId: string;
   onBack: () => void;
 }) {
-  const rows = asRequests(data);
+  let rows = asRequests(data);
+  if (requestId) {
+    rows = rows.filter((row) => row.id === requestId);
+  }
+  if (projectId) {
+    rows = rows
+      .map((row) => ({
+        ...row,
+        projects: row.projects.filter((project) => project.id === projectId),
+      }))
+      .filter((row) => row.projects.length > 0);
+  }
   if (rows.length === 0) {
     return <Muted as="p"><Bi en="Nothing in this range." fa="در این محدوده درخواستی نیست." /></Muted>;
   }

@@ -145,7 +145,7 @@ export function ConnectionsPage() {
     <>
       <PageHeader
         title={<Bi en="My connections" fa="اتصالات من" />}
-        description={<Bi en="Opening this page does not call any service. Press Check now for a live check; it only reads sheet titles, the Mizito project list and panel balances. It does not write rows." fa="باز کردن این صفحه به هیچ سرویسی وصل نمی‌شود. بررسی زنده فقط با «بررسی همین حالا» انجام می‌شود و فقط عنوان شیت‌ها، فهرست پروژهٔ میزیتو و موجودی پنل‌ها را می‌خواند؛ ردیفی نمی‌نویسد." />}
+        description={<Bi en="Saved links and a live check when you press the button." fa="لینک‌های ذخیره‌شده و بررسی زنده با دکمهٔ «بررسی همین حالا»." />}
         actions={
           <Button
             type="button"

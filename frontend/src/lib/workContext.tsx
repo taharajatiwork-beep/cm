@@ -1,8 +1,10 @@
 import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "../auth";
 import { Badge } from "../components/ui";
 import { Bi, useBi } from "../i18n";
+import { canSeeProjects } from "./access";
 import { requestsApi, type WorkProject, type WorkRequest } from "../requests/api";
 
 export type WorkListKind = "task" | "project" | "request" | "price" | "ai" | "legacy_work";
@@ -69,6 +71,11 @@ export function WorkParentContext({
   requestTitle,
 }: WorkParentFields) {
   const bi = useBi();
+  const { user, has } = useAuth();
+  const showProjectLink = canSeeProjects(
+    { roleCode: user?.roleCode, permissions: user?.permissions ?? [] },
+    has,
+  );
   const listKind: WorkListKind | null =
     kind === "project"
       ? "project"
@@ -87,7 +94,7 @@ export function WorkParentContext({
     parts.push(
       <span key="req">
         <Bi en="Under request" fa="زیر درخواست" />{" "}
-        <Link to={`/requests`} className="work-parent-link">
+        <Link to={`/requests/${requestId}`} className="work-parent-link">
           <span dir="ltr">{requestCode}</span>
           {requestTitle ? <> — {requestTitle}</> : null}
         </Link>
@@ -98,10 +105,17 @@ export function WorkParentContext({
     parts.push(
       <span key="prj">
         <Bi en="In project" fa="در پروژه" />{" "}
-        <Link to={`/projects/${projectId}`} className="work-parent-link">
-          <span dir="ltr">{projectCode}</span>
-          {projectTitle ? <> — {projectTitle}</> : null}
-        </Link>
+        {showProjectLink ? (
+          <Link to={`/projects/${projectId}`} className="work-parent-link">
+            <span dir="ltr">{projectCode}</span>
+            {projectTitle ? <> — {projectTitle}</> : null}
+          </Link>
+        ) : (
+          <span className="work-parent-link">
+            <span dir="ltr">{projectCode}</span>
+            {projectTitle ? <> — {projectTitle}</> : null}
+          </span>
+        )}
       </span>,
     );
   }
@@ -165,7 +179,7 @@ export function ProjectParentRequestLine({
       {requestCode || requestTitle ? (
         <span>
           <Bi en="Part of request" fa="زیرمجموعهٔ درخواست" />{" "}
-          <Link to="/requests" className="work-parent-link">
+          <Link to={requestId ? `/requests/${requestId}` : "/requests"} className="work-parent-link">
             <span dir="ltr">{requestCode}</span>
             {requestTitle ? <> — {requestTitle}</> : null}
           </Link>

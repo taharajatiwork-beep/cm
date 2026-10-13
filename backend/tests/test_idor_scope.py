@@ -332,11 +332,11 @@ class TestInventoryWrite:
 class TestReportsScope:
     @pytest.mark.asyncio
     async def test_requester_cannot_focus_foreign_project_report(self, client, seeded, org1_headers):
-        other = auth(await login(client, "maryam@autoco.example"))
+        other = auth(await login(client, "nima@autoco.example"))
         created = await client.post(
             "/requests",
             headers=other,
-            json={"title": "مشهد", "kind": "عمومی", "priority": "normal"},
+            json={"title": "درخواست تست", "kind": "عمومی", "priority": "normal"},
         )
         assert created.status_code == 201, created.text
         lead = auth(await login(client, "mina@autoco.example"))

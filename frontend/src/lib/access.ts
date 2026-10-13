@@ -44,7 +44,7 @@ export function canSeePricing(user: AccessUser | null | undefined, has: (perm: s
   if (!user) return false;
   if (isSiteAdmin(user, has)) return true;
   const code = user.roleCode ?? "";
-  if (code === "finance") return false;
+  if (code === "finance") return hasPriceApprove(has);
   if (code === "lead" && hasPriceApprove(has) && !MARKETING_ROLE_CODES.has(code)) return false;
   if (code === "requester" || code === "manager") return true;
   if (MARKETING_ROLE_CODES.has(code)) return true;
@@ -91,7 +91,7 @@ export function canSeeNavPath(
     return canSeeMarketingHome(user);
   }
 
-  if (path === "/requests") {
+  if (path === "/requests" || path.startsWith("/requests/")) {
     return has("request.triage") || has("request.manage") || has("request.create") || isSiteAdmin(user, has);
   }
   if (path === "/projects") return canSeeProjects(user, has);

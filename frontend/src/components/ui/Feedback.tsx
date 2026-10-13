@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 import { Bi } from "../../i18n";
-import symbolUrl from "../../../../assets/sotoodeh-brand-kit/assets/sotoodeh-symbol.png";
+import { symbolUrl } from "../../brand/logos";
+import { isForbiddenError } from "../../lib/apiError";
 import { ErrorMessage } from "./ErrorMessage";
+import { ForbiddenState } from "./ForbiddenState";
 import { LoadingState } from "./LoadingState";
 
 export type BadgeTone = "" | "ok" | "warn" | "danger";
@@ -62,6 +64,7 @@ export function QueryState({
 }) {
   if (isLoading) return <LoadingState />;
   if (error) {
+    if (isForbiddenError(error)) return <ForbiddenState />;
     const message = error instanceof Error ? error.message : String(error);
     return <ErrorMessage error={message} />;
   }

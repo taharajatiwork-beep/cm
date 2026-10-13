@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Badge, Button, Card, EmptyState, ErrorMessage, List, ListItem, LoadingState, MoreMenu, PageHeader, SectionHeader, StatCard } from "../components/ui";
+import { Badge, Button, Card, EmptyState, ErrorMessage, ForbiddenState, List, ListItem, LoadingState, MoreMenu, PageHeader, SectionHeader, StatCard } from "../components/ui";
+import { isForbiddenError } from "../lib/apiError";
 import { FaText } from "../components/FaText";
 import { Bi, useBi } from "../i18n";
 import { perfApi, toman, type Panel } from "./api";
@@ -10,7 +11,11 @@ export function PerfHomePage() {
   const home = useQuery({ queryKey: ["perf", "home"], queryFn: perfApi.home });
   const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
   if (home.isLoading) return <LoadingState />;
-  if (home.error) return <ErrorMessage error={home.error instanceof Error ? home.error.message : String(home.error)} />;
+  if (home.error) {
+    if (isForbiddenError(home.error)) return <ForbiddenState />;
+    return <ErrorMessage error={home.error} />;
+  }
+  const campaignsForbidden = campaigns.isError && isForbiddenError(campaigns.error);
   const data = home.data!;
   const low = data.panels.find((panel) => panel.low);
   const next = data.next[0];
@@ -63,7 +68,13 @@ export function PerfHomePage() {
       </Card>
       <Card>
         <SectionHeader icon="flag" title={<Bi en="Campaigns" fa="کمپین‌ها" />} count={campaigns.data?.length} action={<Button variant="ghost" to="/perf/campaigns"><Bi en="All" fa="همه" /></Button>} />
-        {!campaigns.data?.length ? (
+        {campaignsForbidden ? (
+          <ForbiddenState />
+        ) : campaigns.isLoading ? (
+          <LoadingState />
+        ) : campaigns.error ? (
+          <ErrorMessage error={campaigns.error} />
+        ) : !campaigns.data?.length ? (
           <EmptyState titleEn="No campaign yet" titleFa="هنوز کمپینی نیست" bodyEn="Create one, then SMS and social attach to it." bodyFa="یکی بسازید. پیامک و سوشال به همان وصل می‌شوند." />
         ) : (
           <List>

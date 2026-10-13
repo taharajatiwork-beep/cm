@@ -139,9 +139,6 @@ jobs:
       - name: Playwright
         working-directory: frontend
         run: npx playwright install --with-deps chromium && npm run e2e
-      - name: Synthetic UX users (scripted, demo seed)
-        working-directory: frontend
-        run: npm run synthetic:ci
       - name: npm audit
         working-directory: frontend
         continue-on-error: true

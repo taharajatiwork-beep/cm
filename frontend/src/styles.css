@@ -2151,6 +2151,20 @@ a.row-title:hover {
   color: var(--accent-ink);
 }
 
+button.row-title-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+button.row-title-btn:hover {
+  color: var(--accent-ink);
+  text-decoration: underline;
+}
+
 .row-meta {
   display: flex;
   flex-wrap: wrap;

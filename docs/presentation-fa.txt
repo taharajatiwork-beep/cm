@@ -67,7 +67,6 @@ CM کار غیررسمی را به موجودیت‌های رسمی تبدیل �
   ali@autoco.example     مدیر
   reza@autoco.example    فروش
   sara@autoco.example    بازاریابی
-  maryam@autoco.example  شعبه
 
 
 ───────────────────────────────────────────────────────────────

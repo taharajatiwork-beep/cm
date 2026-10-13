@@ -476,7 +476,6 @@ export function SettingsPage() {
             <ul className="muted muted-list">
               <li>admin@autoco.example — {bi("Site admin", "ادمین سایت")}</li>
               <li>ali@autoco.example — {bi("Ali, sales manager", "علی مدیر · مدیر")}</li>
-              <li>maryam@autoco.example — {bi("Maryam, Mashhad", "مریم · مدیر شعبه مشهد")}</li>
               <li>reza@autoco.example — {bi("Reza, seller", "رضا فروشنده · عضو")}</li>
               <li>mina@autoco.example — {bi("Mina, marketing lead", "مینا · سرپرست مارکتینگ")}</li>
               <li>sara@autoco.example — {bi("Sara, marketing", "سارا بازاریابی · عضو")}</li>

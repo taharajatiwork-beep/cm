@@ -410,6 +410,46 @@ async def list_tasks(
     return listed
 
 
+@router.get("/tasks/{task_id}")
+async def get_task(
+    task_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models import Task
+    from app.models.enums import TaskRole
+    from app.schemas import TaskOut
+    from sqlalchemy.orm import selectinload
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.TASK_READ)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    task = await db.get(
+        Task,
+        task_id,
+        options=(selectinload(Task.assignees),),
+    )
+    if not task or task.organization_id != ctx.organization_id:
+        raise HTTPException(404, "Task not found")
+    assignee_ids = {link.user_id for link in task.assignees if link.role == TaskRole.ASSIGNEE}
+    is_participant = ctx.user.id == task.owner_id or ctx.user.id in assignee_ids
+    if not is_participant and PermissionCode.ORG_ADMIN.value not in ctx.permissions:
+        from app.core.scope import apply_scope
+        from sqlalchemy import select
+
+        scoped = apply_scope(
+            select(Task.id).where(Task.id == task_id, Task.organization_id == ctx.organization_id),
+            Task,
+            ctx.scope,
+        )
+        if not await db.scalar(scoped):
+            raise HTTPException(403, "Not authorized")
+    row = TaskOut.model_validate(task).model_dump(mode="json")
+    row["assignee_ids"] = [str(link.user_id) for link in task.assignees if link.role == TaskRole.ASSIGNEE]
+    return row
+
+
 @router.post("/tasks/{task_id}/participants")
 async def add_task_participant(
     task_id: UUID,

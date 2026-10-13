@@ -315,7 +315,7 @@ class WorkService:
                 self.db,
                 organization_id=organization_id,
                 user_id=uid,
-                title="New task assigned",
+                title="کار جدید به شما سپرده شد",
                 body=title,
                 entity_type="task",
                 entity_id=task.id,

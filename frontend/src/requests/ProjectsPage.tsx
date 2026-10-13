@@ -348,8 +348,18 @@ function ProjectCard({
         <span className="meta-chip"><DateText value={row.created_at} withTime /></span>
       </div>
       <div className="progress-bar" aria-hidden>
-        <span style={{ width: row.status === "done" ? "100%" : row.status === "in_progress" ? "55%" : "12%" }} />
+        <span
+          style={{
+            width:
+              (row.task_total ?? 0) === 0
+                ? "0%"
+                : `${Math.round(((row.task_done ?? 0) / (row.task_total ?? 1)) * 100)}%`,
+          }}
+        />
       </div>
+      {(row.task_total ?? 0) === 0 && row.status !== "done" ? (
+        <Muted as="p"><Bi en="Not planned yet" fa="هنوز برنامه‌ریزی نشده" /></Muted>
+      ) : null}
       <div className="record-actions">
         <Button to={`/projects/${row.id}`}>
           <Bi en="Open" fa="باز کردن" />

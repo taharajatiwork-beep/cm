@@ -9,7 +9,7 @@ import { canSeeMarketingHome, canSeeNavPath, marketingHomePath } from "./lib/acc
 import { dailyPaths, groupDailyNav, partitionMarketingNav } from "./lib/focus";
 import { isPerformanceUser } from "./lib/navigation";
 import { roleTitle } from "./lib/roles";
-import symbolUrl from "../../assets/sotoodeh-brand-kit/assets/sotoodeh-symbol.png";
+import { symbolUrl } from "./brand/logos";
 
 type NavGroupKey = "" | "Marketing" | "More";
 
@@ -43,10 +43,10 @@ const navCatalog: NavItem[] = [
   { to: "/perf/sms", icon: "message", labelEn: "SMS", labelFa: "پیامک", hintEn: "Write, lists and sends", hintFa: "نوشتن، لیست و ثبت ارسال", permAny: ["perf.read", "perf.write"], group: "Marketing" },
   { to: "/perf/social", icon: "flag", labelEn: "Social", labelFa: "سوشال", hintEn: "Cars, budget, then pages", hintFa: "ماشین، بودجه، بعد پیج", permAny: ["perf.read", "perf.write"], group: "Marketing" },
   { to: "/perf/sheet", icon: "layers", labelEn: "Sheet", labelFa: "شیت", hintEn: "Campaign rows and sync", hintFa: "ردیف کمپین و همگام‌سازی", group: "Marketing" },
-  { to: "/perf/money", icon: "briefcase", labelEn: "Costs", labelFa: "هزینه‌ها", hintEn: "Charges and payments", hintFa: "شارژ و پرداخت", group: "Marketing" },
+  { to: "/perf/money", icon: "briefcase", labelEn: "Costs", labelFa: "هزینه‌ها", hintEn: "Charges and payments", hintFa: "شارژ و پرداخت", group: "" },
   { to: "/people", icon: "users", labelEn: "Colleagues", labelFa: "همکاران", hintEn: "Who does what", hintFa: "چه کسی چه کاری می‌کند", perm: "user.read", group: "More" },
   { to: "/knowledge", icon: "book", labelEn: "Rules & guides", labelFa: "قوانین و راهنماها", hintEn: "Company rules and how-tos", hintFa: "قوانین شرکت و روش انجام کارها", perm: "kb.read", group: "More" },
-  { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "Your own numbers, or your team's", hintFa: "عددهای خودتان یا تیمتان", group: "More" },
+  { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "Requests, projects, and campaign numbers", hintFa: "درخواست، پروژه و اعداد کمپین", group: "More" },
   { to: "/admin", icon: "settings", labelEn: "Admin", labelFa: "مدیریت", hintEn: "Overview, users, audit", hintFa: "نمای کلی، کاربران، ممیزی", perm: "org.admin", group: "More" },
 ];
 
@@ -182,8 +182,6 @@ export function Shell() {
   const perfToolsPathActive = marketingNav.perfTools.some(
     (item) => pathname === item.to || pathname.startsWith(`${item.to}/`),
   );
-  const morePathActive = otherMore.some((item) => pathname === item.to || pathname.startsWith(`${item.to}/`));
-
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
@@ -298,7 +296,7 @@ export function Shell() {
           ) : null}
 
           {otherMore.length > 0 ? (
-            <details className="advanced nav-advanced" open={morePathActive || undefined}>
+            <details className="advanced nav-advanced" open>
               <summary>
                 <Bi en="More" fa="بیشتر" />
               </summary>

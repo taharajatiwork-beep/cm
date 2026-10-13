@@ -12,7 +12,20 @@ import { canFinishTask } from "../lib/collaboration";
 import { PROJECT_TABS, type ProjectTab } from "../lib/focus";
 import { StatusLabel } from "../ux";
 import { requestsApi } from "./api";
+import { DeliveryReviewCard } from "./DeliveryReview";
 import { PROJECT_STATUS_LABEL } from "./ProjectsPage";
+
+function activeTaskStats(tasks: Array<{ status: string }>) {
+  const active = tasks.filter((task) => task.status !== "CANCELLED");
+  const done = active.filter((task) => task.status === "COMPLETED").length;
+  return { active, done, total: active.length };
+}
+
+function spineStatusLabel(kind: string, status: string) {
+  if (kind === "task") return status;
+  if (kind === "work_project" || kind === "project") return PROJECT_STATUS_LABEL[status] || status;
+  return status;
+}
 
 const TAB_LABEL: Record<ProjectTab, [string, string]> = {
   overview: ["Overview", "نمای کلی"],
@@ -106,7 +119,7 @@ export function ProjectPage() {
   const campaigns = (row.campaigns as Array<{ id: string; code: string; title: string }> | undefined) ?? [];
   const campaignChoices = (row.campaign_choices as Array<{ id: string; code: string; title: string; project_id: string | null }> | undefined) ?? [];
   const campaignTags = (row.campaign_tags as Array<{ tag: string; brand: string }> | undefined) ?? [];
-  const done = tasks.filter((task) => task.status === "COMPLETED").length;
+  const { done, total: taskTotal } = activeTaskStats(tasks);
   const budget = (row.budget as Record<string, number | boolean> | undefined) ?? {};
   const fresh = tasks.length === 0 && campaigns.length === 0;
   const spine = (row.spine as Array<{ at?: string; kind: string; label: string; status?: string; code?: string }> | undefined) ?? [];
@@ -118,7 +131,11 @@ export function ProjectPage() {
         description={`${row.code || ""} · ${row.kind || ""} · ${PROJECT_STATUS_LABEL[String(row.status || "")] || String(row.status || "")}`}
         actions={
           <div className="row">
-            {row.request_id ? <Button variant="secondary" to="/requests"><Bi en="Request" fa="درخواست" /></Button> : null}
+            {row.request_id ? (
+              <Button variant="secondary" to={`/requests/${String(row.request_id)}`}>
+                <Bi en="Request" fa="درخواست" />
+              </Button>
+            ) : null}
             <Button variant="secondary" to={`/reports?project=${id}`}><Bi en="Report" fa="گزارش" /></Button>
           </div>
         }
@@ -127,28 +144,7 @@ export function ProjectPage() {
         <p className="banner banner-warn"><Bi en="Blocked: overdue work on this project." fa="مسدود: کار عقب‌افتاده در این پروژه." /></p>
       ) : null}
       {row.readonly && row.status === "done" && !row.requester_acceptance ? (
-        <Card className="stack">
-          <SectionHeader title={<Bi en="Accept delivery" fa="تأیید تحویل" />} />
-          <p><Bi en="Confirm the result or send it back with a note." fa="نتیجه را تأیید کنید یا با یادداشت برای اصلاح برگردانید." /></p>
-          <div className="record-actions">
-            <Button
-              type="button"
-              onClick={() => void requestsApi.projectAcceptance(id, "accepted").then(() => refresh())}
-            >
-              <Bi en="Accept" fa="تأیید" />
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                const note = window.prompt(bi("Note for the team", "یادداشت برای تیم")) || "";
-                void requestsApi.projectAcceptance(id, "returned", note).then(() => refresh());
-              }}
-            >
-              <Bi en="Return for fixes" fa="برگشت برای اصلاح" />
-            </Button>
-          </div>
-        </Card>
+        <DeliveryReviewCard projectId={id} onSuccess={refresh} />
       ) : null}
       <div className="kpi-row">
         <StatCard icon="layers" tone="accent" label={<Bi en="Stage" fa="مرحله" />} value={PROJECT_STATUS_LABEL[String(row.status || "")] || String(row.status || "—")} />
@@ -160,32 +156,14 @@ export function ProjectPage() {
           tone="ok"
           label={<Bi en="Progress" fa="پیشرفت" />}
           value={
-            row.planning_pending
+            row.planning_pending || taskTotal === 0
               ? bi("Not planned yet", "هنوز برنامه‌ریزی نشده")
-              : tasks.length
-                ? `${Math.round((done / tasks.length) * 100)}٪`
-                : "—"
+              : `${Math.round((done / taskTotal) * 100)}٪`
           }
         />
         <StatCard icon="megaphone" tone="accent" label={<Bi en="Campaigns" fa="کمپین" />} value={campaigns.length} to={campaigns[0] ? `/perf/campaigns/${campaigns[0].id}` : undefined} />
         {!row.readonly ? <StatCard icon="users" tone="ai" label={<Bi en="People" fa="اعضا" />} value={members.length} /> : null}
       </div>
-      {spine.length > 0 ? (
-        <Card className="stack">
-          <SectionHeader title={<Bi en="Timeline" fa="خط زمین" />} hint={<Bi en="Work request, tasks, payments, perf campaigns" fa="درخواست کار، وظایف، پرداخت، کمپین پرفورمنس" />} />
-          <ul className="plain-list">
-            {spine.slice(-12).map((item, index) => (
-              <li key={`${item.kind}-${index}`}>
-                <Muted>{item.at ? <DateText value={item.at} withTime /> : "—"}</Muted>
-                {" · "}
-                {item.code ? `${item.code} — ` : ""}
-                {item.label}
-                {item.status ? ` (${item.status})` : ""}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
       <div className="section-head">
         <Segmented
           idBase="project"
@@ -216,14 +194,18 @@ export function ProjectPage() {
           ) : (
             <>
               <p>{String(row.description || "")}</p>
-              {tasks.length > 0 ? (
+              {taskTotal > 0 ? (
                 <Muted as="p">
-                  <Bi en={`${done} of ${tasks.length} done`} fa={`${done} از ${tasks.length} کار تمام شده`} />
+                  <Bi en={`${done} of ${taskTotal} done`} fa={`${done} از ${taskTotal} کار تمام شده`} />
                 </Muted>
               ) : null}
             </>
           )}
-          {row.request_id ? <p><Link to="/requests">{String(row.request_code || "درخواست")}</Link></p> : null}
+          {row.request_id ? (
+            <p>
+              <Link to={`/requests/${String(row.request_id)}`}>{String(row.request_code || "درخواست")}</Link>
+            </p>
+          ) : null}
           {fresh ? (
             <Disclosure label={<Bi en="People and campaigns" fa="اعضا و کمپین" />}>
                 <PeopleAndCampaigns
@@ -249,21 +231,21 @@ export function ProjectPage() {
               refresh={refresh}
             />
           )}
-          {!row.readonly && tasks.length > 0 ? (
+          {!row.readonly && taskTotal > 0 ? (
             <div className="dash-charts">
               <Card>
                 <Donut
                   data={[
                     { label: "تمام", value: done },
-                    { label: "مانده", value: Math.max(tasks.length - done, 0) },
+                    { label: "مانده", value: Math.max(taskTotal - done, 0) },
                   ]}
-                  centerLabel={`${Math.round((done / tasks.length) * 100)}٪`}
+                  centerLabel={`${Math.round((done / taskTotal) * 100)}٪`}
                 />
               </Card>
               <Card>
                 <HBars
                   data={[
-                    { label: "کار", value: tasks.length },
+                    { label: "کار", value: taskTotal },
                     { label: "کمپین", value: campaigns.length },
                     { label: "عضو", value: members.length },
                   ]}
@@ -481,6 +463,30 @@ export function ProjectPage() {
         </div>
       ) : null}
       </div>
+      {spine.length > 0 ? (
+        <Card className="stack">
+          <Disclosure
+            label={
+              <SectionHeader
+                title={<Bi en="Activity history" fa="تاریخچهٔ فعالیت" />}
+                hint={<Bi en="Work request, tasks, payments, perf campaigns" fa="درخواست کار، وظایف، پرداخت، کمپین پرفورمنس" />}
+              />
+            }
+          >
+            <ul className="plain-list">
+              {spine.slice(-12).map((item, index) => (
+                <li key={`${item.kind}-${index}`}>
+                  <Muted>{item.at ? <DateText value={item.at} withTime /> : "—"}</Muted>
+                  {" · "}
+                  {item.code ? `${item.code} — ` : ""}
+                  {item.label}
+                  {item.status ? ` (${spineStatusLabel(item.kind, item.status)})` : ""}
+                </li>
+              ))}
+            </ul>
+          </Disclosure>
+        </Card>
+      ) : null}
     </>
   );
 }

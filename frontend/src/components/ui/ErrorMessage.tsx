@@ -1,10 +1,14 @@
 import type { ReactNode } from "react";
 import { Bi, useBi } from "../../i18n";
+import { isForbiddenError } from "../../lib/apiError";
 import { friendlyError } from "../../lib/errors";
+import { ForbiddenState } from "./ForbiddenState";
 
 export type ErrorMessageProps = {
-  /** Raw error string from API / catch */
-  error?: string | null;
+  /** Raw error from API / catch */
+  error?: unknown;
+  /** Raw error string from API / catch (legacy) */
+  errorMessage?: string | null;
   /** Already-localized message */
   message?: string | null;
   /** Map known technical errors to friendly copy */
@@ -15,19 +19,26 @@ export type ErrorMessageProps = {
 
 export function ErrorMessage({
   error,
+  errorMessage,
   message,
   friendly = true,
   className = "",
   action,
 }: ErrorMessageProps) {
   const bi = useBi();
-  const raw = error || message;
+  if (error != null && isForbiddenError(error)) {
+    return <ForbiddenState className={className} action={action} />;
+  }
+  const raw =
+    (typeof error === "string" ? error : error instanceof Error ? error.message : null) ||
+    errorMessage ||
+    message;
   if (!raw) return null;
 
   const text =
-    friendly && error
+    friendly && typeof raw === "string"
       ? (() => {
-          const f = friendlyError(error);
+          const f = friendlyError(raw);
           return bi(f.en, f.fa);
         })()
       : raw;

@@ -41,6 +41,7 @@ backend/cov.json
 backend/cov_run.txt
 
 # Misc
+cm-update.tar.gz
 *.log
 server.err
 .cursor/

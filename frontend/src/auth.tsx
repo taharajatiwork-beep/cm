@@ -14,6 +14,8 @@ import {
 import { api, getToken, setToken } from "./api";
 import { focusRoleFromCode, type FocusRole } from "./lib/roles";
 
+const SESSION_HINT_KEY = "cm_session_hint";
+
 export type Me = {
   id: string;
   full_name: string;
@@ -59,12 +61,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // پاسخ refresh ممکن است بعد از ورود موفق برگردد. فقط اگر نشست از زمان
       // شروع همین تلاش تغییر نکرده باشد، حق دارد state را «خارج‌شده» کند.
       const tokenAtStart = getToken();
+      const hadSessionHint = localStorage.getItem(SESSION_HINT_KEY) === "1";
+      if (!tokenAtStart && !hadSessionHint) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
       if (!tokenAtStart) {
         try {
           const session = await api.refresh();
           setToken(session.access_token);
         } catch {
           if (getToken() === tokenAtStart) {
+            localStorage.removeItem(SESSION_HINT_KEY);
             setUser(null);
             setLoading(false);
           }
@@ -96,12 +105,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (slug: string, email: string, password: string, totp?: string) => {
     const { access_token } = await api.login(slug, email, password, totp);
     setToken(access_token);
+    localStorage.setItem(SESSION_HINT_KEY, "1");
     setLoading(true);
     await refresh();
   }, [refresh]);
 
   const logout = useCallback(() => {
     void api.logout().catch(() => undefined);
+    localStorage.removeItem(SESSION_HINT_KEY);
     setToken(null);
     setUser(null);
   }, []);

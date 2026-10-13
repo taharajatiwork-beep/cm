@@ -107,17 +107,24 @@ _TASK_CLOSED = (TaskStatus.COMPLETED, TaskStatus.CANCELLED)
 
 
 def progress(tasks: list[Task]) -> dict:
-    total = len(tasks)
-    done = len([row for row in tasks if row.status == TaskStatus.COMPLETED])
+    """Progress for UI bars: cancelled tasks are excluded from the denominator."""
+    active = [row for row in tasks if row.status != TaskStatus.CANCELLED]
+    total = len(active)
+    done = len([row for row in active if row.status == TaskStatus.COMPLETED])
     now_utc = datetime.now(UTC)
-    overdue = 0
-    for row in tasks:
+    overdue_active = 0
+    for row in active:
         if row.status in _TASK_CLOSED or not row.deadline:
             continue
         deadline = row.deadline.replace(tzinfo=UTC) if row.deadline.tzinfo is None else row.deadline
         if deadline < now_utc:
-            overdue += 1
-    return {"total": total, "done": done, "ratio": (done / total) if total else 0, "overdue": overdue}
+            overdue_active += 1
+    return {
+        "total": total,
+        "done": done,
+        "ratio": (done / total) if total else 0,
+        "overdue": overdue_active,
+    }
 
 
 async def advance_project_from_tasks(db: AsyncSession, project_id: UUID) -> None:

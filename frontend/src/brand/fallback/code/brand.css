@@ -1,0 +1,7 @@
+/* Fallback brand tokens when sotoodeh-brand-kit is not in assets/ */
+:root {
+  --soto-white: #ffffff;
+  --soto-orange: #fd5f00;
+  --soto-purple: #240046;
+  --soto-dark-purple: #11002c;
+}

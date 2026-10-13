@@ -96,7 +96,7 @@ export function MoneyPage() {
     <>
       <PageHeader
         title={<Bi en="Costs" fa="هزینه‌ها" />}
-        description={<Bi en="Payment requests (panel, social, other). Finance approves and pays here — not work requests." fa="درخواست پرداخت (شارژ پنل، سوشال، …). مالی همین‌جا تأیید و پرداخت می‌کند — با درخواست کار در «درخواست‌های کار» اشتباه نشود." />}
+        description={<Bi en="Payment requests for finance to approve." fa="درخواست‌های پرداخت برای تأیید مالی." />}
         actions={
           <div className="row">
             {campaignId ? <RelatedLinks id={campaignId} code={(campaigns.data ?? []).find((row) => row.id === campaignId)?.code} here="money" /> : (
