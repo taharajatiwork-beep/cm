@@ -163,9 +163,10 @@ class InventoryService:
     ) -> Vehicle:
         require_permission(actor_permissions, PermissionCode.INVENTORY_WRITE)
         price_fields = {"sale_price", "purchase_price"}
-        if price_fields & set(fields) and PermissionCode.PRICE_WRITE not in actor_permissions:
-            if PermissionCode.ORG_ADMIN not in actor_permissions:
-                raise AuthorizationError("Missing permission: price.write")
+        from app.core.finance_perms import has_price_approve
+
+        if price_fields & set(fields) and not has_price_approve(actor_permissions):
+            raise AuthorizationError("Missing permission: price.approve")
         now = datetime.now(UTC)
         for key, value in fields.items():
             if key == "vin" and isinstance(value, str):

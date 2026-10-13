@@ -2,21 +2,24 @@
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>درخت تیم‌ها · CM</title>
   <style>
-    :root { color-scheme: light; --ink: #1c1917; --muted: #57534e; --line: #e7e5e4; --paper: #fafaf9; --card: #fff; --lead: #0f766e; --member: #44403c; --boss: #9a3412; --admin: #1d4ed8; }
+    :root { color-scheme: light; --ink: #1c1917; --muted: #57534e; --line: #e7e5e4; --paper: #fafaf9; --card: #fff; --lead: #0f766e; --member: #44403c; --boss: #9a3412; --admin: #1d4ed8; --mkt: #6d28d9; }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: "Vazirmatn", "Segoe UI", Tahoma, sans-serif; background: var(--paper); color: var(--ink); }
-    header { padding: 28px 32px 8px; }
+    body { margin: 0; font-family: "Vazirmatn", "Segoe UI", Tahoma, sans-serif; background: var(--paper); color: var(--ink); line-height: 1.65; }
+    header { padding: 28px 32px 8px; max-width: 920px; }
     h1 { margin: 0 0 6px; font-size: 1.4rem; }
-    p { margin: 0; color: var(--muted); }
-    main { padding: 16px 32px 48px; }
+    p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+    main { padding: 16px 32px 48px; max-width: 920px; }
+    .note { margin: 0 0 20px; padding: 12px 14px; background: #fff; border: 1px solid var(--line); border-radius: 12px; font-size: 0.88rem; color: var(--muted); }
+    .note code { background: #f5f5f4; padding: 1px 6px; border-radius: 4px; font-size: 0.82rem; direction: ltr; display: inline-block; }
     ul.tree, ul.tree ul { list-style: none; margin: 0; padding: 0 18px 0 0; }
     ul.tree { padding: 0; }
     li.team { margin: 10px 0; padding-right: 16px; border-right: 2px solid var(--line); }
     .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
     .card h2 { margin: 0; font-size: 1rem; }
-    .code { color: var(--muted); font-size: 0.75rem; margin-right: 8px; }
+    .code { color: var(--muted); font-size: 0.75rem; margin-right: 8px; direction: ltr; display: inline-block; }
     ul.people { margin-top: 8px; }
     ul.people li { margin: 4px 0; font-size: 0.92rem; }
     .tag { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; background: #f5f5f4; }
@@ -24,24 +27,37 @@
     .tag.member { background: #f5f5f4; color: var(--member); }
     .tag.requester { background: #ffedd5; color: var(--boss); }
     .tag.admin { background: #dbeafe; color: var(--admin); }
+    .tag.mkt { background: #ede9fe; color: var(--mkt); }
+    .tag.perf { background: #e0f2fe; color: #0369a1; }
     .tag.viewer { background: #f5f5f4; color: var(--muted); }
+    .tag.finance { background: #ecfdf5; color: #047857; }
     .grant { color: var(--muted); font-size: 0.78rem; }
     .loose { margin-top: 28px; }
+    footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 0.8rem; color: var(--muted); }
   </style>
 </head>
 <body>
   <header>
-    <h1>درخت تیم‌ها</h1>
-    <p>سازمان اتوکو. قالب نقش روی کاربر است؛ زیرتیم فقط زیر مارکتینگ است.</p>
+    <h1>درخت تیم‌ها (دمو AutoCo)</h1>
+    <p>از <code>backend/scripts/seed_demo.py</code> و قالب نقش‌های <code>roles-plan.md</code>. دید از جایگاه در درخت می‌آید؛ قابلیت‌های اضافه روی کاربر با <code>user_permission_grants</code> است.</p>
   </header>
   <main>
+    <p class="note">
+      قالب‌های عمومی: <code>admin</code> · <code>requester</code> · <code>lead</code> · <code>member</code> · <code>reporter</code> — <code>SHARED_READ</code> = <code>user.read</code> + <code>kb.read</code> (به‌جز reporter که جداست).
+      مارکتینگ: <code>marketing_manager</code> · <code>performance_marketing</code> · <code>marketing</code> / <code>designer</code> / <code>filmmaker</code> · <code>reporter</code>. مالی: <code>price.approve</code> + <code>expense.pay</code> (بدون <code>price.write</code> در seed).
+      تقویم (<code>/calendar</code>): فقط <code>org.admin</code> در UI و API.
+      در طرح سازمان تیم <code>MKT_CONTENT</code> هم زیر <code>MKT_T</code> است؛ در seed فعلی ساخته نمی‌شود.
+      زیرتیم‌ها خانهٔ والد را با <code>team_home_team_id</code> می‌بینند (<code>/teams/MKT_T</code>).
+    </p>
+
     <ul class="tree">
       <li class="team">
         <div class="card">
-          <h2>مارکتینگ <span class="code">MKT_T</span></h2>
+          <h2>تیم بازاریابی <span class="code">MKT_T</span></h2>
           <ul class="people">
-            <li>مینا مدیر مارکتینگ <span class="tag lead">سرپرست مارکتینگ</span></li>
-            <li>سارا بازاریابی <span class="tag member">مارکتینگ</span></li>
+            <li>مینا سرپرست مارکتینگ <span class="tag mkt">marketing_manager</span> <span class="grant">request.triage · request.manage · perf.read/write · campaign.* · expense.request</span></li>
+            <li>سارا بازاریابی <span class="tag marketing">marketing</span> <span class="grant">campaign.* · task.* · MKT_T</span></li>
+            <li>رامین گزارش‌گیر <span class="tag reporter">reporter</span> <span class="grant">report.read · reporter@autoco.example</span></li>
           </ul>
         </div>
         <ul>
@@ -49,7 +65,7 @@
             <div class="card">
               <h2>پرفورمنس <span class="code">MKT_PERF</span></h2>
               <ul class="people">
-                <li>نادیا پرفورمنس <span class="tag lead">سرپرست</span> <span class="grant">perf.read · perf.write · campaign.write</span></li>
+                <li>نادیا پرفورمنس <span class="tag perf">performance_marketing</span> <span class="grant">perf.read/write · campaign.* · user.read · kb.read</span></li>
               </ul>
             </div>
           </li>
@@ -57,7 +73,7 @@
             <div class="card">
               <h2>طراحی <span class="code">MKT_DESIGN</span></h2>
               <ul class="people">
-                <li>لیلا طراح <span class="tag member">عضو</span></li>
+                <li>لیلا طراح <span class="tag designer">designer</span> <span class="grant">MKT_DESIGN</span></li>
               </ul>
             </div>
           </li>
@@ -65,14 +81,8 @@
             <div class="card">
               <h2>فیلم‌برداری <span class="code">MKT_FILM</span></h2>
               <ul class="people">
-                <li>کامران فیلم‌بردار <span class="tag member">عضو</span></li>
+                <li>کامران فیلم‌بردار <span class="tag filmmaker">filmmaker</span> <span class="grant">MKT_FILM</span></li>
               </ul>
-            </div>
-          </li>
-          <li class="team">
-            <div class="card">
-              <h2>تولید محتوا <span class="code">MKT_CONTENT</span></h2>
-              <ul class="people"><li><span class="grant">بدون عضو</span></li></ul>
             </div>
           </li>
         </ul>
@@ -81,8 +91,8 @@
         <div class="card">
           <h2>تیم فروش تهران <span class="code">SALES_T</span></h2>
           <ul class="people">
-            <li>علی مدیر <span class="tag requester">مدیر فروش</span></li>
-            <li>رضا فروشنده <span class="tag member">فروشنده</span></li>
+            <li>علی مدیر <span class="tag requester">مدیر</span> <span class="grant">request.create · گزارش خودش</span></li>
+            <li>رضا فروشنده <span class="tag seller">seller</span> <span class="grant">case.read · task.* · inventory.read — پرونده، نه منوی CRM</span></li>
           </ul>
         </div>
       </li>
@@ -90,22 +100,28 @@
         <div class="card">
           <h2>مالی <span class="code">FIN_T</span></h2>
           <ul class="people">
-            <li>ندا مالی <span class="tag lead">مالی</span> <span class="grant">expense.approve · price.write</span></li>
+            <li>ندا مالی <span class="tag finance">finance</span> <span class="grant">finance@autoco.example · expense.pay · price.approve · /perf/money</span></li>
           </ul>
         </div>
       </li>
     </ul>
+
     <section class="loose">
       <div class="card">
-        <h2>بدون تیم</h2>
+        <h2>بدون تیم / سایر شعب</h2>
         <ul class="people">
-          <li>ادمین سایت <span class="tag admin">ادمین سایت</span> <span class="grant">admin@autoco.example</span></li>
-          <li>مریم مدیر شعبه مشهد <span class="tag requester">مدیر</span> <span class="grant">شعبهٔ مشهد، بدون تیم</span></li>
-          <li>نیما عملیات <span class="tag member">عضو</span></li>
-          <li>بازدیدکننده محدود <span class="tag viewer">viewer</span></li>
+          <li>ادمین سایت <span class="tag admin">admin</span> <span class="grant">admin@autoco.example · org.admin</span></li>
+          <li>مریم مدیر شعبه مشهد <span class="tag requester">مدیر شعبه</span> <span class="grant">maryam@ · شعبهٔ مشهد، بدون تیم</span></li>
+          <li>نیما عملیات <span class="tag member">عضو</span> <span class="grant">عملیات، بدون تیم</span></li>
+          <li>بازدیدکننده محدود <span class="tag viewer">viewer</span> <span class="grant">viewer@autoco.example</span></li>
         </ul>
       </div>
     </section>
+
+    <footer>
+      همهٔ حساب‌های دمو: رمز <code>password</code>. منوی روزانه و دید صفحات: <code>frontend/src/lib/access.ts</code> و <code>lib/focus.ts</code>.
+      فلوچارت کل سامانه: <code>docs/cm-flowchart.html</code> · پرفورمنس: <code>docs/performance-flowchart.html</code>.
+    </footer>
   </main>
 </body>
 </html>

@@ -18,11 +18,13 @@ import { Bi, useBi } from "../i18n";
 import { queryKeys } from "../lib/queryKeys";
 import { StatusLabel } from "../ux";
 import { Link } from "react-router-dom";
+import { useWorkParentLookups, WorkParentContext } from "../lib/workContext";
 
 type Person = Record<string, unknown>;
 
 export function PeoplePage() {
   const bi = useBi();
+  const parentLookups = useWorkParentLookups(true);
   const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -169,25 +171,40 @@ export function PeoplePage() {
                       />
                       {workload && workload.tasks.length > 0 ? (
                         <ul className="rows rows--boxed">
-                          {workload.tasks.map((t) => (
-                            <li key={String(t.id)} className="row-item">
-                              <div className="row-main">
-                                <span className="row-title">{String(t.title)}</span>
-                                <span className="row-meta">
-                                  <StatusLabel status={String(t.status)} />
-                                </span>
-                              </div>
-                              {t.work_item_id ? (
-                                <Link
-                                  to={`/work-items/${String(t.work_item_id)}`}
-                                  className="icon-btn"
-                                  title={bi("Open project", "باز کردن پروژه")}
-                                >
-                                  <Icon name="layers" />
-                                </Link>
-                              ) : null}
-                            </li>
-                          ))}
+                          {workload.tasks.map((t) => {
+                            const parents = parentLookups.resolve({
+                              project_id: t.project_id as string | null | undefined,
+                              request_id: t.request_id as string | null | undefined,
+                            });
+                            return (
+                              <li key={String(t.id)} className="row-item">
+                                <div className="row-main">
+                                  <span className="row-title">{String(t.title)}</span>
+                                  <span className="row-meta">
+                                    <StatusLabel status={String(t.status)} />
+                                  </span>
+                                  <WorkParentContext kind="task" {...parents} />
+                                </div>
+                                {t.work_item_id ? (
+                                  <Link
+                                    to={`/work-items/${String(t.work_item_id)}`}
+                                    className="icon-btn"
+                                    title={bi("Open shared project", "باز کردن پروژه مشترک")}
+                                  >
+                                    <Icon name="layers" />
+                                  </Link>
+                                ) : parents.projectId ? (
+                                  <Link
+                                    to={`/projects/${parents.projectId}`}
+                                    className="icon-btn"
+                                    title={bi("Open project", "باز کردن پروژه")}
+                                  >
+                                    <Icon name="layers" />
+                                  </Link>
+                                ) : null}
+                              </li>
+                            );
+                          })}
                         </ul>
                       ) : (
                         <Muted>

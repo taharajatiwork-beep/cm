@@ -50,7 +50,13 @@ def _request_out(row: WorkRequest, requester_name: str = "", team_name: str = ""
     }
 
 
-def _project_out(row: WorkProject, request_code: str = "", team_name: str = "") -> dict:
+def _project_out(
+    row: WorkProject,
+    *,
+    request_code: str = "",
+    request_title: str = "",
+    team_name: str = "",
+) -> dict:
     return {
         "id": str(row.id),
         "code": row.code,
@@ -59,6 +65,7 @@ def _project_out(row: WorkProject, request_code: str = "", team_name: str = "") 
         "kind": row.kind,
         "request_id": str(row.request_id) if row.request_id else None,
         "request_code": request_code,
+        "request_title": request_title,
         "team_id": str(row.team_id) if row.team_id else None,
         "team_name": team_name,
         "status": row.status,
@@ -91,8 +98,45 @@ def _is_triage(ctx: AuthContext) -> bool:
 
 
 def _is_requester_only(ctx: AuthContext) -> bool:
-    """قالب مدیر: درخواست و گفتگوی همان درخواست، نه صفحهٔ پروژه."""
+    """قالب مدیر: درخواست‌های خودش و نمای فقط‌خواندنی پروژه‌های همان درخواست‌ها."""
     return PermissionCode.REQUEST_CREATE in ctx.permissions and not _is_triage(ctx) and PermissionCode.TASK_READ not in ctx.permissions
+
+
+async def _member_project_ids(db: AsyncSession, ctx: AuthContext) -> set[UUID]:
+    """پروژه‌هایی که کاربر عضوشان است یا وظیفه‌ای در آن‌ها به او سپرده شده."""
+    from app.models import Task, TaskAssignee
+    from app.requests.models import WorkProjectMember
+
+    member_ids = set(
+        (
+            await db.scalars(
+                select(WorkProjectMember.project_id).where(WorkProjectMember.user_id == ctx.user.id)
+            )
+        ).all()
+    )
+    assigned = set(
+        (
+            await db.scalars(
+                select(Task.project_id).where(
+                    Task.organization_id == ctx.organization_id,
+                    Task.project_id.is_not(None),
+                    Task.id.in_(select(TaskAssignee.task_id).where(TaskAssignee.user_id == ctx.user.id)),
+                )
+            )
+        ).all()
+    )
+    return {item for item in member_ids | assigned if item}
+
+
+async def _ensure_triage_target(db: AsyncSession, ctx: AuthContext, row: WorkRequest) -> None:
+    """تریاژ فقط برای درخواست‌هایی که تیم مقصد در زیرتیم کاربر است."""
+    if PermissionCode.ORG_ADMIN in ctx.permissions or not _is_triage(ctx):
+        return
+    tree = await _tree_ids(db, ctx)
+    if tree is None:
+        return
+    if not row.team_id or row.team_id not in tree:
+        raise HTTPException(status_code=403, detail="این درخواست برای تیم شما نیست")
 
 
 async def _tree_ids(db: AsyncSession, ctx: AuthContext) -> set[UUID] | None:
@@ -172,7 +216,7 @@ async def create_request(
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _need(ctx, PermissionCode.REQUEST_CREATE, PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE, PermissionCode.ORG_ADMIN)
+    _need(ctx, PermissionCode.REQUEST_CREATE, PermissionCode.ORG_ADMIN)
     if body.priority not in REQUEST_PRIORITIES:
         raise HTTPException(status_code=422, detail="اولویت باید کم، معمولی یا بالا باشد")
     if body.team_id:
@@ -215,11 +259,19 @@ async def patch_request(
     is_owner = row.requested_by == ctx.user.id
     if not is_triage and not is_owner:
         raise HTTPException(status_code=403, detail="فقط تیم ترییج یا خودِ درخواست‌دهنده می‌تواند تغییر دهد")
+    if is_triage and not is_owner:
+        await _ensure_triage_target(db, ctx, row)
     data = body.model_dump(exclude_unset=True)
-    if not is_triage:
+    if is_owner and row.status == "new" and PermissionCode.ORG_ADMIN not in ctx.permissions:
         forbidden = set(data) - {"title", "description", "kind", "priority", "due_date"}
-        if forbidden or row.status != "new":
-            raise HTTPException(status_code=403, detail="تغییر وضعیت و تیم واگذاری با تیم ترییج است")
+        if forbidden:
+            raise HTTPException(status_code=403, detail="تغییر وضعیت و تیم واگذاری با سرپرست است")
+    elif is_triage and PermissionCode.ORG_ADMIN not in ctx.permissions:
+        forbidden = set(data) - {"status", "team_id"}
+        if forbidden:
+            raise HTTPException(status_code=403, detail="سرپرست فقط وضعیت و مسیردهی را عوض می‌کند")
+    elif not is_triage:
+        raise HTTPException(status_code=403, detail="فقط تا وقتی درخواست جدید است می‌توانید متن را عوض کنید")
     if "status" in data and data["status"] not in REQUEST_STATUSES:
         raise HTTPException(status_code=422, detail="وضعیت نامعتبر است")
     if "priority" in data and data["priority"] not in REQUEST_PRIORITIES:
@@ -239,6 +291,33 @@ async def patch_request(
     return _request_out(row)
 
 
+@router.get("/{request_id}/spine")
+async def request_spine(
+    request_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """خط زمین مفهومی درخواست کار (پروژه‌ها، وظایف، پرداخت‌ها)."""
+    _need(
+        ctx,
+        PermissionCode.REQUEST_CREATE,
+        PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
+        PermissionCode.TASK_READ,
+        PermissionCode.ORG_ADMIN,
+    )
+    row = await db.get(WorkRequest, request_id)
+    if not row or row.organization_id != ctx.organization_id:
+        raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
+    if _is_requester_only(ctx) and row.requested_by != ctx.user.id:
+        raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
+    if not _is_triage(ctx) and not _is_requester_only(ctx):
+        raise HTTPException(status_code=403, detail="دسترسی نیست")
+    from app.requests.spine import build_spine_timeline
+
+    return {"request_id": str(request_id), "items": await build_spine_timeline(db, ctx.organization_id, request_id=request_id)}
+
+
 @router.delete("/{request_id}", status_code=204)
 async def delete_request(
     request_id: UUID,
@@ -248,15 +327,65 @@ async def delete_request(
     row = await db.get(WorkRequest, request_id)
     if not row or row.organization_id != ctx.organization_id:
         raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
-    is_triage = _is_triage(ctx)
-    if not is_triage and row.requested_by != ctx.user.id:
-        raise HTTPException(status_code=403, detail="فقط تیم ترییج یا خودِ درخواست‌دهنده می‌تواند حذف کند")
+    is_admin = PermissionCode.ORG_ADMIN in ctx.permissions
+    is_owner_new = row.requested_by == ctx.user.id and row.status == "new"
+    if not is_admin and not is_owner_new:
+        raise HTTPException(status_code=403, detail="فقط صاحب درخواست، تا وقتی جدید است، می‌تواند آن را حذف کند")
     await db.delete(row)
     await db.flush()
     return Response(status_code=204)
 
 
 # ---------------------------------------------------------------- پروژه‌ها (تیم از درخواست می‌سازد)
+
+
+@router.post("/projects", status_code=201)
+async def create_standalone_project(
+    body: ProjectIn,
+    request_id: UUID | None = None,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """سرپرست یا ادمین پروژه می‌سازد. درخواست مادر اختیاری است."""
+    _need(ctx, PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE, PermissionCode.ORG_ADMIN)
+    req = None
+    if request_id:
+        req = await db.get(WorkRequest, request_id)
+        if not req or req.organization_id != ctx.organization_id:
+            raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
+    if body.status not in PROJECT_STATUSES:
+        raise HTTPException(status_code=422, detail="وضعیت نامعتبر است")
+    if body.team_id:
+        team = await db.get(Team, body.team_id)
+        if not team or team.organization_id != ctx.organization_id:
+            raise HTTPException(status_code=404, detail="تیم پیدا نشد")
+    row = WorkProject(
+        organization_id=ctx.organization_id,
+        code=await _next_project_code(db, ctx.organization_id),
+        title=body.title.strip(),
+        description=(body.description or "").strip(),
+        kind=body.kind.strip() or "عمومی",
+        request_id=req.id if req else None,
+        team_id=body.team_id or (req.team_id if req else ctx.user.team_id),
+        status=body.status,
+        due_date=req.due_date if req else None,
+        created_by=ctx.user.id,
+    )
+    db.add(row)
+    if req and req.status in ("new", "in_review"):
+        req.status = "converted"
+        req.updated_at = now()
+    await db.flush()
+    team_name = ""
+    if row.team_id:
+        team = await db.get(Team, row.team_id)
+        team_name = team.name if team else ""
+    return _project_out(
+        row,
+        request_code=req.code if req else "",
+        request_title=req.title if req else "",
+        team_name=team_name,
+    )
 
 
 @router.get("/projects")
@@ -267,34 +396,58 @@ async def list_projects(
     db: AsyncSession = Depends(get_db),
 ):
     """ترییج/ادمین همه را می‌بینند؛ بقیه فقط پروژه‌های درخواست‌های خودشان."""
-    _need(ctx, PermissionCode.REQUEST_CREATE, PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE, PermissionCode.ORG_ADMIN)
+    """سرپرست و ادمین درخت تیم را می‌بینند؛ مدیر پروژه‌های درخواست خودش را؛ عضو فقط پروژه‌ای که در آن است."""
+    _need(
+        ctx,
+        PermissionCode.REQUEST_CREATE,
+        PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
+        PermissionCode.TASK_READ,
+        PermissionCode.ORG_ADMIN,
+    )
     query = select(WorkProject).where(WorkProject.organization_id == ctx.organization_id)
     if request_id:
         query = query.where(WorkProject.request_id == request_id)
     if status:
         query = query.where(WorkProject.status == status)
-    if not _is_triage(ctx):
+    if _is_triage(ctx):
+        pass
+    elif PermissionCode.REQUEST_CREATE in ctx.permissions and PermissionCode.TASK_READ not in ctx.permissions:
         mine = select(WorkRequest.id).where(
             WorkRequest.organization_id == ctx.organization_id,
             WorkRequest.requested_by == ctx.user.id,
         )
         query = query.where(WorkProject.request_id.in_(mine))
-    elif ctx.user.team_id and PermissionCode.ORG_ADMIN not in ctx.permissions:
+    else:
+        visible = await _member_project_ids(db, ctx)
+        if visible:
+            query = query.where(WorkProject.id.in_(visible))
+        else:
+            query = query.where(WorkProject.id.is_(None))
+    if _is_triage(ctx) and ctx.user.team_id and PermissionCode.ORG_ADMIN not in ctx.permissions:
         tree = await _tree_ids(db, ctx)
         if tree is not None:
             query = query.where(WorkProject.team_id.in_(tree))
     rows = (await db.scalars(query.order_by(WorkProject.created_at.desc()))).all()
-    req_codes: dict[UUID, str] = {}
+    req_meta: dict[UUID, tuple[str, str]] = {}
     req_ids = {row.request_id for row in rows if row.request_id}
     if req_ids:
         for req in (await db.scalars(select(WorkRequest).where(WorkRequest.id.in_(req_ids)))).all():
-            req_codes[req.id] = req.code
+            req_meta[req.id] = (req.code, req.title)
     teams: dict[UUID, str] = {}
     team_ids = {row.team_id for row in rows if row.team_id}
     if team_ids:
         for team in (await db.scalars(select(Team).where(Team.id.in_(team_ids)))).all():
             teams[team.id] = team.name
-    return [_project_out(row, req_codes.get(row.request_id, ""), teams.get(row.team_id, "")) for row in rows]
+    return [
+        _project_out(
+            row,
+            request_code=req_meta.get(row.request_id, ("", ""))[0] if row.request_id else "",
+            request_title=req_meta.get(row.request_id, ("", ""))[1] if row.request_id else "",
+            team_name=teams.get(row.team_id, "") if row.team_id else "",
+        )
+        for row in rows
+    ]
 
 
 @router.post("/{request_id}/projects", status_code=201)
@@ -309,6 +462,7 @@ async def create_project(
     req = await db.get(WorkRequest, request_id)
     if not req or req.organization_id != ctx.organization_id:
         raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
+    await _ensure_triage_target(db, ctx, req)
     if body.status not in PROJECT_STATUSES:
         raise HTTPException(status_code=422, detail="وضعیت نامعتبر است")
     if body.team_id:
@@ -336,7 +490,7 @@ async def create_project(
     if row.team_id:
         team = await db.get(Team, row.team_id)
         team_name = team.name if team else ""
-    return _project_out(row, req.code, team_name)
+    return _project_out(row, request_code=req.code, request_title=req.title, team_name=team_name)
 
 
 @router.patch("/projects/{project_id}")
@@ -364,16 +518,22 @@ async def patch_project(
                 raise HTTPException(status_code=422, detail="عنوان خالی است")
         setattr(row, key, value)
     row.updated_at = now()
+    if row.status == "done" and row.request_id:
+        from app.requests.spine import close_request_if_projects_done
+
+        await close_request_if_projects_done(db, row.request_id)
     await db.flush()
     req_code = ""
+    req_title = ""
     if row.request_id:
         req = await db.get(WorkRequest, row.request_id)
         req_code = req.code if req else ""
+        req_title = req.title if req else ""
     team_name = ""
     if row.team_id:
         team = await db.get(Team, row.team_id)
         team_name = team.name if team else ""
-    return _project_out(row, req_code, team_name)
+    return _project_out(row, request_code=req_code, request_title=req_title, team_name=team_name)
 
 
 @router.delete("/projects/{project_id}", status_code=204)
@@ -424,14 +584,20 @@ async def project_detail(
         PermissionCode.TASK_READ,
         PermissionCode.ORG_ADMIN,
     )
-    if _is_requester_only(ctx):
-        raise HTTPException(status_code=403, detail="مدیر صفحهٔ پروژه را نمی‌بیند")
     row = await db.get(WorkProject, project_id)
     if not row or row.organization_id != ctx.organization_id:
         raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
-    visible = await _tree_ids(db, ctx)
-    if visible is not None and row.team_id not in visible:
-        raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
+    if _is_requester_only(ctx):
+        req = await db.get(WorkRequest, row.request_id) if row.request_id else None
+        if not req or req.requested_by != ctx.user.id:
+            raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
+    elif not _is_triage(ctx):
+        if row.id not in await _member_project_ids(db, ctx):
+            raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
+    else:
+        visible = await _tree_ids(db, ctx)
+        if visible is not None and row.team_id not in visible:
+            raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
     from app.requests.models import DesignDeliverable, Shoot, WorkAttachment
     from app.requests.spine import (
         attachment_out,
@@ -444,9 +610,11 @@ async def project_detail(
     )
 
     tasks = await tasks_for(db, ctx.organization_id, project_id=row.id)
-    thread = await ensure_thread(
-        db, organization_id=ctx.organization_id, actor_id=ctx.user.id, project_id=row.id, topic=row.title
-    )
+    thread = None
+    if not _is_requester_only(ctx):
+        thread = await ensure_thread(
+            db, organization_id=ctx.organization_id, actor_id=ctx.user.id, project_id=row.id, topic=row.title
+        )
     attachments = list(
         (
             await db.scalars(
@@ -459,23 +627,30 @@ async def project_detail(
     designs = list((await db.scalars(select(DesignDeliverable).where(DesignDeliverable.project_id == row.id))).all())
     shoots = list((await db.scalars(select(Shoot).where(Shoot.project_id == row.id))).all())
     req_code = ""
+    req_title = ""
     if row.request_id:
         req = await db.get(WorkRequest, row.request_id)
         req_code = req.code if req else ""
+        req_title = req.title if req else ""
     team_name = ""
     if row.team_id:
         team = await db.get(Team, row.team_id)
         team_name = team.name if team else ""
-    body = _project_out(row, req_code, team_name)
+    body = _project_out(row, request_code=req_code, request_title=req_title, team_name=team_name)
     body["progress"] = progress(tasks)
     body["template"] = template_for(row.kind)
-    body["thread_id"] = str(thread.id)
+    body["thread_id"] = str(thread.id) if thread else None
     body["tasks"] = [
         {
             "id": str(task.id),
             "title": task.title,
             "status": task.status.value if hasattr(task.status, "value") else str(task.status),
             "owner_id": str(task.owner_id),
+            "assignee_ids": [
+                str(link.user_id)
+                for link in task.assignees
+                if (link.role.value if hasattr(link.role, "value") else str(link.role)) == "ASSIGNEE"
+            ],
         }
         for task in tasks
     ]
@@ -488,6 +663,51 @@ async def project_detail(
     body["members"] = await _project_members(db, row.id)
     body["member_choices"] = await _member_choices(db, ctx.organization_id, row.team_id)
     body["campaigns"], body["campaign_choices"] = await _project_campaigns(db, ctx.organization_id, row.id)
+    from app.core.campaigns import campaign_tag_choices
+
+    body["campaign_tags"] = campaign_tag_choices()
+    from app.requests.spine import build_spine_timeline
+
+    body["spine"] = await build_spine_timeline(db, ctx.organization_id, project_id=row.id, request_id=row.request_id)
+    if _is_requester_only(ctx):
+        prog = progress(tasks)
+        lead_name = ""
+        if row.lead_user_id:
+            lead = await db.get(User, row.lead_user_id)
+            lead_name = lead.full_name if lead else ""
+        stages = [
+            {"key": "new", "label": "تازه", "done": row.status != "new"},
+            {"key": "in_progress", "label": "در جریان", "done": row.status in ("in_progress", "done")},
+            {"key": "done", "label": "تحویل", "done": row.status == "done"},
+        ]
+        return {
+            "id": body["id"],
+            "code": body["code"],
+            "title": body["title"],
+            "description": body.get("description", ""),
+            "kind": body["kind"],
+            "status": body["status"],
+            "due_date": body.get("due_date"),
+            "updated_at": body.get("updated_at"),
+            "request_id": body["request_id"],
+            "request_code": body["request_code"],
+            "team_name": body["team_name"],
+            "lead_name": lead_name,
+            "blocked": int(prog.get("overdue") or 0) > 0,
+            "progress": prog,
+            "planning_pending": len(tasks) == 0,
+            "requester_acceptance": row.requester_acceptance,
+            "requester_acceptance_note": row.requester_acceptance_note or "",
+            "timeline": stages,
+            "spine": body["spine"],
+            "tasks": body["tasks"],
+            "campaigns": [
+                {"id": item["id"], "code": item.get("code"), "title": item.get("title"), "status": item.get("status")}
+                for item in body["campaigns"]
+            ],
+            "readonly": True,
+            "report_href": f"/reports?project={body['id']}",
+        }
     return body
 
 
@@ -547,8 +767,7 @@ async def set_project_members(
     db: AsyncSession = Depends(get_db),
 ):
     """اعضای پروژه را یکجا عوض می‌کند. چند نفر می‌توانند با هم روی همان پروژه باشند."""
-    _need(ctx, PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE, PermissionCode.TASK_WRITE, PermissionCode.ORG_ADMIN)
-    from app.models import User
+    _need(ctx, PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE, PermissionCode.ORG_ADMIN)
     from app.requests.models import WorkProjectMember
 
     row = await db.get(WorkProject, project_id)
@@ -602,6 +821,37 @@ async def set_project_campaigns(
         return await set_project_campaigns(db, ctx.organization_id, row.id, campaign_ids)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/campaigns", status_code=201)
+async def create_project_campaign(
+    project_id: UUID,
+    body: dict,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """کمپین را همین‌جا می‌سازد و به پروژه وصل می‌کند. شماره از دفتر برند می‌آید."""
+    _need(ctx, PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE, PermissionCode.ORG_ADMIN)
+    from sqlalchemy.exc import IntegrityError
+
+    from app.core.campaigns import create_project_campaign as make_campaign
+
+    row = await db.get(WorkProject, project_id)
+    if not row or row.organization_id != ctx.organization_id:
+        raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
+    try:
+        return await make_campaign(
+            db,
+            ctx.organization_id,
+            row.id,
+            ctx.user.id,
+            str(body.get("title") or ""),
+            str(body.get("tag") or "S"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="کد کمپین تکراری است") from exc
 
 
 @router.get("/projects/{project_id}/close-hint")
@@ -868,6 +1118,35 @@ async def patch_shoot(
         raise HTTPException(status_code=422, detail="وضعیت فیلم نامعتبر است")
     item.status = status
     return shoot_out(item)
+
+
+@router.post("/projects/{project_id}/acceptance")
+async def project_acceptance(
+    project_id: UUID,
+    body: dict,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """مدیر (درخواست‌دهنده) پس از done پروژه تحویل را تأیید یا برمی‌گرداند."""
+    _need(ctx, PermissionCode.REQUEST_CREATE, PermissionCode.ORG_ADMIN)
+    if PermissionCode.ORG_ADMIN not in ctx.permissions and not _is_requester_only(ctx):
+        raise HTTPException(status_code=403, detail="فقط درخواست‌دهنده می‌تواند تحویل را تأیید کند")
+    row = await db.get(WorkProject, project_id)
+    if not row or row.organization_id != ctx.organization_id:
+        raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
+    req = await db.get(WorkRequest, row.request_id) if row.request_id else None
+    if not req or req.requested_by != ctx.user.id:
+        raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
+    if row.status != "done":
+        raise HTTPException(status_code=422, detail="پروژه هنوز تمام نشده")
+    decision = str(body.get("decision") or "").strip()
+    if decision not in ("accepted", "returned"):
+        raise HTTPException(status_code=422, detail="تصمیم باید accepted یا returned باشد")
+    row.requester_acceptance = decision
+    row.requester_acceptance_note = str(body.get("note") or "").strip()
+    row.updated_at = now()
+    await db.flush()
+    return {"ok": True, "requester_acceptance": row.requester_acceptance, "note": row.requester_acceptance_note}
 
 
 @router.get("/context/{kind}/{entity_id}")

@@ -1,221 +1,46 @@
-import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Badge, Button, Card, ErrorMessage, Field, Input, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, Table, TextArea } from "../components/ui";
-import { DateText } from "../components/DateText";
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  Input,
+  Muted,
+  PageHeader,
+  SectionHeader,
+  Segmented,
+  Select,
+  Table,
+  TextArea,
+} from "../components/ui";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 import { Bi } from "../i18n";
-import { downloadPerf, perfApi, toman, type PanelStatus, type PishgamDelivery, type RecipientList, type SmsSend } from "./api";
-import { CampaignCode, FilePick, RelatedLinks } from "./bits";
-import { ArrangeBar, hit, ShowMore, useArrange, type SortOption } from "./browse";
-import { useLiveConnections, useSavedConnections } from "./connectionsQuery";
-import { RowActions, SmsDelivery, SmsEdit, useRemove } from "./edit";
+import { downloadPerf, perfApi, toman, type PishgamPreviewResult, type RecipientList } from "./api";
+import { FilePick, RelatedLinks } from "./bits";
+import { useRemove } from "./edit";
+import { TargetingCard } from "./TargetingCard";
+import { PishgamPostalAudience, SmsHistoryTab, pishgamPageUrl } from "./SmsHistory";
 
-type Tab = "write" | "list" | "send" | "pishgam";
+type MainTab = "new" | "history";
+type FlowStep = "message" | "audience" | "send";
+type AudienceKind = "list" | "smart" | "postal" | "isms";
 
 function visibleCampaigns(rows: Array<{ id: string; code: string; title: string }> | undefined, query: string, selected: string) {
-  return (rows ?? []).filter((row) => row.id === selected || hit(query, row.code, row.title));
+  const q = query.trim().toLowerCase();
+  return (rows ?? []).filter((row) => row.id === selected || !q || row.code.toLowerCase().includes(q) || row.title.toLowerCase().includes(q));
 }
 
-export function SmsPage() {
-  const [params] = useSearchParams();
-  const fromUrl = params.get("campaign") || "";
-  const step = params.get("step") || "";
-  const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
-  const fromLink = (campaigns.data ?? []).find((row) => row.id === fromUrl || row.code === fromUrl)?.id || "";
-  const [campaignId, setCampaignId] = useState(fromUrl.length > 8 ? fromUrl : "");
-  const [tab, setTab] = useState<Tab>(step === "delivery" ? "send" : "write");
-  const [readyText, setReadyText] = useState("");
-  const [readyCount, setReadyCount] = useState(0);
-  const [listId, setListId] = useState("");
-  useEffect(() => {
-    if (fromLink) setCampaignId((current) => current || fromLink);
-  }, [fromLink]);
-  const picked = (campaigns.data ?? []).find((row) => row.id === campaignId);
-  return (
-    <>
-      <PageHeader
-        title={<Bi en="SMS" fa="پیامک" />}
-        description={<Bi en="The draft and the rule check fill in from the campaign. The list attaches itself. Sending still waits for the button." fa="متن و چک قوانین از روی کمپین پر می‌شود. لیست به همان کمپین می‌چسبد. ارسال هنوز با دکمه است." />}
-        actions={picked ? <RelatedLinks id={picked.id} code={picked.code} here="sms" /> : null}
-      />
-      <Segmented
-        value={tab}
-        onChange={setTab}
-        items={[
-          { key: "write", label: <Bi en="Write" fa="نوشتن پیام" /> },
-          { key: "list", label: <Bi en="List" fa="آماده‌سازی لیست" /> },
-          { key: "send", label: <Bi en="Record" fa="ثبت ارسال" /> },
-          { key: "pishgam", label: <Bi en="Pishgam" fa="پیشگام" /> },
-        ]}
-      />
-      {tab === "write" ? (
-        <WriteTab
-          campaignId={campaignId}
-          onCampaign={setCampaignId}
-          onUse={(text, count) => {
-            setReadyText(text);
-            if (count) setReadyCount(count);
-            setTab("send");
-          }}
-        />
-      ) : null}
-      {tab === "list" ? <ListTab campaignId={campaignId} onUse={(id, count) => { setListId(id); setReadyCount(count); setTab("send"); }} /> : null}
-      {tab === "send" ? <SendTab campaignId={campaignId} onCampaign={setCampaignId} initialBody={readyText} initialCount={readyCount} initialListId={listId} missing={step === "delivery"} /> : null}
-      {tab === "pishgam" ? <PishgamTab /> : null}
-    </>
-  );
-}
-
-function WriteTab({ campaignId, onCampaign, onUse }: { campaignId: string; onCampaign: (id: string) => void; onUse: (text: string, count: number) => void }) {
-  const toast = useToast();
-  const panels = useQuery({ queryKey: ["perf", "panels"], queryFn: perfApi.panels });
-  const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
-  const requests = useQuery({ queryKey: ["perf", "requests"], queryFn: perfApi.requests });
-  const lists = useQuery({ queryKey: ["perf", "lists"], queryFn: perfApi.lists });
-  const [campaignQuery, setCampaignQuery] = useState("");
-  const campaign = campaigns.data?.find((row) => row.id === campaignId);
-  const [text, setText] = useState("");
-  const [brand, setBrand] = useState("");
-  const [cars, setCars] = useState("");
-  const [offer, setOffer] = useState("تحویل فوری");
-  const [phone, setPhone] = useState("021-47677777");
-  const [link, setLink] = useState("");
-  const [recipients, setRecipients] = useState(0);
-  const textRef = useRef("");
-  const drafted = useRef("");
-  const check = useMutation({
-    mutationFn: (body: { text: string; brand: string; recipients: number; panel_id?: string }) => perfApi.checkSms(body),
-  });
-  // mutate در TanStack پایدار است؛ با آن (نه کل شیء check) چک خودکار به آخرین مقدارها وصل می‌ماند بی‌آنکه هر رندر دوباره اجرا شود
-  const runCheck = check.mutate;
-  // ref فقط بعد از رندر به‌روز می‌شود (نه وسط رندر)؛ این افکت قبل از افکت پیش‌نویس پایین اجرا می‌شود
-  useEffect(() => {
-    textRef.current = text;
-  }, [text]);
-  const draft = useMutation({
-    mutationFn: (body: Record<string, string>) => perfApi.draftSms(body),
-    onSuccess: (data, variables) => {
-      const first = data.messages.find((item) => item.kind === "ad1")?.text || data.messages[0]?.text || "";
-      if (!first) {
-        if (!variables.quiet) toast("نمونه‌ای ساخته نشد");
-        return;
-      }
-      setText(first);
-      if (!variables.quiet) toast("نمونه در متن نشست");
-    },
-    onError: (error: Error) => toast(error.message),
-  });
-  useEffect(() => {
-    if (!text.trim()) return;
-    const handle = window.setTimeout(() => {
-      runCheck({ text, brand, recipients, panel_id: panels.data?.[0]?.id });
-    }, 400);
-    return () => window.clearTimeout(handle);
-  }, [text, brand, recipients, panels.data, runCheck]);
-  useEffect(() => {
-    if (!campaign || !requests.isFetched || !lists.isFetched || drafted.current === campaign.id) return;
-    drafted.current = campaign.id;
-    if (textRef.current.trim()) return;
-    const names = (requests.data ?? [])
-      .filter((row) => row.campaign_id === campaign.id)
-      .map((row) => (row.summary || row.raw_text).trim())
-      .filter(Boolean);
-    const carLine = names.join("، ") || campaign.title;
-    const linked = (lists.data ?? []).find((row) => row.campaign_id === campaign.id);
-    setBrand(campaign.brand || "");
-    setCars(carLine);
-    if (linked) setRecipients(linked.final_count);
-    draft.mutate({
-      quiet: "1",
-      brand: campaign.brand || "",
-      cars: carLine,
-      offer: "تحویل فوری",
-      phone: "021-47677777",
-      link: "",
-      campaign_code: campaign.code,
-    });
-  }, [campaign, requests.isFetched, requests.data, lists.isFetched, lists.data, draft]);
-  return (
-    <Card>
-      <SectionHeader
-        icon="message"
-        title={<Bi en="Write the text" fa="نوشتن متن" />}
-        hint={<Bi en="Persian stays one page through 70 characters. Character 71 doubles the price. A second page is offered on purpose." fa="فارسی تا ۷۰ نویسه یک صفحه است. نویسهٔ ۷۱ هزینه را دو برابر می‌کند. نمونهٔ دو صفحه‌ای عمداً جداست." />}
-      />
-      <div className="form-grid">
-        <Field className="span-2" label={<Bi en="Campaign" fa="کمپین" />}>
-          <Input value={campaignQuery} placeholder="جستجوی کد یا عنوان" onChange={(event) => setCampaignQuery(event.target.value)} />
-          <Select value={campaignId} onChange={(e) => onCampaign(e.target.value)}>
-            <option value="">—</option>
-            {visibleCampaigns(campaigns.data, campaignQuery, campaignId).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.title}</option>)}
-          </Select>
-        </Field>
-        <Field className="span-all" label={<Bi en="Message" fa="متن" />}>
-          <TextArea value={text} onChange={(e) => setText(e.target.value)} rows={6} />
-          <Meter text={text} recipients={recipients} tariff={panels.data?.[0]?.tariff_toman || 0} />
-        </Field>
-        <Field label={<Bi en="Recipients" fa="تعداد گیرنده" />}>
-          <Input type="number" value={recipients || ""} placeholder="۰" onChange={(e) => setRecipients(Number(e.target.value))} />
-        </Field>
-        <div className="span-all perf-actions">
-          <Button type="button" variant="secondary" onClick={() => check.mutate({ text, brand, recipients, panel_id: panels.data?.[0]?.id })}><Bi en="Check rules" fa="چک قوانین" /></Button>
-          <Button type="button" disabled={draft.isPending} onClick={() => draft.mutate({
-            brand: brand || campaign?.brand || "",
-            cars: cars || campaign?.title || "",
-            offer,
-            phone,
-            link,
-            campaign_code: campaign?.code || "",
-          })}>
-            {draft.isPending ? <Bi en="Writing" fa="در حال نوشتن…" /> : <Bi en="Write samples" fa="نمونه را بنویس" />}
-          </Button>
-          {text.trim() || draft.data?.messages[0] ? (
-            <Button type="button" variant="secondary" onClick={() => onUse(text.trim() || draft.data!.messages[0].text, recipients)}>
-              <Bi en="Use this text" fa="همین متن برای ارسال" />
-            </Button>
-          ) : null}
-        </div>
-        <details className="span-all">
-          <summary className="muted"><Bi en="Change the ingredients" fa="جزئیات متن" /></summary>
-          <div className="form-grid">
-            <Field label={<Bi en="Brand" fa="برند" />}><Input value={brand} placeholder={campaign?.brand} onChange={(e) => setBrand(e.target.value)} /></Field>
-            <Field label={<Bi en="Cars" fa="خودروها" />}><Input value={cars} placeholder={campaign?.title} onChange={(e) => setCars(e.target.value)} /></Field>
-            <Field label={<Bi en="Offer" fa="پیشنهاد" />}><Input value={offer} onChange={(e) => setOffer(e.target.value)} /></Field>
-            <Field label={<Bi en="Phone" fa="تلفن" />}><Input value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
-            <Field label={<Bi en="Link" fa="لینک" />}><Input value={link} onChange={(e) => setLink(e.target.value)} /></Field>
-          </div>
-        </details>
-      </div>
-      {check.data ? (
-        <div className="perf-check">
-          <Badge tone={check.data.ok ? "ok" : "warn"}>
-            {toman(check.data.pages)} صفحه، {toman(check.data.chars)} نویسه، حدود {toman(check.data.estimated_cost_toman)} تومان
-          </Badge>
-          {check.data.issues.map((issue) => (
-            <Muted key={issue} as="p">{issue}</Muted>
-          ))}
-          {(check.data.warnings || []).map((issue) => (
-            <Muted key={issue} as="p">{issue}</Muted>
-          ))}
-        </div>
-      ) : null}
-      {draft.data?.messages.length ? (
-        <div className="perf-samples">
-          {draft.data.messages.map((item) => (
-            <button key={item.kind || item.text} type="button" className="perf-sample" onClick={() => setText(item.text)}>
-              <span className="row">
-                <Badge tone={item.check.pages > 1 ? "warn" : "ok"}>{item.label || `${item.check.pages} صفحه`}</Badge>
-                <Muted>{toman(item.check.chars)} نویسه · {toman(item.check.room ?? 0)} تا صفحهٔ بعد</Muted>
-              </span>
-              <p>{item.text}</p>
-              <Muted>{item.note}</Muted>
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </Card>
-  );
+export function smsShape(text: string) {
+  const persian = text.length === 0 || /[\u0600-\u06FF]/.test(text) || /[^\u0000-\u007F]/.test(text);
+  const units = Array.from(text).reduce((sum, ch) => sum + ((ch.codePointAt(0) || 0) > 0xffff ? 2 : 1), 0);
+  const single = persian ? 70 : 160;
+  const part = persian ? 67 : 153;
+  const pages = units === 0 ? 0 : units <= single ? 1 : Math.ceil(units / part);
+  const capacity = pages <= 1 ? single : part * pages;
+  return { chars: units, pages, room: capacity - units, language: persian ? "فارسی" : "انگلیسی" };
 }
 
 function Meter({ text, recipients, tariff }: { text: string; recipients: number; tariff: number }) {
@@ -230,17 +55,377 @@ function Meter({ text, recipients, tariff }: { text: string; recipients: number;
   );
 }
 
-function smsShape(text: string) {
-  const persian = text.length === 0 || /[\u0600-\u06FF]/.test(text) || /[^\u0000-\u007F]/.test(text);
-  const units = Array.from(text).reduce((sum, ch) => sum + ((ch.codePointAt(0) || 0) > 0xffff ? 2 : 1), 0);
-  const single = persian ? 70 : 160;
-  const part = persian ? 67 : 153;
-  const pages = units === 0 ? 0 : units <= single ? 1 : Math.ceil(units / part);
-  const capacity = pages <= 1 ? single : part * pages;
-  return { chars: units, pages, room: capacity - units, language: persian ? "فارسی" : "انگلیسی" };
+export function SmsPage() {
+  const toast = useToast();
+  const [params] = useSearchParams();
+  const fromUrl = params.get("campaign") || "";
+  const stepParam = params.get("step") || "";
+  const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
+  const fromLink = (campaigns.data ?? []).find((row) => row.id === fromUrl || row.code === fromUrl)?.id || "";
+  const [campaignId, setCampaignId] = useState(fromUrl.length > 8 ? fromUrl : "");
+  const [mainTab, setMainTab] = useState<MainTab>(stepParam === "delivery" ? "history" : "new");
+  const [flowStep, setFlowStep] = useState<FlowStep>("message");
+  const [body, setBody] = useState("ستوده\nلغو11");
+  const [audienceKind, setAudienceKind] = useState<AudienceKind>("list");
+  const [listId, setListId] = useState("");
+  const [panelId, setPanelId] = useState("");
+  const [serviceMobiles, setServiceMobiles] = useState("");
+  const [messageId, setMessageId] = useState("");
+  const [smartPreview, setSmartPreview] = useState<PishgamPreviewResult | null>(null);
+  const [smartKeys, setSmartKeys] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (fromLink) setCampaignId((current) => current || fromLink);
+  }, [fromLink]);
+
+  const picked = (campaigns.data ?? []).find((row) => row.id === campaignId);
+  const panels = useQuery({ queryKey: ["perf", "panels"], queryFn: perfApi.panels });
+  const lists = useQuery({ queryKey: ["perf", "lists"], queryFn: perfApi.lists });
+  const panel = (panels.data ?? []).find((item) => item.id === panelId);
+  const listRow = (lists.data ?? []).find((row) => row.id === listId);
+  const sender = panel?.sender_line || "";
+
+  useEffect(() => {
+    if (!panelId && panels.data?.length === 1) setPanelId(panels.data[0].id);
+  }, [panelId, panels.data]);
+
+  const recipientCount = useMemo(() => {
+    if (audienceKind === "list") return listRow?.final_count ?? 0;
+    if (audienceKind === "smart" && smartPreview?.status === "done") {
+      return smartPreview.estimates?.total_count ?? smartPreview.recipients?.reduce((s, r) => s + r.count, 0) ?? 0;
+    }
+    if (audienceKind === "isms") {
+      return serviceMobiles.split(/[\s,،]+/).map((item) => item.trim()).filter(Boolean).length;
+    }
+    return 0;
+  }, [audienceKind, listRow, smartPreview, serviceMobiles]);
+
+  const shape = smsShape(body);
+  const hasCancel = body.includes("لغو11") || body.includes("لغو 11");
+
+  const missingItems = useMemo(() => {
+    const items: Array<{ label: string; step: FlowStep }> = [];
+    if (!body.trim()) items.push({ label: "متن خالی است", step: "message" });
+    if (!hasCancel) items.push({ label: "«لغو۱۱» در متن نیست", step: "message" });
+    if (!campaignId) items.push({ label: "کمپین انتخاب نشده", step: "message" });
+    if (audienceKind === "list" && !listId) items.push({ label: "لیست انتخاب نشده", step: "audience" });
+    if (audienceKind === "smart" && smartPreview?.status !== "done") items.push({ label: "شمارش محله انجام نشده", step: "audience" });
+    if (audienceKind === "isms" && recipientCount === 0) items.push({ label: "شمارهٔ خدماتی نیست", step: "audience" });
+    if (!panelId) items.push({ label: "پنل انتخاب نشده", step: "send" });
+    return items;
+  }, [body, hasCancel, campaignId, audienceKind, listId, smartPreview, recipientCount, panelId]);
+
+  return (
+    <>
+      <PageHeader
+        title={<Bi en="SMS" fa="پیامک" />}
+        description={<Bi en="One flow: message, audience, send — with a live summary." fa="یک جریان: پیام، مخاطب، ارسال — با خلاصهٔ همیشه در دسترس." />}
+        actions={
+          <div className="row">
+            <Button variant="secondary" onClick={() => void perfApi.smsPull().then((row) => toast(row.note))}>
+              <Bi en="Read from panel" fa="خواندن از پنل" />
+            </Button>
+            {picked ? <RelatedLinks id={picked.id} code={picked.code} here="sms" /> : null}
+          </div>
+        }
+      />
+      <Segmented
+        value={mainTab}
+        onChange={setMainTab}
+        items={[
+          { key: "new", label: <Bi en="New send" fa="ارسال جدید" /> },
+          { key: "history", label: <Bi en="History & reports" fa="سابقه و گزارش" /> },
+        ]}
+      />
+      {mainTab === "history" ? (
+        <SmsHistoryTab missing={stepParam === "delivery"} />
+      ) : (
+        <div className="sms-flow">
+          <div className="sms-flow-main">
+            <FlowStepNav step={flowStep} onStep={setFlowStep} />
+            {flowStep === "message" ? (
+              <MessageStep campaignId={campaignId} onCampaign={setCampaignId} body={body} onBody={setBody} />
+            ) : null}
+            {flowStep === "audience" ? (
+              <AudienceStep
+                kind={audienceKind}
+                onKind={setAudienceKind}
+                campaignId={campaignId}
+                listId={listId}
+                onListId={setListId}
+                body={body}
+                smartKeys={smartKeys}
+                onSmartKeys={setSmartKeys}
+                onSmartPreview={setSmartPreview}
+                serviceMobiles={serviceMobiles}
+                onServiceMobiles={setServiceMobiles}
+                senderLine={sender}
+              />
+            ) : null}
+            {flowStep === "send" ? (
+              <SendStep
+                campaignId={campaignId}
+                body={body}
+                panelId={panelId}
+                onPanelId={setPanelId}
+                audienceKind={audienceKind}
+                listId={listId}
+                recipientCount={recipientCount}
+                serviceMobiles={serviceMobiles}
+                onServiceMobiles={setServiceMobiles}
+                messageId={messageId}
+                onMessageId={setMessageId}
+                smartPreview={smartPreview}
+              />
+            ) : null}
+          </div>
+          <aside className="sms-flow-summary">
+            <SmsSummary
+              campaign={picked}
+              shape={shape}
+              hasCancel={hasCancel}
+              audienceKind={audienceKind}
+              recipientCount={recipientCount}
+              smartPreview={smartPreview}
+              missing={missingItems}
+              onJump={setFlowStep}
+            />
+          </aside>
+        </div>
+      )}
+    </>
+  );
 }
 
-function ListTab({ campaignId, onUse }: { campaignId: string; onUse: (id: string, count: number) => void }) {
+function FlowStepNav({ step, onStep }: { step: FlowStep; onStep: (s: FlowStep) => void }) {
+  const items: Array<{ key: FlowStep; label: string }> = [
+    { key: "message", label: "۱ پیام" },
+    { key: "audience", label: "۲ مخاطب" },
+    { key: "send", label: "۳ ارسال" },
+  ];
+  return (
+    <nav className="sms-flow-steps" aria-label="قدم‌ها">
+      {items.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          className={item.key === step ? "sms-flow-step is-active" : "sms-flow-step"}
+          onClick={() => onStep(item.key)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function MessageStep({
+  campaignId,
+  onCampaign,
+  body,
+  onBody,
+}: {
+  campaignId: string;
+  onCampaign: (id: string) => void;
+  body: string;
+  onBody: (text: string) => void;
+}) {
+  const toast = useToast();
+  const panels = useQuery({ queryKey: ["perf", "panels"], queryFn: perfApi.panels });
+  const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
+  const requests = useQuery({ queryKey: ["perf", "requests"], queryFn: perfApi.requests });
+  const lists = useQuery({ queryKey: ["perf", "lists"], queryFn: perfApi.lists });
+  const [campaignQuery, setCampaignQuery] = useState("");
+  const [brand, setBrand] = useState("");
+  const [cars, setCars] = useState("");
+  const [offer, setOffer] = useState("تحویل فوری");
+  const [phone, setPhone] = useState("021-47677777");
+  const [link, setLink] = useState("");
+  const [recipients, setRecipients] = useState("");
+  const textRef = useRef("");
+  const drafted = useRef("");
+  const campaign = campaigns.data?.find((row) => row.id === campaignId);
+  const check = useMutation({
+    mutationFn: (payload: { text: string; brand: string; recipients: number; panel_id?: string }) => perfApi.checkSms(payload),
+  });
+  const runCheck = check.mutate;
+  useEffect(() => {
+    textRef.current = body;
+  }, [body]);
+  const draft = useMutation({
+    mutationFn: (payload: Record<string, string>) => perfApi.draftSms(payload),
+    onSuccess: (data, variables) => {
+      if (!data.messages.length) {
+        if (!variables.quiet) toast("نمونه‌ای ساخته نشد");
+        return;
+      }
+      if (variables.quiet === "1") {
+        const first = data.messages.find((item) => item.kind === "ad1")?.text || data.messages[0]?.text || "";
+        if (first && !textRef.current.trim()) onBody(first);
+        return;
+      }
+      toast("سه نمونه پایین آماده است؛ یکی را بزنید تا در متن بنشیند.");
+    },
+    onError: (error: Error) => toast(error.message),
+  });
+  useEffect(() => {
+    if (!body.trim()) return;
+    const handle = window.setTimeout(() => {
+      runCheck({ text: body, brand, recipients: recipients === "" ? 0 : Number(recipients), panel_id: panels.data?.[0]?.id });
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [body, brand, recipients, panels.data, runCheck]);
+  useEffect(() => {
+    if (!campaign || !requests.isFetched || !lists.isFetched || drafted.current === campaign.id) return;
+    drafted.current = campaign.id;
+    if (textRef.current.trim()) return;
+    const names = (requests.data ?? [])
+      .filter((row) => row.campaign_id === campaign.id)
+      .map((row) => (row.summary || row.raw_text).trim())
+      .filter(Boolean);
+    const carLine = names.join("، ") || campaign.title;
+    const linked = (lists.data ?? []).find((row) => row.campaign_id === campaign.id);
+    setBrand(campaign.brand || "");
+    setCars(carLine);
+    if (linked) setRecipients(String(linked.final_count));
+    draft.mutate({
+      quiet: "1",
+      brand: campaign.brand || "",
+      cars: carLine,
+      offer: "تحویل فوری",
+      phone: "021-47677777",
+      link: "",
+      campaign_code: campaign.code,
+    });
+  }, [campaign, requests.isFetched, requests.data, lists.isFetched, lists.data, draft, onBody]);
+
+  return (
+    <Card>
+      <SectionHeader
+        icon="message"
+        title={<Bi en="Message" fa="پیام" />}
+        hint={
+          <Bi
+            en="Persian stays one page through 70 characters. Character 71 doubles the price."
+            fa="فارسی تا ۷۰ نویسه یک صفحه است. نویسهٔ ۷۱ هزینه را دو برابر می‌کند؛ نمونهٔ دوصفحه‌ای جداست."
+          />
+        }
+      />
+      <div className="form-grid">
+        <Field className="span-2" label={<Bi en="Campaign" fa="کمپین" />}>
+          <Input value={campaignQuery} placeholder="جستجوی کد یا عنوان" onChange={(event) => setCampaignQuery(event.target.value)} />
+          <Select value={campaignId} onChange={(e) => onCampaign(e.target.value)}>
+            <option value="">—</option>
+            {visibleCampaigns(campaigns.data, campaignQuery, campaignId).map((row) => (
+              <option key={row.id} value={row.id}>{row.code} — {row.title}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field className="span-all" label={<Bi en="Message" fa="متن" />}>
+          <TextArea value={body} onChange={(e) => onBody(e.target.value)} rows={6} />
+          <Meter text={body} recipients={recipients === "" ? 0 : Number(recipients)} tariff={panels.data?.[0]?.tariff_toman || 0} />
+          {check.data || check.isPending || check.isError ? (
+            <div className="perf-check perf-check--inline">
+              {check.isPending ? <Muted as="p">در حال چک قوانین…</Muted> : null}
+              {check.isError ? (
+                <Muted as="p">{check.error instanceof Error ? check.error.message : "چک قوانین انجام نشد."}</Muted>
+              ) : null}
+              {check.data ? (
+                <>
+                  <Badge tone={check.data.ok ? "ok" : "warn"}>
+                    {toman(check.data.pages)} صفحه، {toman(check.data.chars)} نویسه
+                    {check.data.estimated_cost_toman ? `، حدود ${toman(check.data.estimated_cost_toman)} تومان` : ""}
+                  </Badge>
+                  {check.data.issues.map((issue) => (
+                    <Muted key={issue} as="p">{issue}</Muted>
+                  ))}
+                  {(check.data.warnings || []).map((issue) => (
+                    <Muted key={`w-${issue}`} as="p">{issue}</Muted>
+                  ))}
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </Field>
+        <div className="span-all perf-actions">
+          <Button type="button" variant="secondary" onClick={() => check.mutate({ text: body, brand, recipients: recipients === "" ? 0 : Number(recipients), panel_id: panels.data?.[0]?.id })}>
+            <Bi en="Check rules" fa="چک قوانین" />
+          </Button>
+          <Button
+            type="button"
+            disabled={draft.isPending}
+            onClick={() =>
+              draft.mutate({
+                brand: brand || campaign?.brand || "",
+                cars: cars || campaign?.title || "",
+                offer,
+                phone,
+                link,
+                campaign_code: campaign?.code || "",
+              })
+            }
+          >
+            {draft.isPending ? <Bi en="Writing" fa="در حال نوشتن…" /> : <Bi en="Write samples" fa="نمونه را بنویس" />}
+          </Button>
+        </div>
+        <details className="span-all">
+          <summary className="muted"><Bi en="Text details" fa="جزئیات متن" /></summary>
+          <div className="form-grid">
+            <Field label={<Bi en="Brand" fa="برند" />}><Input value={brand} placeholder={campaign?.brand} onChange={(e) => setBrand(e.target.value)} /></Field>
+            <Field label={<Bi en="Cars" fa="خودروها" />}><Input value={cars} placeholder={campaign?.title} onChange={(e) => setCars(e.target.value)} /></Field>
+            <Field label={<Bi en="Offer" fa="پیشنهاد" />}><Input value={offer} onChange={(e) => setOffer(e.target.value)} /></Field>
+            <Field label={<Bi en="Phone" fa="تلفن" />}><Input value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+            <Field label={<Bi en="Link" fa="لینک" />}><Input value={link} onChange={(e) => setLink(e.target.value)} /></Field>
+          </div>
+        </details>
+      </div>
+      {draft.data?.messages.length ? (
+        <div className="perf-samples">
+          {draft.data.messages.map((item) => (
+            <button key={item.kind || item.text} type="button" className="perf-sample" onClick={() => onBody(item.text)}>
+              <span className="row">
+                <Badge tone={item.check.pages > 1 ? "warn" : "ok"}>{item.label || `${toman(item.check.pages)} صفحه`}</Badge>
+                <Muted>
+                  {toman(item.check.chars)} نویسه · {toman(item.check.room ?? 0)} تا صفحهٔ بعد
+                </Muted>
+              </span>
+              <p>{item.text}</p>
+              {item.note ? <Muted>{item.note}</Muted> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function AudienceStep({
+  kind,
+  onKind,
+  campaignId,
+  listId,
+  onListId,
+  body,
+  smartKeys,
+  onSmartKeys,
+  onSmartPreview,
+  serviceMobiles,
+  onServiceMobiles,
+  senderLine,
+}: {
+  kind: AudienceKind;
+  onKind: (k: AudienceKind) => void;
+  campaignId: string;
+  listId: string;
+  onListId: (id: string) => void;
+  body: string;
+  smartKeys: string[];
+  onSmartKeys: (keys: string[]) => void;
+  onSmartPreview: (p: PishgamPreviewResult | null) => void;
+  serviceMobiles: string;
+  onServiceMobiles: (v: string) => void;
+  senderLine: string;
+}) {
   const qc = useQueryClient();
   const toast = useToast();
   const remove = useRemove();
@@ -257,9 +442,9 @@ function ListTab({ campaignId, onUse }: { campaignId: string; onUse: (id: string
       return perfApi.prepareList(data);
     },
     onSuccess: (row) => {
-      toast(campaignId ? "لیست آماده شد و روی فرم ارسال نشست" : "لیست آماده شد");
+      toast("لیست آماده شد");
       qc.invalidateQueries({ queryKey: ["perf", "lists"] });
-      if (campaignId) onUse(row.id, row.final_count);
+      onListId(row.id);
     },
     onError: (error: Error) => toast(error.message),
   });
@@ -272,680 +457,287 @@ function ListTab({ campaignId, onUse }: { campaignId: string; onUse: (id: string
     },
     onError: (error: Error) => toast(error.message),
   });
+
   return (
-    <>
-      <Card>
-        <SectionHeader
-          icon="upload"
-          title={<Bi en="Didar file" fa="فایل دیدار" />}
-          hint={<Bi en="Duplicates, blacklist and recent sends are removed. The download is split for the panel, without a leading zero." fa="تکراری، لیست سیاه و ارسال اخیر حذف می‌شود. خروجی برای پنل، بدون صفر اول و در دسته‌های ۱۵هزارتایی است." />}
-        />
-        <FilePick
-          accept=".xlsx"
-          label={<Bi en="Choose the Excel" fa="انتخاب اکسل" />}
-          hint=".xlsx"
-          busy={prepare.isPending}
-          onFile={(file) => prepare.mutate(file)}
-        />
-      </Card>
-      <Card>
-        <SectionHeader icon="alert" title={<Bi en="Blacklist" fa="لیست سیاه" />} hint={<Bi en="Numbers that must never receive a campaign." fa="شماره‌هایی که نباید کمپین بگیرند." />} />
-        <div className="form-grid">
-          <Field className="span-2" label={<Bi en="Number" fa="شماره" />}>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+    <Card>
+      <SectionHeader icon="users" title={<Bi en="Audience" fa="مخاطب" />} />
+      <Segmented
+        value={kind}
+        onChange={onKind}
+        items={[
+          { key: "list", label: <Bi en="Our list" fa="لیست خودمان" /> },
+          { key: "smart", label: <Bi en="Smart area" fa="محلهٔ هوشمند" /> },
+          { key: "postal", label: <Bi en="Postal zone" fa="منطقهٔ کدپستی" /> },
+          { key: "isms", label: <Bi en="Service numbers" fa="شماره‌های خدماتی" /> },
+        ]}
+      />
+      {kind === "list" ? (
+        <div className="sms-flow-audience-panel">
+          <FilePick accept=".xlsx" label={<Bi en="Didar Excel" fa="فایل دیدار" />} hint=".xlsx" busy={prepare.isPending} onFile={(file) => prepare.mutate(file)} />
+          <Field label={<Bi en="Prepared list" fa="لیست آماده" />}>
+            <Select value={listId} onChange={(e) => onListId(e.target.value)}>
+              <option value="">—</option>
+              {(lists.data ?? []).map((row) => <option key={row.id} value={row.id}>{row.name} ({toman(row.final_count)})</option>)}
+            </Select>
           </Field>
-          <div className="perf-actions">
-            <Button type="button" variant="secondary" disabled={!phone} onClick={() => block.mutate()}><Bi en="Add" fa="افزودن" /></Button>
-          </div>
+          {listId ? (
+            <Button type="button" variant="secondary" onClick={() => downloadPerf(`/perf/lists/${listId}/export`, "recipients.xlsx")}>
+              <Bi en="Download xlsx" fa="دانلود xlsx" />
+            </Button>
+          ) : null}
+          <details className="perf-fold">
+            <summary>لیست سیاه</summary>
+            <div className="form-grid">
+              <Field className="span-2" label={<Bi en="Number" fa="شماره" />}>
+                <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+              </Field>
+              <Button type="button" variant="secondary" disabled={!phone} onClick={() => block.mutate()}><Bi en="Add" fa="افزودن" /></Button>
+            </div>
+            {blocked.data?.length ? (
+              <ul className="perf-car-list">
+                {blocked.data.map((row) => (
+                  <li key={row.id}>
+                    <span>{row.phone}</span>
+                    <Button type="button" variant="danger-quiet" className="btn-sm" onClick={() => void remove(row.phone, () => perfApi.deleteBlacklist(row.id))}>حذف</Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </details>
+          {lists.data?.length ? (
+            <Table
+              rows={lists.data.slice(0, 6)}
+              rowKey={(row: RecipientList) => row.id}
+              columns={[
+                { key: "name", header: "نام", render: (row) => row.name },
+                { key: "final", header: "نهایی", render: (row) => toman(row.final_count) },
+                { key: "pick", header: "", render: (row) => <Button type="button" variant="ghost" onClick={() => onListId(row.id)}>انتخاب</Button> },
+              ]}
+            />
+          ) : null}
         </div>
-        {blocked.data?.length ? (
-          <ul className="perf-car-list">
-            {blocked.data.map((row) => (
-              <li key={row.id}>
-                <span>{row.phone}</span>
-                <Button type="button" variant="danger-quiet" className="btn-sm" onClick={() => void remove(row.phone, () => perfApi.deleteBlacklist(row.id))}>حذف</Button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </Card>
-      {lists.isLoading ? <LoadingState /> : null}
-      {lists.error ? <ErrorMessage error={lists.error instanceof Error ? lists.error.message : String(lists.error)} /> : null}
-      {lists.data ? (
-        <Card>
-          <SectionHeader icon="users" title={<Bi en="Prepared lists" fa="لیست‌های آماده" />} count={lists.data.length} />
-          <Table
-            rows={lists.data}
-            rowKey={(row) => row.id}
-            columns={[
-              { key: "name", header: "نام", render: (row: RecipientList) => row.name },
-              { key: "raw", header: "خام", render: (row) => toman(row.raw_count) },
-              { key: "dup", header: "تکراری", render: (row) => toman(row.duplicate_count) },
-              { key: "black", header: "سیاه", render: (row) => toman(row.blacklist_count) },
-              { key: "recent", header: "اخیر", render: (row) => toman(row.recent_count) },
-              { key: "final", header: "نهایی", render: (row) => toman(row.final_count) },
-              {
-                key: "file",
-                header: "فایل",
-                render: (row) => (
-                  <div className="row">
-                    <Button type="button" variant="secondary" onClick={() => downloadPerf(`/perf/lists/${row.id}/export`, "recipients.xlsx")}>
-                      xlsx
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={() => onUse(row.id, row.final_count)}>
-                      <Bi en="Use for send" fa="برای ارسال" />
-                    </Button>
-                    <Button type="button" variant="danger-quiet" className="btn-sm" onClick={() => void remove(row.name || "لیست", () => perfApi.deleteList(row.id))}>
-                      حذف
-                    </Button>
-                  </div>
-                ),
-              },
-            ]}
-          />
-        </Card>
       ) : null}
-    </>
+      {kind === "smart" ? (
+        <TargetingCard smsBody={body} pickedKeys={smartKeys} onPickedChange={onSmartKeys} onPreviewChange={onSmartPreview} />
+      ) : null}
+      {kind === "postal" ? <PishgamPostalAudience body={body} senderLine={senderLine} /> : null}
+      {kind === "isms" ? (
+        <div className="sms-flow-audience-panel">
+          <Muted as="p">
+            <Link to="/perf/connections"><Bi en="Connections" fa="اتصالات" /></Link>
+            {" — "}
+            <Bi en="Up to 20 service numbers via iSMS API." fa="حداکثر ۲۰ شماره با وب‌سرویس آی‌اس‌ام‌اس." />
+          </Muted>
+          <Field label={<Bi en="Service numbers" fa="شماره‌های خدماتی" />}>
+            <TextArea value={serviceMobiles} rows={4} placeholder="هر شماره یک خط" onChange={(e) => onServiceMobiles(e.target.value)} />
+          </Field>
+        </div>
+      ) : null}
+    </Card>
   );
 }
 
-function SendTab({
+function SendStep({
   campaignId,
-  onCampaign,
-  initialBody,
-  initialCount,
-  initialListId,
-  missing,
+  body,
+  panelId,
+  onPanelId,
+  audienceKind,
+  listId,
+  recipientCount,
+  serviceMobiles,
+  onServiceMobiles,
+  messageId,
+  onMessageId,
+  smartPreview,
 }: {
   campaignId: string;
-  onCampaign: (id: string) => void;
-  initialBody: string;
-  initialCount: number;
-  initialListId: string;
-  missing?: boolean;
+  body: string;
+  panelId: string;
+  onPanelId: (id: string) => void;
+  audienceKind: AudienceKind;
+  listId: string;
+  recipientCount: number;
+  serviceMobiles: string;
+  onServiceMobiles: (v: string) => void;
+  messageId: string;
+  onMessageId: (v: string) => void;
+  smartPreview: PishgamPreviewResult | null;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
+  const confirm = useConfirm();
   const panels = useQuery({ queryKey: ["perf", "panels"], queryFn: perfApi.panels });
-  const lists = useQuery({ queryKey: ["perf", "lists"], queryFn: perfApi.lists });
-  const sends = useQuery({ queryKey: ["perf", "sends"], queryFn: perfApi.sends });
-  const [body, setBody] = useState(initialBody);
-  const [campaignQuery, setCampaignQuery] = useState("");
-  useEffect(() => {
-    if (initialBody) setBody(initialBody);
-  }, [initialBody]);
-  const [panelId, setPanelId] = useState("");
-  const [listId, setListId] = useState(initialListId);
-  const [count, setCount] = useState(initialCount);
-  useEffect(() => {
-    if (initialListId) setListId(initialListId);
-  }, [initialListId]);
-  useEffect(() => {
-    if (initialCount) setCount(initialCount);
-  }, [initialCount]);
-  useEffect(() => {
-    if (!panelId && panels.data?.length === 1) setPanelId(panels.data[0].id);
-  }, [panelId, panels.data]);
-  const [leads, setLeads] = useState(0);
-  const [username, setUsername] = useState("");
-  const [secret, setSecret] = useState("");
-  const [sender, setSender] = useState("");
-  const [mobiles, setMobiles] = useState("");
-  const [messageId, setMessageId] = useState("");
   const panel = (panels.data ?? []).find((item) => item.id === panelId);
-  useEffect(() => {
-    if (!panel) return;
-    setUsername(panel.api_username || "");
-    setSender(panel.sender_line || "");
-    setSecret("");
-  }, [panel]);
-  useEffect(() => {
-    const list = lists.data?.find((row) => row.id === listId);
-    if (list) setCount(list.final_count);
-  }, [listId, lists.data]);
+  const sender = panel?.sender_line || "";
   const save = useMutation({
     mutationFn: () =>
       perfApi.createSend({
         body,
         campaign_id: campaignId || null,
         panel_id: panelId || null,
-        list_id: listId || null,
-        recipient_count: count,
-        leads,
+        list_id: audienceKind === "list" ? listId || null : null,
+        recipient_count: recipientCount,
+        leads: 0,
         pishgam_message_id: panel?.code === "pishgam" && messageId.trim() ? Number(messageId) : null,
       }),
     onSuccess: () => {
       toast("ارسال ثبت شد");
-      setBody("");
-      setMessageId("");
+      onMessageId("");
       qc.invalidateQueries({ queryKey: ["perf"] });
     },
     onError: (error: Error) => toast(error.message),
   });
+
   return (
-    <>
-      <Card>
-        <SectionHeader
-          icon="send"
-          title={<Bi en="Record a send" fa="ثبت ارسال" />}
-          hint={<Bi en="Save the iSMS username and password, then send up to 20 service numbers. Bulk ads use the prepared file in the iSMS panel." fa="نام کاربری و رمز آی‌اس‌ام‌اس را ذخیره کنید. وب‌سرویس تا ۲۰ شماره خدماتی می‌فرستد. تبلیغ انبوه با فایل لیست، داخل خود پنل انجام می‌شود." />}
-        />
-        <div className="form-grid">
-          <Field label={<Bi en="Campaign" fa="کمپین" />}>
-            <Input value={campaignQuery} placeholder="جستجوی کد یا عنوان" onChange={(event) => setCampaignQuery(event.target.value)} />
-            <Select value={campaignId} onChange={(e) => onCampaign(e.target.value)}>
-              <option value="">—</option>
-              {visibleCampaigns(campaigns.data, campaignQuery, campaignId).map((row) => (
-                <option key={row.id} value={row.id}>{row.code} — {row.title}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={<Bi en="Panel" fa="پنل" />}>
-            <Select value={panelId} onChange={(e) => setPanelId(e.target.value)}>
-              <option value="">—</option>
-              {(panels.data ?? []).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-            </Select>
-          </Field>
-          <Field label={<Bi en="Prepared list" fa="لیست آماده" />}>
-            <Select value={listId} onChange={(e) => setListId(e.target.value)}>
-              <option value="">—</option>
-              {(lists.data ?? []).map((row) => <option key={row.id} value={row.id}>{row.name} ({toman(row.final_count)})</option>)}
-            </Select>
-          </Field>
-          {panel?.code === "isms" ? (
-            <>
-              <Field label={<Bi en="Username" fa="نام کاربری آی‌اس‌ام‌اس" />}>
-                <Input value={username} onChange={(e) => setUsername(e.target.value)} />
-              </Field>
-              <Field label={<Bi en="API password" fa="رمز وب‌سرویس" />}>
-                <Input type="password" value={secret} placeholder={panel.has_secret ? "رمز ذخیره شده" : ""} onChange={(e) => setSecret(e.target.value)} />
-              </Field>
-              <Field label={<Bi en="Sender" fa="خط ارسال" />}>
-                <Input value={sender} onChange={(e) => setSender(e.target.value)} />
-              </Field>
-              <div className="perf-actions">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    const payload: Record<string, string> = { api_username: username, sender_line: sender };
-                    if (secret.trim()) payload.api_secret = secret.trim();
-                    perfApi.updatePanel(panel.id, payload).then(() => {
-                      toast(secret.trim() || panel.has_secret ? "اتصال آی‌اس‌ام‌اس ذخیره شد" : "نام کاربری ذخیره شد. رمز وب‌سرویس هنوز خالی است.");
-                      setSecret("");
-                      qc.invalidateQueries({ queryKey: ["perf", "panels"] });
-                    }).catch((error: Error) => toast(error.message));
-                  }}
-                >
-                  <Bi en="Save connection" fa="ذخیره اتصال" />
-                </Button>
-              </div>
-              <Field className="span-all" label={<Bi en="Service numbers" fa="شماره‌های خدماتی" />}>
-                <TextArea value={mobiles} rows={3} placeholder="هر شماره یک خط. حداکثر ۲۰ شماره." onChange={(e) => setMobiles(e.target.value)} />
-              </Field>
-            </>
-          ) : null}
-          {panel?.code === "pishgam" ? (
-            <>
-              <Field label={<Bi en="Sender line" fa="خط ارسال" />}>
-                <Input dir="ltr" value={sender} placeholder="مثل 5000302137682" onChange={(e) => setSender(e.target.value)} />
-              </Field>
-              <div className="perf-actions">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    perfApi.updatePanel(panel.id, { sender_line: sender }).then(() => {
-                      toast("خط ارسال پیشگام ذخیره شد");
-                      qc.invalidateQueries({ queryKey: ["perf", "panels"] });
-                    }).catch((error: Error) => toast(error.message));
-                  }}
-                >
-                  <Bi en="Save line" fa="ذخیره خط" />
-                </Button>
-              </div>
-              <Field label={<Bi en="Panel send id" fa="شناسهٔ ارسال پنل" />}>
-                <Input type="number" dir="ltr" value={messageId} placeholder="از صف ارسال پنل پیشگام" onChange={(e) => setMessageId(e.target.value)} />
-              </Field>
-              <div className="span-all">
-                <Muted>
-                  ثبت ارسال فقط سابقه را اینجا نگه می‌دارد. برای فرستادن، تب پیشگام را باز کنید؛ هر بخش به صفحهٔ خودش در پیشگام می‌رود و ارسال آنجا انجام می‌شود.
-                </Muted>
-              </div>
-            </>
-          ) : null}
-          <Field className="span-all" label={<Bi en="Text" fa="متن" />}><TextArea value={body} onChange={(e) => setBody(e.target.value)} rows={4} /></Field>
-          <Field label={<Bi en="Recipients" fa="گیرنده" />}><Input type="number" value={count || ""} placeholder="۰" onChange={(e) => setCount(Number(e.target.value))} /></Field>
-          <Field label={<Bi en="Leads" fa="ورودی" />}><Input type="number" value={leads || ""} placeholder="۰" onChange={(e) => setLeads(Number(e.target.value))} /></Field>
+    <Card>
+      <SectionHeader icon="send" title={<Bi en="Send" fa="ارسال" />} />
+      <div className="form-grid">
+        <Field label={<Bi en="Panel" fa="پنل" />}>
+          <Select value={panelId} onChange={(e) => onPanelId(e.target.value)}>
+            <option value="">—</option>
+            {(panels.data ?? []).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+          </Select>
+        </Field>
+        {audienceKind === "list" && listId ? (
           <div className="span-all perf-actions">
-            <Button type="button" disabled={!body.trim() || save.isPending} onClick={() => save.mutate()}><Bi en="Save send" fa="ثبت ارسال" /></Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={!panelId}
-              onClick={() => {
-                if (panel?.code === "pishgam") {
-                  const url = pishgamPageUrl("sendSMS", {
-                    body,
-                    sender,
-                    state: "",
-                    city: "",
-                    region: "",
-                    postal: "",
-                    numbers: mobiles,
-                  });
-                  window.open(url, "_blank", "noopener,noreferrer");
-                  toast("صفحهٔ ارسال پیشگام باز شد. ارسال را آنجا بزنید.");
-                  return;
-                }
-                if (!panel || panel.code !== "isms") {
-                  toast("وب‌سرویس فقط برای آی‌اس‌ام‌اس و پیام خدماتی است");
-                  return;
-                }
-                const numbers = mobiles.split(/[\s,،]+/).map((item) => item.trim()).filter(Boolean);
-                if (!numbers.length) {
-                  toast("شماره را بنویسید. وب‌سرویس تا ۲۰ شماره خدماتی می‌فرستد.");
-                  return;
-                }
-                if (numbers.length > 20) {
-                  toast("بیش از ۲۰ شماره است. برای تبلیغ انبوه، فایل لیست را در خود پنل آی‌اس‌ام‌اس آپلود کنید.");
-                  return;
-                }
-                if (!panel.has_secret || username.trim() !== (panel.api_username || "")) {
-                  toast("اول نام کاربری و رمز را با «ذخیره اتصال» ثبت کنید.");
-                  return;
-                }
-                perfApi.isms({ panel_id: panelId, mobiles: numbers, body }).then(() => {
-                  toast("به وب‌سرویس آی‌اس‌ام‌اس فرستاده شد");
-                }).catch((error: Error) => toast(error.message));
-              }}
-            >
-              {panel?.code === "pishgam" ? (
-                <Bi en="Open in Pishgam" fa="ادامه در پیشگام" />
-              ) : (
-                <Bi en="Send service SMS" fa="ارسال خدماتی آی‌اس‌ام‌اس" />
-              )}
+            <Button type="button" variant="secondary" onClick={() => downloadPerf(`/perf/lists/${listId}/export`, "recipients.xlsx")}>
+              <Bi en="Download list" fa="دانلود لیست" />
             </Button>
+            {panel?.code === "pishgam" ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  window.open(pishgamPageUrl("sendBulkSMS", body, sender), "_blank", "noopener,noreferrer");
+                  toast("پنل پیشگام باز شد.");
+                }}
+              >
+                <Bi en="Open Pishgam" fa="ارسال در پیشگام" />
+              </Button>
+            ) : null}
           </div>
-        </div>
-      </Card>
-      {sends.isLoading ? <LoadingState /> : null}
-      {sends.data ? <RecordedSends rows={sends.data} missing={missing} /> : null}
-    </>
-  );
-}
-
-const SEND_SORTS: SortOption<SmsSend>[] = [
-  { key: "cost-desc", label: "بیشترین هزینه", pick: (row) => row.cost_toman, dir: "desc" },
-  { key: "n-desc", label: "بیشترین گیرنده", pick: (row) => row.recipient_count, dir: "desc" },
-  { key: "del-desc", label: "بیشترین تحویل", pick: (row) => row.delivered_count, dir: "desc" },
-  { key: "leads-desc", label: "بیشترین ورودی", pick: (row) => row.leads, dir: "desc" },
-  { key: "date", label: "جدیدترین ارسال", pick: (row) => row.sent_at || "", dir: "desc" },
-  { key: "code", label: "کد کمپین", pick: (row) => row.campaign_code, dir: "asc" },
-];
-
-function sendText(body: string): string {
-  return body.replace(/\[\[[^\]]+\]\]/g, "").replace(/\s+/g, " ").trim();
-}
-
-function RecordedSends({ rows, missing }: { rows: SmsSend[]; missing?: boolean }) {
-  const qc = useQueryClient();
-  const toast = useToast();
-  const remove = useRemove();
-  const [edit, setEdit] = useState<SmsSend | null>(null);
-  const [delivery, setDelivery] = useState<SmsSend | null>(null);
-  const start = missing ? "open" : "linked";
-  const [scope, setScope] = useState(start);
-  const narrowed = rows.filter((row) => {
-    if (scope === "delivered") return row.delivered_count > 0;
-    if (scope === "open") return row.recipient_count > 0 && !row.delivered_count;
-    if (scope === "linked") return Boolean(row.campaign_code);
-    if (scope === "loose") return !row.campaign_code;
-    return true;
-  });
-  const list = useArrange(narrowed, 12, SEND_SORTS, (row) => [row.campaign_code, row.body, row.recipient_count], scope);
-  const dirty = scope !== start || list.searching || list.sortChanged;
-  return (
-    <Card>
-      <SectionHeader icon="clock" title={<Bi en="Recorded sends" fa="ارسال‌های ثبت‌شده" />} count={list.ordered.length} />
-      <FilePick
-        accept=".xlsx"
-        label={<Bi en="Drop the panel report" fa="گزارش پنل را بیندازید" />}
-        hint={<Bi en="Matched by date or recipient count. Successful delivery counts; waiting does not." fa="با تاریخ یا تعداد گیرنده جور می‌شود. دریافت موفق شمرده می‌شود و منتظر گزارش نه." />}
-        onFile={(file) => {
-          perfApi.matchDelivery(file).then((result) => {
-            toast(`${result.campaign_code || "ارسال"}: ${toman(result.delivered_count)} تحویل`);
-            qc.invalidateQueries({ queryKey: ["perf", "sends"] });
-          }).catch((error: Error) => toast(error.message));
-        }}
-      />
-      <ArrangeBar
-        query={list.query}
-        onQuery={list.setQuery}
-        placeholder="کد کمپین یا متن"
-        sortKey={list.sortKey}
-        onSort={list.setSortKey}
-        sorts={list.sorts}
-        onReset={dirty ? () => { setScope(start); list.resetSort(); } : undefined}
-      >
-        <Select aria-label="تحویل" value={scope} onChange={(event) => setScope(event.target.value)}>
-          <option value="">همهٔ ارسال‌ها</option>
-          <option value="linked">فقط با کمپین</option>
-          <option value="open">بدون تحویل</option>
-          <option value="loose">بدون کمپین</option>
-          <option value="delivered">فقط تحویل‌شده</option>
-        </Select>
-      </ArrangeBar>
-      {list.windowed.total === 0 ? <Muted as="p">ارسالی با این فیلتر نیست.</Muted> : (
-        <Table
-          rows={list.windowed.rows}
-          rowKey={(row) => row.id}
-          columns={[
-            { key: "code", header: "کمپین", className: "cell-nowrap", render: (row: SmsSend) => <CampaignCode code={row.campaign_code} /> },
-            { key: "when", header: "تاریخ", render: (row) => row.sent_at ? <DateText value={row.sent_at} /> : "—" },
-            { key: "panel", header: "پنل", render: (row) => row.panel_name || "—" },
-            { key: "body", header: "متن", render: (row) => <span className="cell-clamp">{sendText(row.body) || "—"}</span> },
-            { key: "n", header: "گیرنده", render: (row) => toman(row.recipient_count) },
-            { key: "cost", header: "هزینه", render: (row) => toman(row.cost_toman) },
-            { key: "del", header: "تحویل", render: (row) => toman(row.delivered_count) },
-            { key: "leads", header: "ورودی", render: (row) => toman(row.leads) },
-            {
-              key: "actions",
-              header: "",
-              render: (row) => (
-                <RowActions
-                  onDelivery={() => setDelivery(row)}
-                  onEdit={() => setEdit(row)}
-                  onDelete={() => void remove(`ارسال ${row.campaign_code || ""}`, () => perfApi.deleteSend(row.id))}
-                />
-              ),
-            },
-          ]}
-        />
-      )}
-      <ShowMore left={list.windowed.left} onMore={list.windowed.grow} />
-      {edit ? <SmsEdit row={edit} onClose={() => setEdit(null)} /> : null}
-      {delivery ? <SmsDelivery row={delivery} onClose={() => setDelivery(null)} /> : null}
-    </Card>
-  );
-}
-
-const PISHGAM_WEB = "https://sms.pishgamrayan.com";
-
-/** نام صفحه‌ها همان تب‌های پنل sms.pishgamrayan.com است. */
-const PISHGAM_SECTIONS: Array<{ page: string; title: string; hint: string }> = [
-  { page: "sendSMS", title: "ارسال پیامک", hint: "تکی و گروهی" },
-  { page: "sendSMSWithPhonebook", title: "دفترچه تلفن", hint: "از مخاطبان ذخیره‌شده" },
-  { page: "sendBulkSMS", title: "ارسال انبوه", hint: "شهر و استان" },
-  { page: "sendBulkSMS2", title: "ارسال انبوه ۲", hint: "انبوه به‌روز" },
-  { page: "sendBalkSms", title: "ارسال منطقه‌ای", hint: "کدپستی و منطقه" },
-  { page: "sendSmsFromMap", title: "ارسال از نقشه", hint: "محدوده روی نقشه" },
-  { page: "sendP2pSms", title: "نظیر به نظیر", hint: "متن جدا برای هر شماره" },
-  { page: "dynamicSendSms", title: "ارسال پویا", hint: "متن متغیر" },
-  { page: "sendSmartSMS", title: "مکان‌محور", hint: "ساکنین یک محدوده" },
-  { page: "sendOccasionSms", title: "مناسبتی", hint: "در زمان مقرر" },
-  { page: "sendWhiteMessage", title: "باشگاه مشتریان", hint: "پیام سفید" },
-  { page: "fastSendSmsPatternByPhonebook", title: "پیام الگو", hint: "الگو با دفترچه" },
-  { page: "sendQueue", title: "صف ارسال", hint: "فقط دیدن صندوق" },
-];
-
-type PishgamDraft = {
-  body: string;
-  sender: string;
-  state: string;
-  city: string;
-  region: string;
-  postal: string;
-  numbers: string;
-};
-
-function pishgamPageUrl(page: string, draft: PishgamDraft): string {
-  const params = new URLSearchParams();
-  if (draft.body.trim()) params.set("smsBody", draft.body.trim());
-  if (draft.sender.trim()) params.set("senderNumber", draft.sender.trim());
-  if (draft.state.trim()) params.set("state", draft.state.trim());
-  if (draft.city.trim()) params.set("city", draft.city.trim());
-  if (draft.region.trim()) params.set("region", draft.region.trim());
-  if (draft.postal.trim()) params.set("postalCode", draft.postal.trim());
-  if (draft.numbers.trim()) params.set("receivers", draft.numbers.trim());
-  const query = params.toString();
-  return `${PISHGAM_WEB}/${page}${query ? `?${query}` : ""}`;
-}
-
-function PishgamSections({ lines }: { lines: string[] }) {
-  const toast = useToast();
-  const [body, setBody] = useState("");
-  const [sender, setSender] = useState(lines[0] || "");
-  const [stateName, setStateName] = useState("");
-  const [city, setCity] = useState("");
-  const [region, setRegion] = useState("");
-  const [postal, setPostal] = useState("");
-  const [numbers, setNumbers] = useState("");
-  useEffect(() => {
-    if (!sender && lines[0]) setSender(lines[0]);
-  }, [lines, sender]);
-  const draft: PishgamDraft = { body, sender, state: stateName, city, region, postal, numbers };
-
-  async function openSection(page: string, title: string) {
-    if (body.trim()) {
-      try {
-        await navigator.clipboard.writeText(body.trim());
-      } catch {
-        /* پیشگام خودش کلیپ‌بورد را نمی‌خواند؛ آدرس صفحه متن را دارد. */
-      }
-    }
-    window.open(pishgamPageUrl(page, draft), "_blank", "noopener,noreferrer");
-    toast(`${title} در پیشگام باز شد. ارسال را آنجا بزنید.`);
-  }
-
-  return (
-    <Card>
-      <SectionHeader
-        icon="send"
-        title={<Bi en="Pishgam sections" fa="بخش‌های پیشگام" />}
-        hint={
-          <Bi
-            en="Opening a section fills the link with this draft and opens that Pishgam page. Nothing is sent from here."
-            fa="هر دکمه همان صفحه را در پیشگام باز می‌کند و متن، خط، شهر و منطقه را روی لینک می‌گذارد. از اینجا پیامکی فرستاده نمی‌شود؛ ارسال را در خود پیشگام می‌زنید."
-          />
-        }
-      />
-      <div className="form-grid">
+        ) : null}
+        {audienceKind === "smart" ? (
+          <div className="span-all">
+            <Muted as="p">ارسال هوشمند قفل است تا تأیید دستی شما. اولین ارسال واقعی با تعداد کم در پنل پیشگام انجام شود.</Muted>
+            <Button type="button" variant="secondary" disabled title="قفل">
+              <Bi en="Smart send locked" fa="ارسال هوشمند (قفل)" />
+            </Button>
+            {smartPreview?.status === "done" ? (
+              <Muted as="p">شناسهٔ درخواست‌ها: {(smartPreview.requests ?? []).map((r) => r.smart_sms_request_id).join("، ")}</Muted>
+            ) : null}
+          </div>
+        ) : null}
+        {audienceKind === "postal" ? (
+          <div className="span-all">
+            <Muted as="p">بعد از ارسال در پنل پیشگام، سابقه را اینجا ثبت کنید.</Muted>
+            <PishgamPostalAudience body={body} senderLine={sender} />
+          </div>
+        ) : null}
+        {audienceKind === "isms" ? (
+          <Field className="span-all" label={<Bi en="Service numbers" fa="شماره‌های خدماتی" />}>
+            <TextArea value={serviceMobiles} rows={3} onChange={(e) => onServiceMobiles(e.target.value)} />
+          </Field>
+        ) : null}
+        {panel?.code === "pishgam" && audienceKind !== "smart" ? (
+          <Field label={<Bi en="Panel send id" fa="شناسهٔ ارسال پنل" />}>
+            <Input type="number" dir="ltr" value={messageId} placeholder="از صف پیشگام" onChange={(e) => onMessageId(e.target.value)} />
+          </Field>
+        ) : null}
         <Field className="span-all" label={<Bi en="Text" fa="متن" />}>
-          <TextArea value={body} rows={3} onChange={(event) => setBody(event.target.value)} />
+          <TextArea value={body} readOnly rows={3} />
         </Field>
-        <Field label={<Bi en="Sender line" fa="خط ارسال" />}>
-          <Input dir="ltr" value={sender} onChange={(event) => setSender(event.target.value)} placeholder={lines[0] || "5000…"} />
-        </Field>
-        <Field label={<Bi en="Province" fa="استان" />}>
-          <Input value={stateName} onChange={(event) => setStateName(event.target.value)} placeholder="تهران" />
-        </Field>
-        <Field label={<Bi en="City" fa="شهر" />}>
-          <Input value={city} onChange={(event) => setCity(event.target.value)} placeholder="تهران" />
-        </Field>
-        <Field label={<Bi en="Region" fa="منطقه" />}>
-          <Input value={region} onChange={(event) => setRegion(event.target.value)} />
-        </Field>
-        <Field label={<Bi en="Postal code" fa="کدپستی" />}>
-          <Input dir="ltr" value={postal} onChange={(event) => setPostal(event.target.value)} />
-        </Field>
-        <Field className="span-all" label={<Bi en="Numbers" fa="شماره‌ها" />}>
-          <TextArea value={numbers} rows={2} placeholder="برای ارسال تکی یا گروهی" onChange={(event) => setNumbers(event.target.value)} />
-        </Field>
-      </div>
-      <div className="conn-grid">
-        {PISHGAM_SECTIONS.map((section) => (
-          <article key={section.page} className="conn-tile">
-            <h3>{section.title}</h3>
-            <p className="conn-help">{section.hint}</p>
-            <div className="perf-actions">
-              <Button type="button" onClick={() => void openSection(section.page, section.title)}>
-                <Bi en="Open in Pishgam" fa="ادامه در پیشگام" />
-              </Button>
-            </div>
-          </article>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function PishgamTab() {
-  const qc = useQueryClient();
-  const toast = useToast();
-  // باز کردن این تب به پنل پیشگام کال نمی‌زند؛ موجودی زنده فقط با دکمه (همان بررسی صفحهٔ اتصالات).
-  const saved = useSavedConnections();
-  const live = useLiveConnections();
-  const checking = live.isFetching;
-  const sends = useQuery({ queryKey: ["perf", "sends"], queryFn: perfApi.sends });
-  const panel: PanelStatus | undefined = ((live.data ?? saved.data)?.panels ?? []).find((row) => row.code === "pishgam");
-  const pishgamSends = (sends.data ?? []).filter((row) => (row.panel_name || "").includes("پیشگام"));
-  return (
-    <>
-      <Card>
-        <SectionHeader
-          icon="message"
-          title={<Bi en="Pishgam live status" fa="پیشگام — وضعیت زنده" />}
-          hint={<Bi en="Balance and lines are read live only when you press Check now (it checks all connections). Nothing is sent from here." fa="موجودی و خطوط فقط با «بررسی همین حالا» زنده خوانده می‌شود (همهٔ اتصال‌ها با هم بررسی می‌شوند). از همین‌جا چیزی ارسال نمی‌شود." />}
-          action={
-            <div className="row">
-              {checking
-                ? <Badge tone="warn"><Bi en="Checking" fa="در حال بررسی" /></Badge>
-                : !panel?.live
-                  ? <Badge tone="warn"><Bi en="Not checked" fa="بررسی نشده" /></Badge>
-                  : panel.live.ok
-                    ? <Badge tone="ok"><Bi en="Connected" fa="وصل" /></Badge>
-                    : <Badge tone="danger"><Bi en="Not connected" fa="وصل نیست" /></Badge>}
-              <Button type="button" variant="secondary" disabled={checking} aria-busy={checking} onClick={() => void live.refetch()}>
-                {checking ? <Bi en="Checking…" fa="در حال بررسی…" /> : <Bi en="Check now" fa="بررسی همین حالا" />}
-              </Button>
-            </div>
-          }
-        />
-        {live.dataUpdatedAt && !checking ? (
-          <Muted as="p">آخرین بررسی زنده: <DateText value={new Date(live.dataUpdatedAt).toISOString()} withTime /></Muted>
-        ) : null}
-        {live.error && !checking ? (
-          <ErrorMessage friendly={false} message={live.error instanceof Error ? live.error.message : "بررسی زنده انجام نشد."} />
-        ) : null}
-        {!panel || !panel.live ? (
-          <Muted as="p">{checking ? "در حال بررسی زنده…" : "وضعیت زنده بررسی نشده است. برای خواندن موجودی و خطوط «بررسی همین حالا» را بزنید."}</Muted>
-        ) : panel.live.ok ? (
-          <div className="form-grid">
-            <Field label={<Bi en="Balance" fa="موجودی" />}>
-              <Input readOnly value={panel.live.balance || "—"} />
-            </Field>
-            <Field label={<Bi en="Sender lines" fa="خطوط ارسال" />}>
-              <Input readOnly dir="ltr" value={(panel.live.lines ?? []).join(" ، ") || "—"} />
-            </Field>
-            <div className="span-all">
-              <Muted>
-                {panel.live.lines?.length ? toman(panel.live.lines.length) + " خط فعال. " : ""}
-                آدرس API: <span dir="ltr">{panel.api_base || "—"}</span>
-              </Muted>
-            </div>
-          </div>
-        ) : (
-          <ErrorMessage friendly={false} message={panel.live.reason || "کال زنده به پنل انجام نشد."} />
-        )}
-      </Card>
-      <PishgamSections lines={panel?.live?.lines ?? []} />
-      <Card>
-        <SectionHeader icon="sparkles" title={<Bi en="Send analytics" fa="تحلیل ارسال‌ها" />} count={pishgamSends.length} />
-        {pishgamSends.length === 0 ? (
-          <Muted as="p">هنوز ارسالی از پیشگام ثبت نشده است. بعد از اولین ثبت ارسال، همین‌جا هزینه و تحویل جمع می‌شود.</Muted>
-        ) : (
-          <>
-            <div className="form-grid">
-              <Field label={<Bi en="Sends" fa="ارسال‌ها" />}><Input readOnly value={toman(pishgamSends.length)} /></Field>
-              <Field label={<Bi en="Recipients" fa="گیرنده" />}><Input readOnly value={toman(pishgamSends.reduce((s, r) => s + (r.recipient_count || 0), 0))} /></Field>
-              <Field label={<Bi en="Cost (toman)" fa="هزینه (تومان)" />}><Input readOnly value={toman(pishgamSends.reduce((s, r) => s + (r.cost_toman || 0), 0))} /></Field>
-              <Field label={<Bi en="Delivered" fa="تحویل" />}><Input readOnly value={toman(pishgamSends.reduce((s, r) => s + (r.delivered_count || 0), 0))} /></Field>
-              <Field label={<Bi en="Leads" fa="ورودی" />}><Input readOnly value={toman(pishgamSends.reduce((s, r) => s + (r.leads || 0), 0))} /></Field>
-            </div>
-            <Table
-              rows={pishgamSends.slice(0, 8)}
-              rowKey={(row) => row.id}
-              columns={[
-                { key: "code", header: "کمپین", className: "cell-nowrap", render: (row: SmsSend) => <CampaignCode code={row.campaign_code} /> },
-                { key: "when", header: "تاریخ", render: (row) => row.sent_at ? <DateText value={row.sent_at} /> : "—" },
-                { key: "n", header: "گیرنده", render: (row) => toman(row.recipient_count) },
-                { key: "cost", header: "هزینه", render: (row) => toman(row.cost_toman) },
-                { key: "del", header: "تحویل", render: (row) => toman(row.delivered_count) },
-                { key: "leads", header: "ورودی", render: (row) => toman(row.leads) },
-              ]}
-            />
-          </>
-        )}
-      </Card>
-      <PishgamDeliveryCard
-        panelId={panel?.id || ""}
-        onDone={(result) => {
-          toast(`${toman(result.delivered_count)} رسیده به گوشی از ${toman(result.rows.length)} شماره`);
-          void qc.invalidateQueries({ queryKey: ["perf", "sends"] });
-        }}
-      />
-    </>
-  );
-}
-
-function PishgamDeliveryCard({
-  panelId,
-  onDone,
-}: {
-  panelId: string;
-  onDone: (result: PishgamDelivery) => void;
-}) {
-  const toast = useToast();
-  const [messageId, setMessageId] = useState("");
-  const [recipients, setRecipients] = useState("");
-  const delivery = useMutation({
-    mutationFn: () => {
-      const numbers = recipients.split(/[\s,،]+/).map((item) => item.trim()).filter(Boolean);
-      return perfApi.pishgamDelivery({ panel_id: panelId, message_id: Number(messageId), recipients: numbers });
-    },
-    onSuccess: onDone,
-    onError: (error: Error) => toast(error.message),
-  });
-  return (
-    <Card>
-      <SectionHeader
-        icon="clock"
-        title={<Bi en="Delivery status" fa="بررسی وضعیت تحویل" />}
-        hint={<Bi en="Enter the send id from the Pishgam panel (Outbox) and up to 100 recipients. Read-only." fa="شناسهٔ ارسال را از صف ارسال یا صندوق ارسال پنل پیشگام بردارید و حداکثر ۱۰۰ گیرنده بنویسید. فقط خواندن." />}
-      />
-      <div className="form-grid">
-        <Field label={<Bi en="Send id" fa="شناسهٔ ارسال" />}>
-          <Input type="number" value={messageId} placeholder="مثلاً ۱۲۳۴۵۶" onChange={(e) => setMessageId(e.target.value)} />
-        </Field>
-        <Field className="span-all" label={<Bi en="Recipients" fa="شمارهٔ گیرنده‌ها" />}>
-          <TextArea value={recipients} rows={3} placeholder="هر شماره یک خط یا با ویرگول. حداکثر ۱۰۰ شماره." onChange={(e) => setRecipients(e.target.value)} />
+        <Field label={<Bi en="Recipients" fa="گیرنده" />}>
+          <Input readOnly value={toman(recipientCount)} />
         </Field>
         <div className="span-all perf-actions">
-          <Button
-            type="button"
-            disabled={!panelId || !messageId.trim() || !recipients.trim() || delivery.isPending}
-            onClick={() => delivery.mutate()}
-          >
-            {delivery.isPending ? <Bi en="Checking" fa="در حال بررسی…" /> : <Bi en="Check delivery" fa="بررسی وضعیت" />}
+          {audienceKind === "isms" ? (
+            <Button
+              type="button"
+              disabled={!panelId}
+              onClick={() => {
+                void (async () => {
+                  if (!panel || panel.code !== "isms") {
+                    toast("پنل آی‌اس‌ام‌اس انتخاب کنید.");
+                    return;
+                  }
+                  const numbers = serviceMobiles.split(/[\s,،]+/).map((item) => item.trim()).filter(Boolean);
+                  if (!numbers.length || numbers.length > 20) {
+                    toast("۱ تا ۲۰ شماره بنویسید.");
+                    return;
+                  }
+                  if (!panel.has_secret || !panel.api_username) {
+                    toast("اتصال آی‌اس‌ام‌اس را در اتصالات ذخیره کنید.");
+                    return;
+                  }
+                  const ok = await confirm("ارسال پیامک", `به ${toman(numbers.length)} شماره ارسال می‌شود.`, "بله", { danger: true });
+                  if (!ok) return;
+                  perfApi.isms({ panel_id: panelId, mobiles: numbers, body }).then(() => toast("فرستاده شد")).catch((e: Error) => toast(e.message));
+                })();
+              }}
+            >
+              <Bi en="Send iSMS" fa="ارسال خدماتی" />
+            </Button>
+          ) : null}
+          <Button type="button" variant="secondary" disabled={!body.trim() || save.isPending} onClick={() => save.mutate()}>
+            <Bi en="Save record" fa="ثبت سابقه" />
           </Button>
         </div>
       </div>
-      {delivery.data ? (
-        delivery.data.ok ? (
-          <Table
-            rows={delivery.data.rows}
-            rowKey={(row) => row.to_number || row.text}
-            columns={[
-              { key: "number", header: "شماره", className: "cell-nowrap", render: (row: PishgamDelivery["rows"][number]) => <span dir="ltr">{row.to_number}</span> },
-              { key: "text", header: "وضعیت", render: (row) => row.text || "—" },
-            ]}
-          />
-        ) : (
-          <ErrorMessage friendly={false} message={delivery.data.reason} />
-        )
-      ) : null}
+    </Card>
+  );
+}
+
+function SmsSummary({
+  campaign,
+  shape,
+  hasCancel,
+  audienceKind,
+  recipientCount,
+  smartPreview,
+  missing,
+  onJump,
+}: {
+  campaign?: { code: string; title: string };
+  shape: ReturnType<typeof smsShape>;
+  hasCancel: boolean;
+  audienceKind: AudienceKind;
+  recipientCount: number;
+  smartPreview: PishgamPreviewResult | null;
+  missing: Array<{ label: string; step: FlowStep }>;
+  onJump: (step: FlowStep) => void;
+}) {
+  const audienceLabel =
+    audienceKind === "list" ? "لیست خودمان" :
+    audienceKind === "smart" ? "محلهٔ هوشمند" :
+    audienceKind === "postal" ? "کدپستی (پنل)" : "خدماتی";
+  const estimate = smartPreview?.estimates?.tariff_total;
+  const credit = smartPreview?.credit;
+  return (
+    <Card className="sms-flow-summary-card">
+      <SectionHeader icon="sparkles" title={<Bi en="Summary" fa="خلاصه" />} />
+      <ul className="sms-flow-summary-list">
+        <li><strong>کمپین:</strong> {campaign ? `${campaign.code} — ${campaign.title}` : "—"}</li>
+        <li><strong>متن:</strong> {toman(shape.chars)} نویسه · {toman(shape.pages)} صفحه</li>
+        <li><strong>لغو۱۱:</strong> {hasCancel ? <Badge tone="ok">بله</Badge> : <Badge tone="warn">خیر</Badge>}</li>
+        <li><strong>مخاطب:</strong> {audienceLabel} · {toman(recipientCount)} نفر</li>
+        {estimate != null ? <li><strong>برآورد (تعرفه):</strong> <span className="perf-num">{toman(estimate)}</span> ریال</li> : null}
+        {credit != null ? <li><strong>موجودی پیشگام:</strong> <span className="perf-num">{toman(credit)}</span> ریال</li> : null}
+      </ul>
+      {missing.length ? (
+        <div className="sms-flow-missing">
+          <Muted as="p">موارد کم:</Muted>
+          <ul>
+            {missing.map((item) => (
+              <li key={item.label}>
+                <button type="button" className="sms-flow-missing-link" onClick={() => onJump(item.step)}>{item.label}</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <Badge tone="ok">آمادهٔ ثبت یا ارسال</Badge>
+      )}
     </Card>
   );
 }

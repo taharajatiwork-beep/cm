@@ -35,6 +35,7 @@ const paths = {
   activity: "M22 12h-4l-3 9L9 3l-3 9H2",
   filter: "M22 3H2l8 9.5V19l4 2v-8.5z",
   menu: "M4 6h16M4 12h16M4 18h16",
+  plug: "M12 22v-5M9 8V2h6v6M9 18H6a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-3",
 } as const;
 
 export type IconName = keyof typeof paths;

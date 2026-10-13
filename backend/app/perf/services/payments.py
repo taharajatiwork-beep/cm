@@ -7,7 +7,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.finance_perms import can_team_expense_approve, has_expense_pay, has_price_approve
 from app.core.permissions import PermissionCode
+from app.services.audit import write_audit
 from app.perf.models import PmCampaign, PmCost, PmPanel, PmPaymentRequest
 from app.perf.services.common import PerfError, next_cost_number, now, tell, users_with
 from app.services.org import get_user_permissions
@@ -32,7 +34,7 @@ async def advance(
     if action == "reject":
         if req.status in ("paid", "recorded", "rejected"):
             raise PerfError("این درخواست دیگر قابل رد نیست")
-        if PermissionCode.PRICE_WRITE not in perms:
+        if not has_expense_pay(perms):
             raise PerfError("رد درخواست با مالی است", 403)
         req.status = "rejected"
         req.updated_at = now()
@@ -44,27 +46,49 @@ async def advance(
             raise PerfError("این درخواست گام مدیر ندارد")
         if req.status != "requested":
             raise PerfError("وضعیت درخواست با این اقدام جور نیست")
-        allowed = PermissionCode.REQUEST_TRIAGE in perms or PermissionCode.EXPENSE_APPROVE in perms or PermissionCode.PRICE_WRITE in perms
-        if not allowed:
-            raise PerfError("تأیید مدیر تیم لازم است", 403)
+        if not can_team_expense_approve(perms):
+            raise PerfError("تأیید سرپرست تیم لازم است", 403)
+        if req.manager_ok_by and req.manager_ok_by == actor_id:
+            raise PerfError("همان شخص نمی‌تواند هر دو گام سرپرست و مالی را بزند", 403)
         req.status = "manager_ok"
+        req.manager_ok_by = actor_id
         req.updated_at = now()
         await db.flush()
-        await _spine_note(db, req, "مدیر تیم هزینه را تأیید کرد")
+        await write_audit(
+            db,
+            organization_id=req.organization_id,
+            action="payment.manager_ok",
+            entity_type="pm_payment_request",
+            entity_id=req.id,
+            actor_id=actor_id,
+            details={"amount_toman": req.amount_toman, "project_id": str(req.project_id) if req.project_id else None},
+        )
+        await _spine_note(db, req, "سرپرست تیم هزینه را تأیید کرد")
         return req
     if action not in ("finance", "pay"):
         raise PerfError("اقدام ناشناخته است")
     if req.status not in _OPEN:
         raise PerfError("وضعیت درخواست با این اقدام جور نیست")
     if linked and req.status == "requested":
-        raise PerfError("اول مدیر تیم باید تأیید کند", 403)
-    if PermissionCode.PRICE_WRITE not in perms:
+        raise PerfError("اول سرپرست تیم باید تأیید کند", 403)
+    if req.manager_ok_by and req.manager_ok_by == actor_id:
+        raise PerfError("همان شخص نمی‌تواند هر دو گام سرپرست و مالی را بزند", 403)
+    if not has_expense_pay(perms):
         raise PerfError("تأیید با مالی است", 403)
     req.status = "paid"
     req.updated_at = now()
     await _record_paid(db, req)
     req.status = "recorded"
     await db.flush()
+    await write_audit(
+        db,
+        organization_id=req.organization_id,
+        action="payment.recorded",
+        entity_type="pm_payment_request",
+        entity_id=req.id,
+        actor_id=actor_id,
+        details={"amount_toman": req.amount_toman, "manager_ok_by": str(req.manager_ok_by) if req.manager_ok_by else None},
+    )
     await _notify_step(db, req)
     await _spine_note(db, req, "هزینه ثبت شد")
     return req
@@ -106,11 +130,19 @@ async def _record_paid(db: AsyncSession, req: PmPaymentRequest) -> None:
 
 async def _finance_users(db: AsyncSession, organization_id: UUID, skip: UUID | None = None) -> list:
     people = []
+    for user in await users_with(db, organization_id, PermissionCode.EXPENSE_PAY):
+        if user.id == skip:
+            continue
+        perms = await get_user_permissions(db, user)
+        if has_expense_pay(perms):
+            people.append(user)
+    if people:
+        return people
     for user in await users_with(db, organization_id, PermissionCode.PRICE_WRITE):
         if user.id == skip:
             continue
         perms = await get_user_permissions(db, user)
-        if PermissionCode.PRICE_WRITE in perms:
+        if has_expense_pay(perms):
             people.append(user)
     return people
 

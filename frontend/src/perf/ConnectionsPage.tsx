@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button, Card, ErrorMessage, Field, Input, LoadingState, Muted, PageHeader, SectionHeader } from "../components/ui";
 import { useToast } from "../components/ui/Toast";
 import { DateText } from "../components/DateText";
@@ -27,7 +27,7 @@ const SHEETS: Array<{ key: string; fa: string; en: string; help: string }> = [
     key: "costs",
     fa: "شیت هزینه",
     en: "Cost sheet",
-    help: "هزینه‌های تازه به Sheet3 و Log اضافه می‌شوند. دفتر قدیمی هزینه دست نمی‌خورد.",
+    help: "هزینه‌های تازه به شیت هزینه و گزارش روزانه اضافه می‌شوند. دفتر قدیمی هزینه دست نمی‌خورد.",
   },
   {
     key: "reporter",
@@ -61,6 +61,8 @@ function sheetLine(label: string, link: SheetLink | undefined): string {
 
 export function ConnectionsPage() {
   const { has } = useAuth();
+  const perfTools = has("perf.read") || has("perf.write");
+  const canEditSecrets = has("request.triage") || has("request.manage") || has("org.admin");
   const qc = useQueryClient();
   const [token, setToken] = useState("");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -142,7 +144,7 @@ export function ConnectionsPage() {
   return (
     <>
       <PageHeader
-        title={<Bi en="Connections" fa="اتصالات" />}
+        title={<Bi en="My connections" fa="اتصالات من" />}
         description={<Bi en="Opening this page does not call any service. Press Check now for a live check; it only reads sheet titles, the Mizito project list and panel balances. It does not write rows." fa="باز کردن این صفحه به هیچ سرویسی وصل نمی‌شود. بررسی زنده فقط با «بررسی همین حالا» انجام می‌شود و فقط عنوان شیت‌ها، فهرست پروژهٔ میزیتو و موجودی پنل‌ها را می‌خواند؛ ردیفی نمی‌نویسد." />}
         actions={
           <Button
@@ -156,6 +158,20 @@ export function ConnectionsPage() {
           </Button>
         }
       />
+      {data.sheet_sync && (data.sheet_sync.running || data.sheet_sync.error || data.sheet_sync.result === "error") ? (
+        <Card className="stack">
+          <SectionHeader
+            icon="layers"
+            title={<Bi en="Last sheet sync" fa="آخرین همگام‌سازی شیت" />}
+            action={data.sheet_sync.running ? <Badge tone="warn"><Bi en="Running" fa="در جریان" /></Badge> : data.sheet_sync.result === "error" ? <Badge tone="danger"><Bi en="Failed" fa="خطا" /></Badge> : null}
+          />
+          {data.sheet_sync.running ? (
+            <Muted as="p">{data.sheet_sync.actor_name || "یک نفر"} در حال به‌روزرسانی شیت است. اگر ۴۰۹ گرفتید همین‌جا می‌بینید و بعداً دوباره «بفرست به گوگل‌شیت» بزنید.</Muted>
+          ) : null}
+          {data.sheet_sync.error ? <ErrorMessage friendly={false} message={data.sheet_sync.error} /> : null}
+          {data.sheet_sync.finished_at ? <Muted>پایان: <DateText value={data.sheet_sync.finished_at} withTime /></Muted> : null}
+        </Card>
+      ) : null}
       <p className="conn-fresh">
         {checking ? "در حال بررسی زندهٔ همهٔ اتصال‌ها…" : checkedAt ? (
           <>آخرین بررسی زنده: <DateText value={checkedAt} withTime />. خودکار تکرار نمی‌شود؛ برای وضعیت تازه دوباره دکمه را بزنید.</>
@@ -202,7 +218,7 @@ export function ConnectionsPage() {
         </div>
       </Card>
 
-      <Card>
+      {perfTools ? <Card>
         <SectionHeader
           icon="briefcase"
           title={<Bi en="Mizito" fa="میزیتو" />}
@@ -237,9 +253,9 @@ export function ConnectionsPage() {
           <li>همین‌جا بچسبانید و ذخیره کنید. این توکن روی سرور می‌ماند و از هر سیستم همین پنل کافی است.</li>
         </ol>
         <Muted>وقتی توکن منقضی شد، وضعیت همین کارت به «وصل نیست» برمی‌گردد و کد ۴۰۱ یا ۴۰۳ را نشان می‌دهد.</Muted>
-        {has("perf.write") ? (
+        {canEditSecrets ? (
           <div className="form-grid">
-            <Field label={<Bi en="x-token" fa="توکن x-token" />}>
+            <Field label={<Bi en="Connection key" fa="کلید اتصال" />}>
               <Input type="password" autoComplete="off" value={token} placeholder="از هدر درخواست کپی شود" onChange={(event) => setToken(event.target.value)} />
             </Field>
             <div className="row perf-actions">
@@ -249,18 +265,18 @@ export function ConnectionsPage() {
             </div>
           </div>
         ) : (
-          <Muted>ذخیرهٔ توکن با دسترسی نوشتن پرفورمنس ممکن است.</Muted>
+          <Muted>ذخیرهٔ توکن فقط برای سرپرست و ادمین است.</Muted>
         )}
-      </Card>
+      </Card> : null}
 
-      <div className="conn-side">
+      {perfTools ? <div className="conn-side">
         <Card>
           <SectionHeader icon="message" title={<Bi en="SMS panels" fa="پنل‌های پیامک" />} />
           <p className="conn-help conn-note">پنلی که آدرس API و توکنش ذخیره باشد، با «بررسی همین حالا» موجودی‌اش زنده خوانده می‌شود. آی‌اس‌ام‌اس با نام کاربری و رمز وب‌سرویس موجودی زنده می‌خواند؛ اگر ورود سه بار ناموفق باشد پنل ۱۰ دقیقه قفل می‌شود.</p>
           {data.panels.length === 0 ? <Muted>هنوز پنلی ثبت نشده است.</Muted> : (
             <div className="conn-grid">
               {data.panels.map((panel) => (
-                <PanelTile key={panel.code || panel.name} panel={panel} writable={has("perf.write")} checking={checking} onSaved={refreshSaved} />
+                <PanelTile key={panel.code || panel.name} panel={panel} writable={canEditSecrets} checking={checking} onSaved={refreshSaved} />
               ))}
             </div>
           )}
@@ -269,7 +285,7 @@ export function ConnectionsPage() {
         <Card>
           <SectionHeader
             icon="sparkles"
-            title={<Bi en="Insight reading" fa="خواندن اینسایت" />}
+            title={<Bi en="Post stats reading" fa="خواندن آمار پست" />}
             action={data.insight.ready
               ? <Badge tone="ok"><Bi en="Key set" fa="کلید هست" /></Badge>
               : <Badge tone="warn"><Bi en="No key" fa="کلید نیست" /></Badge>}
@@ -277,12 +293,12 @@ export function ConnectionsPage() {
           <article className="conn-tile" data-tone={data.insight.ready ? "ok" : "warn"}>
             {data.insight.ready ? (
               <p className="conn-help">
-                کلید مدل زبانی ({data.insight.provider || "ارائه‌دهنده مشخص نیست"}) در تنظیم سرور هست. خواندن اسکرین‌شات اینسایت از همین کلید استفاده می‌کند.
+                کلید مدل زبانی ({data.insight.provider || "ارائه‌دهنده مشخص نیست"}) در تنظیم سرور هست. خواندن خودکار متن اسکرین‌شات آمار پست از همین کلید استفاده می‌کند.
               </p>
             ) : (
               <ErrorMessage
                 friendly={false}
-                message={`کلید مدل زبانی خالی است${data.insight.provider ? ` (ارائه‌دهنده: ${data.insight.provider})` : ""}. خواندن خودکار متن اسکرین‌شات اینسایت انجام نمی‌شود.`}
+                message={`کلید مدل زبانی خالی است${data.insight.provider ? ` (ارائه‌دهنده: ${data.insight.provider})` : ""}. خواندن خودکار متن اسکرین‌شات آمار پست انجام نمی‌شود.`}
               />
             )}
           </article>
@@ -294,7 +310,7 @@ export function ConnectionsPage() {
             <Link to="/settings"><Bi en="Open settings" fa="تنظیم در صفحهٔ تنظیمات" /></Link>
           </article>
         </Card>
-      </div>
+      </div> : null}
       <OutcomePop outcome={outcome} onClose={() => setOutcome(null)} />
     </>
   );
@@ -309,11 +325,21 @@ function panelTone(panel: PanelRow): Tone {
 
 function PanelTile({ panel, writable, checking, onSaved }: { panel: PanelRow; writable: boolean; checking: boolean; onSaved: () => void }) {
   const toast = useToast();
+  const panelsDetail = useQuery({ queryKey: ["perf", "panels"], queryFn: perfApi.panels });
+  const detail = panelsDetail.data?.find((row) => row.id === panel.id);
   const [base, setBase] = useState(panel.api_base || "");
   const [token, setToken] = useState("");
+  const [username, setUsername] = useState("");
+  const [secret, setSecret] = useState("");
+  const [sender, setSender] = useState("");
   const [busy, setBusy] = useState(false);
   const tone = panelTone(panel);
   const canProbe = Boolean((panel.api_base || "").trim() && panel.has_token);
+  useEffect(() => {
+    if (!detail) return;
+    setUsername(detail.api_username || "");
+    setSender(detail.sender_line || "");
+  }, [detail?.id, detail?.api_username, detail?.sender_line]);
   function save() {
     setBusy(true);
     const payload: Record<string, string> = {};
@@ -323,6 +349,33 @@ function PanelTile({ panel, writable, checking, onSaved }: { panel: PanelRow; wr
       .then(() => {
         toast("اتصال پنل ذخیره شد؛ با «بررسی همین حالا» زنده خوانده می‌شود");
         setToken("");
+        onSaved();
+      })
+      .catch((error: Error) => toast(error.message))
+      .finally(() => setBusy(false));
+  }
+  function saveSmsLogin() {
+    if (!detail) return;
+    setBusy(true);
+    const payload: Record<string, string> = { api_username: username, sender_line: sender };
+    if (secret.trim()) payload.api_secret = secret.trim();
+    perfApi.updatePanel(detail.id, payload)
+      .then(() => {
+        toast(secret.trim() || detail.has_secret ? "اتصال آی‌اس‌ام‌اس ذخیره شد" : "نام کاربری ذخیره شد. رمز وب‌سرویس هنوز خالی است.");
+        setSecret("");
+        void panelsDetail.refetch();
+        onSaved();
+      })
+      .catch((error: Error) => toast(error.message))
+      .finally(() => setBusy(false));
+  }
+  function saveSenderLine() {
+    if (!detail) return;
+    setBusy(true);
+    perfApi.updatePanel(detail.id, { sender_line: sender })
+      .then(() => {
+        toast("خط ارسال ذخیره شد");
+        void panelsDetail.refetch();
         onSaved();
       })
       .catch((error: Error) => toast(error.message))
@@ -361,11 +414,41 @@ function PanelTile({ panel, writable, checking, onSaved }: { panel: PanelRow; wr
       )}
       {writable ? (
         <div className="panel-probe-form">
-          <Input placeholder="آدرس API پنل (مثل https://api.example.ir)" value={base} onChange={(event) => setBase(event.target.value)} />
-          <Input type="password" autoComplete="off" placeholder={panel.has_token ? "توکن ذخیره شده" : "توکن API"} value={token} onChange={(event) => setToken(event.target.value)} />
-          <Button type="button" variant="secondary" disabled={busy || (!base.trim() && !token.trim())} onClick={save}>
-            <Bi en="Save API" fa="ذخیره API" />
-          </Button>
+          {panel.code === "pishgam" || panel.code === "isms" ? null : (
+            <>
+              <Input placeholder="آدرس API پنل (مثل https://api.example.ir)" value={base} onChange={(event) => setBase(event.target.value)} />
+              <Input type="password" autoComplete="off" placeholder={panel.has_token ? "توکن ذخیره شده" : "توکن API"} value={token} onChange={(event) => setToken(event.target.value)} />
+              <Button type="button" variant="secondary" disabled={busy || (!base.trim() && !token.trim())} onClick={save}>
+                <Bi en="Save API" fa="ذخیره API" />
+              </Button>
+            </>
+          )}
+          {panel.code === "isms" && detail ? (
+            <>
+              <Field label={<Bi en="Username" fa="نام کاربری آی‌اس‌ام‌اس" />}>
+                <Input value={username} onChange={(event) => setUsername(event.target.value)} />
+              </Field>
+              <Field label={<Bi en="API password" fa="رمز وب‌سرویس" />}>
+                <Input type="password" autoComplete="off" value={secret} placeholder={detail.has_secret ? "رمز ذخیره شده" : ""} onChange={(event) => setSecret(event.target.value)} />
+              </Field>
+              <Field label={<Bi en="Sender line" fa="خط ارسال" />}>
+                <Input value={sender} onChange={(event) => setSender(event.target.value)} />
+              </Field>
+              <Button type="button" variant="secondary" disabled={busy} onClick={saveSmsLogin}>
+                <Bi en="Save iSMS login" fa="ذخیرهٔ ورود آی‌اس‌ام‌اس" />
+              </Button>
+            </>
+          ) : null}
+          {panel.code === "pishgam" && detail ? (
+            <>
+              <Field label={<Bi en="Sender line" fa="خط ارسال" />}>
+                <Input dir="ltr" value={sender} placeholder="مثل 5000302137682" onChange={(event) => setSender(event.target.value)} />
+              </Field>
+              <Button type="button" variant="secondary" disabled={busy} onClick={saveSenderLine}>
+                <Bi en="Save sender line" fa="ذخیرهٔ خط ارسال" />
+              </Button>
+            </>
+          ) : null}
         </div>
       ) : null}
     </article>

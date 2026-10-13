@@ -10,6 +10,14 @@ _PLACEHOLDERS = {
 }
 
 
+def assert_postgres_url(settings: Settings) -> None:
+    url = settings.database_url
+    if url.startswith("sqlite") or "postgresql" not in url:
+        raise RuntimeError(
+            "DATABASE_URL must be PostgreSQL (docker compose postgres). SQLite is not supported."
+        )
+
+
 def assert_production_safe(settings: Settings) -> None:
     if settings.app_env != "production":
         return
@@ -22,7 +30,7 @@ def assert_production_safe(settings: Settings) -> None:
         problems.append("TELEGRAM_WEBHOOK_SECRET is a placeholder")
     if settings.divar_api_token in _PLACEHOLDERS and settings.divar_mode == "http":
         problems.append("DIVAR_API_TOKEN is a placeholder")
-    if settings.database_url.startswith("sqlite"):
+    if "postgresql" not in settings.database_url or settings.database_url.startswith("sqlite"):
         problems.append("DATABASE_URL must be PostgreSQL in production")
     # بدون Secure، کوکی نشست روی هر اتصال HTTP (از جمله داخل شبکهٔ محلی)
     # قابل ربودن است؛ nginx همه را به HTTPS می‌فرستد ولی دفاع چندلایه لازم است.

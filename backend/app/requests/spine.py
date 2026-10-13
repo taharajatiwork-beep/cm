@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.timeutil import as_utc
 from app.models import Conversation, ConversationParticipant, Message, Task, User
@@ -40,13 +41,20 @@ async def ensure_thread(
     actor_id: UUID,
     project_id: UUID | None = None,
     request_id: UUID | None = None,
+    pm_campaign_id: UUID | None = None,
     topic: str = "",
 ) -> Conversation:
     query = select(Conversation).where(Conversation.organization_id == organization_id)
-    if project_id:
-        query = query.where(Conversation.project_id == project_id)
+    if pm_campaign_id:
+        query = query.where(Conversation.pm_campaign_id == pm_campaign_id)
+    elif project_id:
+        query = query.where(Conversation.project_id == project_id, Conversation.pm_campaign_id.is_(None))
     else:
-        query = query.where(Conversation.request_id == request_id, Conversation.project_id.is_(None))
+        query = query.where(
+            Conversation.request_id == request_id,
+            Conversation.project_id.is_(None),
+            Conversation.pm_campaign_id.is_(None),
+        )
     row = await db.scalar(query)
     if row is None:
         row = Conversation(
@@ -55,6 +63,7 @@ async def ensure_thread(
             topic=topic or "گفتگوی کار",
             project_id=project_id,
             request_id=request_id,
+            pm_campaign_id=pm_campaign_id,
         )
         db.add(row)
         await db.flush()
@@ -94,10 +103,52 @@ async def system_message(
     await db.flush()
 
 
+_TASK_CLOSED = (TaskStatus.COMPLETED, TaskStatus.CANCELLED)
+
+
 def progress(tasks: list[Task]) -> dict:
     total = len(tasks)
     done = len([row for row in tasks if row.status == TaskStatus.COMPLETED])
-    return {"total": total, "done": done, "ratio": (done / total) if total else 0}
+    now_utc = datetime.now(UTC)
+    overdue = 0
+    for row in tasks:
+        if row.status in _TASK_CLOSED or not row.deadline:
+            continue
+        deadline = row.deadline.replace(tzinfo=UTC) if row.deadline.tzinfo is None else row.deadline
+        if deadline < now_utc:
+            overdue += 1
+    return {"total": total, "done": done, "ratio": (done / total) if total else 0, "overdue": overdue}
+
+
+async def advance_project_from_tasks(db: AsyncSession, project_id: UUID) -> None:
+    """اولین تیک پروژه را «در جریان» می‌کند؛ وقتی همهٔ وظایف تمام یا لغو شدند، «تمام»."""
+    project = await db.get(WorkProject, project_id)
+    if not project:
+        return
+    tasks = list((await db.scalars(select(Task).where(Task.project_id == project_id))).all())
+    if not tasks:
+        return
+    all_closed = all(task.status in _TASK_CLOSED for task in tasks)
+    any_done = any(task.status == TaskStatus.COMPLETED for task in tasks)
+    if all_closed and project.status != "done":
+        project.status = "done"
+        project.updated_at = datetime.now(UTC)
+    elif any_done and project.status == "new":
+        project.status = "in_progress"
+        project.updated_at = datetime.now(UTC)
+    if project.request_id:
+        await close_request_if_projects_done(db, project.request_id)
+
+
+async def close_request_if_projects_done(db: AsyncSession, request_id: UUID) -> None:
+    """درخواست تبدیل‌شده وقتی تمام پروژه‌هایش تمام شوند، تمام می‌شود."""
+    request = await db.get(WorkRequest, request_id)
+    if not request or request.status != "converted":
+        return
+    projects = list((await db.scalars(select(WorkProject).where(WorkProject.request_id == request_id))).all())
+    if projects and all(row.status == "done" for row in projects):
+        request.status = "done"
+        request.updated_at = datetime.now(UTC)
 
 
 def ready_to_close(request: WorkRequest, tasks: list[Task]) -> bool:
@@ -115,7 +166,7 @@ async def tasks_for(
     project_id: UUID | None = None,
     request_id: UUID | None = None,
 ) -> list[Task]:
-    query = select(Task).where(Task.organization_id == organization_id)
+    query = select(Task).options(selectinload(Task.assignees)).where(Task.organization_id == organization_id)
     if project_id:
         query = query.where(Task.project_id == project_id)
     if request_id:
@@ -145,6 +196,40 @@ async def my_work(db: AsyncSession, organization_id: UUID, user_id: UUID) -> dic
     rows = list(
         (await db.scalars(select(Task).where(Task.organization_id == organization_id))).all()
     )
+    projects = list(
+        (await db.scalars(select(WorkProject).where(WorkProject.organization_id == organization_id))).all()
+    )
+    requests = list(
+        (await db.scalars(select(WorkRequest).where(WorkRequest.organization_id == organization_id))).all()
+    )
+    project_by_id = {row.id: row for row in projects}
+    request_by_id = {row.id: row for row in requests}
+
+    def parent_meta(task: Task) -> dict[str, str | None]:
+        out: dict[str, str | None] = {
+            "project_code": None,
+            "project_title": None,
+            "request_code": None,
+            "request_title": None,
+        }
+        if task.project_id:
+            project = project_by_id.get(task.project_id)
+            if project:
+                out["project_code"] = project.code
+                out["project_title"] = project.title
+                if project.request_id:
+                    request = request_by_id.get(project.request_id)
+                    if request:
+                        out["request_id"] = str(request.id)
+                        out["request_code"] = request.code
+                        out["request_title"] = request.title
+        elif task.request_id:
+            request = request_by_id.get(task.request_id)
+            if request:
+                out["request_code"] = request.code
+                out["request_title"] = request.title
+        return out
+
     links = list((await db.scalars(select(TaskAssignee))).all())
     by_task: dict[UUID, set[UUID]] = {}
     for link in links:
@@ -161,6 +246,7 @@ async def my_work(db: AsyncSession, organization_id: UUID, user_id: UUID) -> dic
         origin = "project" if task.project_id else "request" if task.request_id else "work"
         groups[name].append(
             {
+                "kind": "task",
                 "id": str(task.id),
                 "title": task.title,
                 "status": task.status.value if hasattr(task.status, "value") else str(task.status),
@@ -168,17 +254,32 @@ async def my_work(db: AsyncSession, organization_id: UUID, user_id: UUID) -> dic
                 "origin": origin,
                 "project_id": str(task.project_id) if task.project_id else None,
                 "request_id": str(task.request_id) if task.request_id else None,
+                **parent_meta(task),
             }
         )
-    projects = list(
-        (await db.scalars(select(WorkProject).where(WorkProject.organization_id == organization_id))).all()
-    )
     busy = {task.project_id for task in rows if task.project_id}
-    groups["projects_without_tasks"] = [
-        {"id": str(project.id), "title": project.title, "code": project.code}
-        for project in projects
-        if project.id not in busy and project.status != "done"
-    ]
+    groups["projects_without_tasks"] = []
+    for project in projects:
+        if project.id in busy or project.status == "done":
+            continue
+        entry: dict[str, str | None] = {
+            "kind": "project",
+            "id": str(project.id),
+            "title": project.title,
+            "code": project.code,
+            "project_id": str(project.id),
+            "project_code": project.code,
+            "project_title": project.title,
+            "request_id": str(project.request_id) if project.request_id else None,
+            "request_code": None,
+            "request_title": None,
+        }
+        if project.request_id:
+            request = request_by_id.get(project.request_id)
+            if request:
+                entry["request_code"] = request.code
+                entry["request_title"] = request.title
+        groups["projects_without_tasks"].append(entry)
     return groups
 
 
@@ -266,6 +367,129 @@ def attachment_out(row: WorkAttachment) -> dict:
         "project_id": str(row.project_id) if row.project_id else None,
         "request_id": str(row.request_id) if row.request_id else None,
     }
+
+
+def _spine_at(value: datetime | date | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value.isoformat()
+
+
+def _task_spine_node(task: Task) -> dict:
+    return {
+        "at": _spine_at(task.created_at),
+        "kind": "task",
+        "id": str(task.id),
+        "label": task.title,
+        "status": task.status.value if hasattr(task.status, "value") else str(task.status),
+    }
+
+
+def _payment_spine_node(row) -> dict:
+    return {
+        "at": _spine_at(row.created_at),
+        "kind": "payment_request",
+        "id": str(row.id),
+        "label": f"درخواست پرداخت {row.amount_toman:,} تومان",
+        "status": row.status,
+    }
+
+
+def _campaign_spine_node(row) -> dict:
+    return {
+        "at": _spine_at(row.created_at),
+        "kind": "perf_campaign",
+        "id": str(row.id),
+        "code": row.code,
+        "label": row.title or row.code,
+        "status": row.status,
+    }
+
+
+async def build_spine_timeline(
+    db: AsyncSession,
+    organization_id: UUID,
+    *,
+    request_id: UUID | None = None,
+    project_id: UUID | None = None,
+) -> list[dict]:
+    """خط زمین مفهومی: درخواست کار، پروژه، وظیفه، پرداخت، کمپین پرفورمنس — بدون ادغام جدول."""
+    from app.perf.models import PmCampaign, PmPaymentRequest
+
+    items: list[dict] = []
+    if request_id:
+        req = await db.get(WorkRequest, request_id)
+        if req and req.organization_id == organization_id:
+            items.append(
+                {
+                    "at": _spine_at(req.created_at),
+                    "kind": "work_request",
+                    "id": str(req.id),
+                    "code": req.code,
+                    "label": req.title,
+                    "status": req.status,
+                }
+            )
+        for project in (await db.scalars(select(WorkProject).where(WorkProject.request_id == request_id))).all():
+            items.append(
+                {
+                    "at": _spine_at(project.created_at),
+                    "kind": "work_project",
+                    "id": str(project.id),
+                    "code": project.code,
+                    "label": project.title,
+                    "status": project.status,
+                }
+            )
+        for task in await tasks_for(db, organization_id, request_id=request_id):
+            items.append(_task_spine_node(task))
+        for pay in (
+            await db.scalars(
+                select(PmPaymentRequest).where(
+                    PmPaymentRequest.organization_id == organization_id,
+                    PmPaymentRequest.request_id == request_id,
+                )
+            )
+        ).all():
+            items.append(_payment_spine_node(pay))
+    if project_id:
+        project = await db.get(WorkProject, project_id)
+        if project and project.organization_id == organization_id:
+            if not request_id:
+                items.append(
+                    {
+                        "at": _spine_at(project.created_at),
+                        "kind": "work_project",
+                        "id": str(project.id),
+                        "code": project.code,
+                        "label": project.title,
+                        "status": project.status,
+                    }
+                )
+            for task in await tasks_for(db, organization_id, project_id=project_id):
+                items.append(_task_spine_node(task))
+            for pay in (
+                await db.scalars(
+                    select(PmPaymentRequest).where(
+                        PmPaymentRequest.organization_id == organization_id,
+                        PmPaymentRequest.project_id == project_id,
+                    )
+                )
+            ).all():
+                items.append(_payment_spine_node(pay))
+            for camp in (
+                await db.scalars(
+                    select(PmCampaign).where(
+                        PmCampaign.organization_id == organization_id,
+                        PmCampaign.project_id == project_id,
+                    )
+                )
+            ).all():
+                items.append(_campaign_spine_node(camp))
+    items.sort(key=lambda row: row.get("at") or "")
+    return items
 
 
 async def ping(db: AsyncSession, organization_id: UUID, user_id: UUID | None, title: str, body: str, entity_id: UUID) -> None:

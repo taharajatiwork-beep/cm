@@ -191,7 +191,7 @@ async def _nadia(db, seeded):
             PermissionCode.PERF_READ,
             PermissionCode.PERF_WRITE,
             PermissionCode.PERF_APPROVE,
-            PermissionCode.PRICE_WRITE,
+            PermissionCode.PRICE_APPROVE,
             PermissionCode.NOTIFICATION_READ,
         ],
         "organization",
@@ -288,7 +288,7 @@ async def test_payment_records_cost_and_campaign_cpl(client, seeded, db):
         seeded["org"].id,
         "مالی تست",
         "finance_test",
-        [PermissionCode.PRICE_WRITE, PermissionCode.PERF_READ, PermissionCode.NOTIFICATION_READ],
+        [PermissionCode.PRICE_APPROVE, PermissionCode.PERF_READ, PermissionCode.NOTIFICATION_READ],
         "organization",
     )
     await OrgService(db).create_user(
@@ -400,7 +400,7 @@ async def test_page_plan_counts_only_after_payment_and_publish(client, seeded, d
         seeded["org"].id,
         "مالی پیج",
         "finance_page",
-        [PermissionCode.PRICE_WRITE, PermissionCode.PERF_READ, PermissionCode.NOTIFICATION_READ],
+        [PermissionCode.PRICE_APPROVE, PermissionCode.PERF_READ, PermissionCode.NOTIFICATION_READ],
         "organization",
     )
     await OrgService(db).create_user(
@@ -636,11 +636,11 @@ def test_source_sheets_append_only_the_new_row():
     )
     from datetime import datetime as stamp
 
-    from app.perf.services.source_sheets import since_import
+    from app.perf.services.source_sheets import pending_source_export
 
-    bulk = [SimpleNamespace(created_at=stamp(2026, 10, 5, 8, minute)) for minute in range(12)]
-    later = SimpleNamespace(created_at=stamp(2026, 10, 5, 13, 47))
-    assert since_import([*bulk, later]) == [later]
+    sent = SimpleNamespace(source_sheet_exported_at=stamp(2026, 10, 5, 8, 0))
+    pending = SimpleNamespace(source_sheet_exported_at=None)
+    assert pending_source_export([sent, pending]) == [pending]
 
 
 def test_mizito_reader_keeps_open_marketing_cards():

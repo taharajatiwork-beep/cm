@@ -48,6 +48,16 @@ class PmCampaign(Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("work_project.id", ondelete="SET NULL"))
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    source_sheet_exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PmCampaignSequence(Base):
+    """شمارندهٔ سراسری کد کمپین per-org — منبع حقیقت قبل از شیت دفتر شماره."""
+
+    __tablename__ = "pm_campaign_sequence"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    next_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class PmPanel(Base):
@@ -142,6 +152,7 @@ class PmSmsSend(Base):
     leads: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    source_sheet_exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PmCarRequest(Base):
@@ -211,6 +222,7 @@ class PmStory(Base):
     attachment_path: Mapped[str] = mapped_column(String(400), default="")
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    source_sheet_exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PmPaymentRequest(Base):
@@ -233,6 +245,7 @@ class PmPaymentRequest(Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     team_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    manager_ok_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -256,6 +269,7 @@ class PmCost(Base):
     sms_send_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pm_sms_send.id"))
     story_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pm_story.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    source_sheet_exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PmLead(Base):
@@ -328,3 +342,89 @@ class PmMizitoRequest(Base):
     decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PerfSyncState(Base):
+    """یک ردیف برای هر سازمان تا دو نفر هم‌زمان شیت را به‌روز نکنند."""
+
+    __tablename__ = "perf_sync_state"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    running: Mapped[bool] = mapped_column(Boolean, default=False)
+    started_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    actor_name: Mapped[str] = mapped_column(String(120), default="")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    result: Mapped[str] = mapped_column(String(40), default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+
+
+class PmPishgamAudit(Base):
+    """هر کال به API پیشگام. توکن و بدنهٔ درخواست ذخیره نمی‌شود."""
+
+    __tablename__ = "pm_pishgam_audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    method: Mapped[str] = mapped_column(String(8), nullable=False)
+    endpoint: Mapped[str] = mapped_column(String(160), nullable=False)
+    is_mutating: Mapped[bool] = mapped_column(Boolean, default=False)
+    request_hash: Mapped[str] = mapped_column(String(64), default="")
+    # -1 یعنی قبل از شبکه رد شد. بقیه کد HTTP است.
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PmRefProvince(Base):
+    __tablename__ = "pm_ref_province"
+    __table_args__ = (UniqueConstraint("organization_id", "remote_id", name="uq_pm_ref_province"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    remote_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), default="")
+
+
+class PmRefCity(Base):
+    __tablename__ = "pm_ref_city"
+    __table_args__ = (UniqueConstraint("organization_id", "remote_id", name="uq_pm_ref_city"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    remote_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    province_remote_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), default="")
+
+
+class PmRefDeviceBrand(Base):
+    __tablename__ = "pm_ref_device_brand"
+    __table_args__ = (UniqueConstraint("organization_id", "remote_id", name="uq_pm_ref_device_brand"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    remote_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), default="")
+
+
+class PmRefDeviceType(Base):
+    __tablename__ = "pm_ref_device_type"
+    __table_args__ = (UniqueConstraint("organization_id", "remote_id", name="uq_pm_ref_device_type"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    remote_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), default="")
+
+
+class PmPishgamPreview(Base):
+    """آخرین پیش‌نمایش مخاطب هوشمند. مختصات و توکن ذخیره نمی‌شود."""
+
+    __tablename__ = "pm_pishgam_preview"
+    __table_args__ = (UniqueConstraint("organization_id", name="uq_pm_pishgam_preview_org"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    payload: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

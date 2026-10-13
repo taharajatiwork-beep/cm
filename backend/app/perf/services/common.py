@@ -16,9 +16,18 @@ from app.services.notifications import notify
 
 
 class PerfError(Exception):
-    def __init__(self, message: str, status: int = 400):
+    def __init__(
+        self,
+        message: str,
+        status: int = 400,
+        *,
+        pishgam_status_code: int | None = None,
+        pishgam_message: str | None = None,
+    ):
         self.message = message
         self.status = status
+        self.pishgam_status_code = pishgam_status_code
+        self.pishgam_message = pishgam_message
         super().__init__(message)
 
 

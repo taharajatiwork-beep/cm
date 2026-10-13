@@ -185,8 +185,10 @@ async def _ensure_org(db) -> dict:
     sales_team = await get_or_create_team("تیم فروش تهران", "SALES_T", sales_dept.id)
     mkt_team = await get_or_create_team("تیم بازاریابی", "MKT_T", mkt_dept.id)
 
+    from app.core.permissions import admin_role_permission_codes
+
     admin_role = await get_or_create_role(
-        "ادمین سایت", "admin", [p.value for p in PermissionCode], "organization"
+        "ادمین سایت", "admin", admin_role_permission_codes(), "organization"
     )
     if admin_role.name != "ادمین سایت":
         admin_role.name = "ادمین سایت"
@@ -246,7 +248,6 @@ async def _ensure_org(db) -> dict:
             PC.SEARCH,
             PC.RAG_READ,
             PC.KB_READ,
-            PC.CUSTOMER_READ,
             PC.EVENT_READ,
             PC.CAMPAIGN_READ,
         ],
@@ -274,7 +275,7 @@ async def _ensure_org(db) -> dict:
         "team",
     )
     mkt_mgr_role = await get_or_create_role(
-        "مدیر مارکتینگ",
+        "سرپرست مارکتینگ",
         "marketing_manager",
         [
             PC.CONVERSATION_READ,
@@ -293,9 +294,9 @@ async def _ensure_org(db) -> dict:
             PC.CAMPAIGN_WRITE,
             PC.PERF_READ,
             PC.PERF_WRITE,
-            PC.PERF_APPROVE,
             PC.REQUEST_TRIAGE,
             PC.REQUEST_MANAGE,
+            PC.TASK_ASSIGN,
             PC.EXPENSE_REQUEST,
         ],
         "team",
@@ -311,24 +312,29 @@ async def _ensure_org(db) -> dict:
             PC.SEARCH,
             PC.RAG_READ,
             PC.KB_READ,
+            PC.USER_READ,
             PC.PERF_READ,
             PC.PERF_WRITE,
+            PC.CAMPAIGN_READ,
+            PC.CAMPAIGN_WRITE,
+            PC.TASK_READ,
+            PC.TASK_WRITE,
         ],
         "organization",
     )
     viewer_role = await get_or_create_role(
         "Viewer",
         "viewer",
-        [PC.WORK_ITEM_READ, PC.NOTIFICATION_READ, PC.RAG_READ],
+        [PC.WORK_ITEM_READ, PC.NOTIFICATION_READ, PC.RAG_READ, PC.INVENTORY_READ, PC.USER_READ, PC.KB_READ],
         "self",
     )
     finance_role = await get_or_create_role(
         "مالی",
         "finance",
         [
-            PC.PRICE_WRITE,
+            PC.PRICE_APPROVE,
+            PC.EXPENSE_PAY,
             PC.EXPENSE_REQUEST,
-            PC.EXPENSE_APPROVE,
             PC.INVENTORY_READ,
             PC.NOTIFICATION_READ,
             PC.CONVERSATION_READ,
@@ -490,6 +496,51 @@ async def _ensure_org(db) -> dict:
             scope_row.level = level
         template_roles[code] = role
 
+    lead_codes = [item.value for item in ROLE_TEMPLATES["lead"][2]]
+    await svc.grant_role_permissions(mkt_mgr_role.id, lead_codes)
+    await svc.revoke_role_permissions(
+        mkt_mgr_role.id,
+        [PC.PERF_APPROVE.value, PC.REQUEST_CREATE.value],
+    )
+    # نقش پرفورمنس: شیت و کمپین، بدون تریاژ درخواست.
+    perf_codes = [
+        PC.CONVERSATION_READ.value,
+        PC.CONVERSATION_WRITE.value,
+        PC.NOTIFICATION_READ.value,
+        PC.INVENTORY_READ.value,
+        PC.SEARCH.value,
+        PC.RAG_READ.value,
+        PC.KB_READ.value,
+        PC.USER_READ.value,
+        PC.PERF_READ.value,
+        PC.PERF_WRITE.value,
+        PC.CAMPAIGN_READ.value,
+        PC.CAMPAIGN_WRITE.value,
+        PC.TASK_READ.value,
+        PC.TASK_WRITE.value,
+    ]
+    await svc.grant_role_permissions(perf_role.id, perf_codes)
+    await svc.revoke_role_permissions(
+        perf_role.id,
+        [
+            PC.REQUEST_TRIAGE.value,
+            PC.REQUEST_MANAGE.value,
+            PC.REQUEST_CREATE.value,
+            PC.PERF_APPROVE.value,
+        ],
+    )
+    for named_role, level in ((mkt_mgr_role, "team_tree"), (perf_role, "team_tree")):
+        named_scope = await db.scalar(select(DataScope).where(DataScope.role_id == named_role.id))
+        if named_scope and named_scope.level != level:
+            named_scope.level = level
+    template_roles["marketing_manager"] = mkt_mgr_role
+    template_roles["performance_marketing"] = perf_role
+    template_roles["finance"] = finance_role
+    template_roles["marketing"] = mkt_role
+    template_roles["designer"] = design_role
+    template_roles["filmmaker"] = film_role
+    template_roles["seller"] = seller_role
+
     role_names = {
         "admin": "ادمین سایت",
         "requester": "مدیر",
@@ -498,11 +549,12 @@ async def _ensure_org(db) -> dict:
         "manager": "مدیر شعبه",
         "seller": "فروشنده",
         "marketing": "مارکتینگ",
-        "marketing_manager": "مدیر مارکتینگ",
+        "marketing_manager": "سرپرست مارکتینگ",
         "performance_marketing": "پرفورمنس مارکتینگ",
         "finance": "مالی",
         "designer": "طراح",
         "filmmaker": "فیلم‌بردار",
+        "reporter": "گزارش‌گیر",
         "viewer": "بازدیدکننده",
     }
     for code, name in role_names.items():
@@ -529,19 +581,29 @@ async def _ensure_org(db) -> dict:
         "MKT_DESIGN": design_team,
         "MKT_FILM": film_team,
     }
+    await get_or_create_user(
+        "reporter@autoco.example",
+        "رامین گزارش‌گیر",
+        template_roles["reporter"].id,
+        branch_id=branch.id,
+        department_id=mkt_dept.id,
+        team_id=mkt_team.id,
+        manager_id=mina.id,
+    )
     # نگاشت صریح کاربران فعلی. ادمین و بازدیدکننده دست نمی‌خورند.
     # (قالب، تیم، بخش، شعبه یا None یعنی شعبهٔ فعلی بماند، قابلیت‌ها)
     assignment = {
         "ali@autoco.example": ("requester", "SALES_T", sales_dept.id, branch.id, []),
-        "reza@autoco.example": ("member", "SALES_T", sales_dept.id, branch.id, []),
-        "sara@autoco.example": ("member", "MKT_T", mkt_dept.id, branch.id, []),
-        "mina@autoco.example": ("lead", "MKT_T", mkt_dept.id, branch.id, []),
-        "finance@autoco.example": ("lead", "FIN_T", fin_dept.id, branch.id, [PC.EXPENSE_APPROVE, PC.PRICE_WRITE]),
+        "reza@autoco.example": ("seller", "SALES_T", sales_dept.id, branch.id, []),
+        "sara@autoco.example": ("marketing", "MKT_T", mkt_dept.id, branch.id, []),
+        "mina@autoco.example": ("marketing_manager", "MKT_T", mkt_dept.id, branch.id, []),
+        "finance@autoco.example": ("finance", "FIN_T", fin_dept.id, branch.id, []),
         "maryam@autoco.example": ("requester", None, sales_dept.id, mashhad.id, []),
         "nima@autoco.example": ("member", None, ops_dept.id, branch.id, []),
-        "nadia@autoco.example": ("lead", "MKT_PERF", mkt_dept.id, branch.id, [PC.PERF_READ, PC.PERF_WRITE, PC.CAMPAIGN_WRITE]),
-        "leila@autoco.example": ("member", "MKT_DESIGN", mkt_dept.id, branch.id, []),
-        "kamran@autoco.example": ("member", "MKT_FILM", mkt_dept.id, branch.id, []),
+        "nadia@autoco.example": ("performance_marketing", "MKT_PERF", mkt_dept.id, branch.id, []),
+        "leila@autoco.example": ("designer", "MKT_DESIGN", mkt_dept.id, branch.id, []),
+        "kamran@autoco.example": ("filmmaker", "MKT_FILM", mkt_dept.id, branch.id, []),
+        "reporter@autoco.example": ("reporter", "MKT_T", mkt_dept.id, branch.id, []),
     }
     for email, (role_code, team_code, dept_id, branch_id, grants) in assignment.items():
         person = await db.scalar(select(User).where(User.organization_id == org.id, User.email == email))
@@ -608,13 +670,15 @@ async def _ensure_perf_panels(db, organization_id) -> None:
 
     specs = (
         ("isms", "آی‌اس‌ام‌اس", "50002100304010", 166),
-        ("pishgam", "پیشگامان رایان", "5000302137682", 200),
+        ("pishgam", "پیشگام رایان", "5000302137682", 200),
     )
     for code, name, line, tariff in specs:
         row = await db.scalar(
             select(PmPanel).where(PmPanel.organization_id == organization_id, PmPanel.code == code)
         )
         if row:
+            if row.name == "پیشگامان رایان":
+                row.name = name
             continue
         db.add(
             PmPanel(
@@ -1537,80 +1601,709 @@ async def _ensure_pricing_demo(db, ctx) -> int:
     return len(specs)
 
 
-async def _ensure_work_spine(db, ctx) -> str:
-    """یک درخواست تبلیغات با سه پروژه و یک درخواست عملیاتی قیمت. اگر کد موجود باشد دوباره ساخته نمی‌شود."""
-    from app.core.permissions import PermissionCode
+async def _unify_conversations(db, ctx) -> str:
+    """گفتگوهای واقعی را به همان درخواست و پروژه می‌چسباند و رشته‌های خالی را برمی‌دارد."""
+    from sqlalchemy import delete
+
+    from app.models import Conversation, ConversationParticipant, Message, User
+    from app.models.enums import ParticipantRole
+    from app.perf.models import PmCampaign
     from app.requests.models import WorkProject, WorkRequest
+
+    org = ctx["org"]
+    already = await db.scalar(
+        select(Conversation).where(
+            Conversation.organization_id == org.id,
+            Conversation.topic == "هماهنگی فروش تویوتا کمری ۱۲۴",
+            Conversation.project_id.is_not(None),
+        )
+    )
+    if already:
+        return "present"
+
+    empty_ids = list(
+        (
+            await db.scalars(
+                select(Conversation.id).where(
+                    Conversation.organization_id == org.id,
+                    Conversation.id.not_in(select(Message.conversation_id)),
+                )
+            )
+        ).all()
+    )
+    if empty_ids:
+        await db.execute(
+            delete(ConversationParticipant).where(ConversationParticipant.conversation_id.in_(empty_ids))
+        )
+        await db.execute(delete(Conversation).where(Conversation.id.in_(empty_ids)))
+        await db.flush()
+
+    projects = {
+        row.code: row
+        for row in (await db.scalars(select(WorkProject).where(WorkProject.organization_id == org.id))).all()
+    }
+    requests = {
+        row.code: row
+        for row in (await db.scalars(select(WorkRequest).where(WorkRequest.organization_id == org.id))).all()
+    }
+    campaign = await db.scalar(
+        select(PmCampaign).where(PmCampaign.organization_id == org.id, PmCampaign.code == "S84")
+    )
+    leila = await db.scalar(select(User).where(User.email == "leila@autoco.example"))
+    kamran = await db.scalar(select(User).where(User.email == "kamran@autoco.example"))
+
+    async def add_people(conv, people):
+        for person in people:
+            if person is None:
+                continue
+            exists = await db.scalar(
+                select(ConversationParticipant).where(
+                    ConversationParticipant.conversation_id == conv.id,
+                    ConversationParticipant.user_id == person.id,
+                )
+            )
+            if exists is None:
+                db.add(
+                    ConversationParticipant(
+                        conversation_id=conv.id, user_id=person.id, role=ParticipantRole.MEMBER
+                    )
+                )
+
+    async def attach(topic, project_code, request_code, people=(), pm=None):
+        conv = await db.scalar(
+            select(Conversation).where(Conversation.organization_id == org.id, Conversation.topic == topic)
+        )
+        if conv is None or project_code not in projects or request_code not in requests:
+            return None
+        conv.project_id = projects[project_code].id
+        conv.request_id = requests[request_code].id
+        if pm is not None:
+            conv.pm_campaign_id = pm.id
+        await add_people(conv, people)
+        return conv
+
+    ali, reza, sara = ctx["ali"], ctx["reza"], ctx["sara"]
+    mina, nadia = ctx["mina"], ctx["nadia"]
+    maryam, nima, finance = ctx["maryam"], ctx["nima"], ctx["finance"]
+    await attach("هماهنگی فروش تویوتا کمری ۱۲۴", "PRJ-124-V", "REQ-124", (ali, reza, sara))
+    await attach("درخواست انتقال پژو ۲۰۷ به مشهد", "PRJ-MHD", "REQ-MHD", (ali, reza, maryam, nima))
+    await attach("هماهنگی آگهی هیوندای توسان", "PRJ-TUC", "REQ-TUC", (sara, mina))
+    await attach("درخواست استوری تیگو ۸", "PRJ-PERF", "REQ-BAHMAN", (mina, nadia), campaign)
+    nowruz = await db.scalar(
+        select(Conversation).where(
+            Conversation.organization_id == org.id, Conversation.topic == "برنامهٔ تبلیغات نوروزی"
+        )
+    )
+    if nowruz and "REQ-BAHMAN" in requests:
+        nowruz.request_id = requests["REQ-BAHMAN"].id
+        nowruz.project_id = None
+        await add_people(nowruz, (sara, mina))
+
+    comm = CommunicationService(db)
+
+    async def say(code, request_code, people, lines):
+        project = projects.get(code)
+        request = requests.get(request_code)
+        if project is None or request is None:
+            return
+        existing = await db.scalar(
+            select(Conversation).where(
+                Conversation.organization_id == org.id, Conversation.project_id == project.id
+            )
+        )
+        if existing:
+            return
+        conv = Conversation(
+            organization_id=org.id,
+            channel=Channel.WEB,
+            topic=project.title,
+            project_id=project.id,
+            request_id=request.id,
+        )
+        db.add(conv)
+        await db.flush()
+        await add_people(conv, people)
+        await db.flush()
+        for person, text in lines:
+            if person is None:
+                continue
+            await comm.post_message(
+                organization_id=org.id,
+                conversation_id=conv.id,
+                sender_id=person.id,
+                text=text,
+                channel=Channel.WEB,
+            )
+
+    await say(
+        "PRJ-124-A",
+        "REQ-124",
+        (sara, ali, mina),
+        [(sara, "پیش‌نویس آگهی کمری را اینجا می‌گذارم. قیمت را هنوز نمی‌نویسم تا علی بعد از بازدید تأیید کند.")],
+    )
+    await say(
+        "PRJ-124-P",
+        "REQ-124",
+        (ali, reza, finance),
+        [(ali, "قیمت نهایی را بعد از گزارش بازدید رضا و متن آگهی سارا ثبت می‌کنم.")],
+    )
+    await say(
+        "PRJ-210",
+        "REQ-210",
+        (reza, ali),
+        [(reza, "مشخصات النترا برای فاطمه رضایی ارسال شد. برای تست‌درایو هنوز وقتی نگرفته است.")],
+    )
+    await say(
+        "PRJ-MHD-IN",
+        "REQ-MHD-IN",
+        (maryam, nima),
+        [(maryam, "اگر تهران انتقال ۲۰۷ را تأیید کرد، جای پارک و تحویل در مشهد را هماهنگ می‌کنم.")],
+    )
+    await say(
+        "PRJ-DSGN",
+        "REQ-BAHMAN",
+        (leila, mina),
+        [(leila, "طرح استوری ۹:۱۶ بهمن را تا فردا می‌فرستم. تا تأیید مینا منتشر نمی‌شود.")],
+    )
+    await say(
+        "PRJ-FILM",
+        "REQ-BAHMAN",
+        (kamran, mina),
+        [(kamran, "فردا برای فیلم موجودی مرزداران می‌آیم. نور روز و نمای ویترین را می‌گیرم.")],
+    )
+    await say(
+        "PRJ-PRICE",
+        "REQ-PRICE",
+        (finance, mina),
+        [(finance, "قیمت‌های تأییدشدهٔ امروز را در شیت می‌نویسم. تا تمام نشود پست نرود.")],
+    )
+    await say(
+        "PRJ-POST",
+        "REQ-PRICE",
+        (mina, finance),
+        [(mina, "پست قیمت را بعد از ثبت ندا منتشر می‌کنم.")],
+    )
+    perf = await db.scalar(
+        select(Conversation).where(
+            Conversation.organization_id == org.id, Conversation.topic == "درخواست استوری تیگو ۸"
+        )
+    )
+    if perf:
+        await comm.post_message(
+            organization_id=org.id,
+            conversation_id=perf.id,
+            sender_id=nadia.id,
+            text="بودجه را هنوز روشن نکرده‌ام. اول مخاطب شعبهٔ مرزداران را می‌چینم.",
+            channel=Channel.WEB,
+        )
+    await db.flush()
+    return "linked"
+
+
+async def _ensure_work_spine(db, ctx) -> str:
+    """درخواست‌ها و پروژه‌های عملیاتی. اگر REQ-124 باشد دوباره ساخته نمی‌شود.
+
+    بار اول، وظیفه‌های بدون پروژه و ستون نازک قبلی پاک می‌شوند و کار هر نقش
+    به یک درخواست و یک پروژه وصل می‌شود.
+    """
+    from sqlalchemy import delete
+
+    from app.core.permissions import PermissionCode
+    from app.models import Task, TaskAssignee, TaskDependency, TaskParticipant, Team, User, WorkItem
+    from app.perf.models import PmCampaign
+    from app.requests.models import DesignDeliverable, WorkAttachment, WorkProject, WorkProjectMember, WorkRequest
     from app.requests.spine import ensure_thread
 
     org = ctx["org"]
-    existing = await db.scalar(select(WorkRequest).where(WorkRequest.organization_id == org.id, WorkRequest.code == "REQ-ADS"))
+    existing = await db.scalar(
+        select(WorkRequest).where(WorkRequest.organization_id == org.id, WorkRequest.code == "REQ-124")
+    )
     if existing:
         return "present"
-    ali = ctx["ali"]
-    mina = ctx["mina"]
-    team = ctx["mkt_team"]
-    ads = WorkRequest(
-        organization_id=org.id,
-        code="REQ-ADS",
-        title="تبلیغ فروش بهمن",
-        description="سه تیم: پرفورمنس، طراحی، فیلم",
-        kind="تبلیغات",
-        status="converted",
-        requested_by=ali.id,
-        team_id=team.id,
-        created_by=ali.id,
-    )
-    price = WorkRequest(
-        organization_id=org.id,
-        code="REQ-PRICE",
-        title="اصلاح قیمت امروز",
-        kind="قیمت و پست‌ها",
-        status="converted",
-        requested_by=ali.id,
-        team_id=team.id,
-        created_by=ali.id,
-    )
-    db.add(ads)
-    db.add(price)
+
+    await db.execute(delete(TaskDependency))
+    await db.execute(delete(TaskAssignee))
+    await db.execute(delete(TaskParticipant))
+    await db.execute(delete(Task).where(Task.organization_id == org.id))
+    await db.execute(delete(WorkProjectMember).where(WorkProjectMember.organization_id == org.id))
+    await db.execute(delete(WorkAttachment).where(WorkAttachment.organization_id == org.id))
+    await db.execute(delete(DesignDeliverable).where(DesignDeliverable.organization_id == org.id))
+    await db.execute(delete(WorkProject).where(WorkProject.organization_id == org.id))
+    await db.execute(delete(WorkRequest).where(WorkRequest.organization_id == org.id))
     await db.flush()
+
+    ali = ctx["ali"]
+    reza = ctx["reza"]
+    sara = ctx["sara"]
+    mina = ctx["mina"]
+    nadia = ctx["nadia"]
+    maryam = ctx["maryam"]
+    nima = ctx["nima"]
+    finance = ctx["finance"]
+    leila = await db.scalar(select(User).where(User.email == "leila@autoco.example"))
+    kamran = await db.scalar(select(User).where(User.email == "kamran@autoco.example"))
+    teams = {
+        row.code: row
+        for row in (await db.scalars(select(Team).where(Team.organization_id == org.id))).all()
+    }
+    sales = teams["SALES_T"]
+    perf = teams["MKT_PERF"]
+    design = teams["MKT_DESIGN"]
+    film = teams["MKT_FILM"]
+    fin = teams["FIN_T"]
+    items = list((await db.scalars(select(WorkItem).where(WorkItem.organization_id == org.id))).all())
+
+    def work_item(fragment: str):
+        for row in items:
+            if fragment in (row.title or ""):
+                return row.id
+        return None
+
     work = WorkService(db)
     perms = {PermissionCode.TASK_WRITE.value}
-    for kind, title in (("پرفورمنس", "کمپین پرفورمنس"), ("طراحی", "طرح بنر"), ("فیلم‌برداری", "فیلم شعبه")):
-        project = WorkProject(
+    now = datetime.now(UTC)
+    today = now.date()
+
+    async def request(code, title, kind, status, who, team, description, priority="high", days=3):
+        row = WorkRequest(
             organization_id=org.id,
-            code=f"PRJ-{kind[:2]}",
+            code=code,
             title=title,
+            description=description,
             kind=kind,
-            request_id=ads.id,
+            priority=priority,
+            status=status,
+            due_date=today + timedelta(days=days),
+            requested_by=who.id,
             team_id=team.id,
-            lead_user_id=mina.id,
-            status="in_progress",
-            created_by=mina.id,
+            created_by=who.id,
         )
-        db.add(project)
+        db.add(row)
         await db.flush()
-        await work.create_task(
+        await ensure_thread(db, organization_id=org.id, actor_id=who.id, request_id=row.id, topic=title)
+        return row
+
+    async def project(code, title, kind, req, team, lead, members, description, days=3):
+        row = WorkProject(
             organization_id=org.id,
-            title=f"شروع {title}",
-            owner_id=mina.id,
-            project_id=project.id,
-            request_id=ads.id,
+            code=code,
+            title=title,
+            description=description,
+            kind=kind,
+            request_id=req.id,
+            team_id=team.id,
+            lead_user_id=lead.id,
+            status="in_progress",
+            due_date=today + timedelta(days=days),
+            created_by=lead.id,
+        )
+        db.add(row)
+        await db.flush()
+        seen = set()
+        for person in members:
+            if person is None or person.id in seen:
+                continue
+            seen.add(person.id)
+            db.add(WorkProjectMember(organization_id=org.id, project_id=row.id, user_id=person.id))
+        await ensure_thread(db, organization_id=org.id, actor_id=lead.id, project_id=row.id, topic=title)
+        return row
+
+    async def task(title, owner, proj, req, deadline, *, assignee=None, priority=Priority.MEDIUM, item=None, description=""):
+        who = assignee or owner
+        return await work.create_task(
+            organization_id=org.id,
+            title=title,
+            description=description,
+            owner_id=owner.id,
+            assignee_ids=[who.id],
+            project_id=proj.id,
+            request_id=req.id,
+            work_item_id=item,
+            priority=priority,
+            deadline=deadline,
             actor_permissions=perms,
         )
-        await ensure_thread(db, organization_id=org.id, actor_id=mina.id, project_id=project.id, topic=title)
-    await work.create_task(
-        organization_id=org.id,
-        title="اصلاح قیمت امروز",
-        owner_id=mina.id,
-        request_id=price.id,
-        actor_permissions=perms,
+
+    camry = await request(
+        "REQ-124",
+        "فروش تویوتا کمری ۱۲۴ به حسین احمدی",
+        "فروش",
+        "converted",
+        ali,
+        sales,
+        "خریدار امروز برای بازدید به شعبهٔ تهران می‌آید. آگهی دیوار و قیمت نهایی باید تا فردا جمع شود.",
     )
+    visit = await project(
+        "PRJ-124-V",
+        "بازدید و تست‌درایو کمری",
+        "فروش",
+        camry,
+        sales,
+        reza,
+        [reza, ali],
+        "هماهنگی حضور حسین احمدی و زمان تست‌درایو در شعبهٔ تهران.",
+        days=2,
+    )
+    ad = await project(
+        "PRJ-124-A",
+        "آگهی دیوار کمری ۱۲۴",
+        "آگهی",
+        camry,
+        ctx["mkt_team"],
+        sara,
+        [sara, mina],
+        "پیش‌نویس آگهی، عکس‌ها و متن قیمت برای تأیید مدیر فروش.",
+    )
+    price = await project(
+        "PRJ-124-P",
+        "تأیید قیمت کمری بعد از بازدید",
+        "قیمت",
+        camry,
+        sales,
+        ali,
+        [ali, reza, finance],
+        "قیمت نهایی فقط بعد از نتیجهٔ بازدید و پیش‌نویس آگهی ثبت می‌شود.",
+    )
+    t_visit = await task(
+        "هماهنگی بازدید با حسین احمدی",
+        ali,
+        visit,
+        camry,
+        now + timedelta(hours=4),
+        assignee=reza,
+        priority=Priority.HIGH,
+        item=work_item("کمری"),
+        description="ساعت ۱۱، شعبهٔ تهران. کمری سفید را برای بازدید آماده کنید.",
+    )
+    await task(
+        "هماهنگی زمان تست‌درایو",
+        ali,
+        visit,
+        camry,
+        now + timedelta(days=2),
+        assignee=reza,
+        item=work_item("کمری"),
+        description="بعد از بازدید، اگر خریدار جدی بود زمان تست‌درایو را قطعی کنید.",
+    )
+    t_ad = await task(
+        "آماده‌سازی پیش‌نویس آگهی دیوار",
+        ali,
+        ad,
+        camry,
+        now + timedelta(hours=8),
+        assignee=sara,
+        priority=Priority.HIGH,
+        item=work_item("کمری"),
+        description="عنوان، کارکرد، رنگ و قیمت پیشنهادی. هنوز منتشر نشود.",
+    )
+    t_price = await task(
+        "بررسی نتیجهٔ بازدید و تأیید قیمت",
+        ali,
+        price,
+        camry,
+        now + timedelta(days=1),
+        item=work_item("کمری"),
+        description="قیمت را بعد از گزارش رضا و متن سارا تأیید کنید.",
+    )
+    await work.add_dependency(t_price.id, t_visit.id, actor_id=ali.id)
+    await work.add_dependency(t_price.id, t_ad.id, actor_id=ali.id)
+
+    elantra = await request(
+        "REQ-210",
+        "پیگیری فروش هیوندای النترا ۲۱۰",
+        "فروش",
+        "converted",
+        ali,
+        sales,
+        "فاطمه رضایی مشخصات را گرفته و برای تست‌درایو مردد است.",
+        priority="normal",
+        days=5,
+    )
+    follow = await project(
+        "PRJ-210",
+        "پیگیری فاطمه رضایی",
+        "فروش",
+        elantra,
+        sales,
+        reza,
+        [reza, ali],
+        "مشخصات ارسال شده. قدم بعدی تماس برای قطعی کردن حضور است.",
+        days=4,
+    )
+    sent = await task(
+        "ارسال مشخصات النترا برای فاطمه رضایی",
+        reza,
+        follow,
+        elantra,
+        now - timedelta(days=1),
+        item=work_item("النترا"),
+    )
+    await work.complete_task(sent.id, reza.id)
+    await task(
+        "تماس برای قطعی کردن تست‌درایو النترا",
+        reza,
+        follow,
+        elantra,
+        now + timedelta(days=2),
+        item=work_item("النترا"),
+    )
+
+    mashhad = await request(
+        "REQ-MHD",
+        "انتقال پژو ۲۰۷ قرمز به شعبهٔ مشهد",
+        "انتقال بین شعبه",
+        "in_review",
+        ali,
+        sales,
+        "مشهد مشتری حاضر دارد. موجودی در تهران است و مهلت بررسی گذشته.",
+        days=2,
+    )
+    move = await project(
+        "PRJ-MHD",
+        "امکان‌سنجی انتقال ۲۰۷",
+        "عملیات",
+        mashhad,
+        sales,
+        nima,
+        [nima, reza, maryam, ali],
+        "موجودی، مدارک خروج و آمادگی مشهد برای دریافت خودرو.",
+        days=2,
+    )
+    await task(
+        "بررسی و تأیید امکان انتقال به مشهد",
+        ali,
+        move,
+        mashhad,
+        now - timedelta(hours=6),
+        assignee=reza,
+        priority=Priority.URGENT,
+        item=work_item("۲۰۷"),
+        description="مهلت این بررسی گذشته است. موجودی و قول فروش تهران را چک کنید.",
+    )
+    await task(
+        "آماده‌سازی مدارک خروج از انبار تهران",
+        nima,
+        move,
+        mashhad,
+        now + timedelta(days=1),
+        priority=Priority.HIGH,
+        item=work_item("۲۰۷"),
+    )
+    receive_req = await request(
+        "REQ-MHD-IN",
+        "دریافت پژو ۲۰۷ در شعبهٔ مشهد",
+        "انتقال بین شعبه",
+        "in_review",
+        maryam,
+        sales,
+        "اگر تهران انتقال را تأیید کرد، مشهد باید تحویل را هماهنگ کند.",
+        days=4,
+    )
+    receive = await project(
+        "PRJ-MHD-IN",
+        "تحویل در شعبهٔ مشهد",
+        "فروش",
+        receive_req,
+        sales,
+        maryam,
+        [maryam, nima],
+        "جای پارک و زمان تحویل به مشتری مشهد.",
+        days=4,
+    )
+    await task(
+        "هماهنگی دریافت خودرو در شعبهٔ مشهد",
+        maryam,
+        receive,
+        receive_req,
+        now + timedelta(days=3),
+        item=work_item("۲۰۷"),
+        description="اگر انتقال تأیید شد، جای پارک و تحویل به مشتری مشهد را هماهنگ کنید.",
+    )
+
+    ads = await request(
+        "REQ-BAHMAN",
+        "کمپین فروش بهمن، شعب مرزداران و کاشانی",
+        "تبلیغات",
+        "converted",
+        mina,
+        ctx["mkt_team"],
+        "پرفورمنس، طراحی و فیلم هر کدام تحویل خود را تا آخر هفته می‌دهند.",
+        days=7,
+    )
+    perf_project = await project(
+        "PRJ-PERF",
+        "کمپین پرفورمنس بهمن",
+        "پرفورمنس",
+        ads,
+        perf,
+        nadia,
+        [nadia, mina],
+        "بودجهٔ اینستاگرام و مخاطب شعبهٔ مرزداران.",
+        days=6,
+    )
+    design_project = await project(
+        "PRJ-DSGN",
+        "طرح استوری و بنر بهمن",
+        "طراحی",
+        ads,
+        design,
+        leila,
+        [leila, mina],
+        "سایز استوری و بنر سایت. انتشار فقط بعد از تأیید مینا.",
+        days=4,
+    )
+    film_project = await project(
+        "PRJ-FILM",
+        "فیلم موجودی شعبهٔ مرزداران",
+        "فیلم‌برداری",
+        ads,
+        film,
+        kamran,
+        [kamran, mina],
+        "برداشت روز و نسخهٔ ۳۰ ثانیه‌ای برای استوری.",
+        days=5,
+    )
+    await task(
+        "چیدن مخاطب و بودجهٔ اینستاگرام بهمن",
+        nadia,
+        perf_project,
+        ads,
+        now + timedelta(hours=6),
+        priority=Priority.HIGH,
+        description="سقف بودجهٔ این هفته را با مینا هماهنگ کنید و هنوز کمپین را روشن نکنید.",
+    )
+    await task(
+        "بررسی هزینهٔ کلیک دیروز",
+        nadia,
+        perf_project,
+        ads,
+        now + timedelta(days=1),
+    )
+    await task(
+        "طرح استوری ۹:۱۶ فروش بهمن",
+        leila,
+        design_project,
+        ads,
+        now + timedelta(days=1),
+        priority=Priority.HIGH,
+    )
+    await task(
+        "اصلاح سایز بنر صفحهٔ اصلی سایت",
+        leila,
+        design_project,
+        ads,
+        now + timedelta(days=2),
+    )
+    await task(
+        "فیلم‌برداری موجودی شعبهٔ مرزداران",
+        kamran,
+        film_project,
+        ads,
+        now + timedelta(days=1),
+        priority=Priority.HIGH,
+        description="نور روز، نمای جلو و داخل دو خودرؤ ویترین.",
+    )
+    await task(
+        "تدوین نسخهٔ ۳۰ ثانیه‌ای استوری",
+        kamran,
+        film_project,
+        ads,
+        now + timedelta(days=3),
+    )
+    for camp in (await db.scalars(select(PmCampaign).where(PmCampaign.organization_id == org.id))).all():
+        if camp.project_id is None and camp.code in ("S84", "U85"):
+            camp.project_id = perf_project.id
+
+    prices = await request(
+        "REQ-PRICE",
+        "اصلاح قیمت‌های امروز",
+        "قیمت و پست‌ها",
+        "converted",
+        mina,
+        fin,
+        "قیمت‌های تأییدشدهٔ امروز باید در شیت بنشیند و بعد پست شود.",
+        days=1,
+    )
+    price_project = await project(
+        "PRJ-PRICE",
+        "ثبت قیمت‌های تأییدشده",
+        "قیمت",
+        prices,
+        fin,
+        finance,
+        [finance],
+        "قیمت‌های امروز قبل از انتشار در شیت می‌نشیند.",
+        days=1,
+    )
+    post_project = await project(
+        "PRJ-POST",
+        "پست قیمت امروز",
+        "انتشار",
+        prices,
+        ctx["mkt_team"],
+        mina,
+        [mina],
+        "انتشار فقط بعد از ثبت مالی.",
+        days=1,
+    )
+    booked = await task(
+        "ثبت قیمت‌های تأییدشده در شیت",
+        finance,
+        price_project,
+        prices,
+        now + timedelta(hours=5),
+        priority=Priority.HIGH,
+    )
+    publish = await task(
+        "انتشار پست قیمت بعد از ثبت مالی",
+        mina,
+        post_project,
+        prices,
+        now + timedelta(days=1),
+    )
+    await work.add_dependency(publish.id, booked.id, actor_id=mina.id)
+
+    tucson = await request(
+        "REQ-TUC",
+        "آگهی هیوندای توسان مشکی",
+        "آگهی",
+        "in_review",
+        mina,
+        ctx["mkt_team"],
+        "توسان پرمیوم برای نمایشگاه و مشتری سازمانی. عکس و متن هنوز آماده نیست.",
+        priority="normal",
+        days=4,
+    )
+    photo = await project(
+        "PRJ-TUC",
+        "عکس و متن آگهی توسان",
+        "آگهی",
+        tucson,
+        ctx["mkt_team"],
+        sara,
+        [sara, mina],
+        "عکس روز و متن آگهی، قبل از انتشار.",
+        days=3,
+    )
+    await task(
+        "عکس‌برداری از توسان و نوشتن متن آگهی",
+        sara,
+        photo,
+        tucson,
+        now + timedelta(days=1),
+        item=work_item("توسان"),
+        description="نمای جلو، داخل و کارکرد. قیمت را از شیت امروز بردارید.",
+    )
+
     await db.flush()
-    return "added"
+    return "rebuilt"
 
 
 async def seed(*, reset: bool = False) -> dict:
+    from app.core.config import get_settings
+
+    if get_settings().app_env.lower() == "production":
+        raise RuntimeError("seed_demo در محیط production اجرا نمی‌شود")
     if reset:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
@@ -1634,6 +2327,13 @@ async def seed(*, reset: bool = False) -> dict:
             stamped = await _stamp_sections(db, ctx)
             posts = await _ensure_pricing_demo(db, ctx)
             spine = await _ensure_work_spine(db, ctx)
+            chats = await _unify_conversations(db, ctx)
+            from app.perf.services.history_import import import_campaign_history
+
+            history = await import_campaign_history(db)
+            from app.calendar.seed import seed_content_calendar
+
+            calendar = await seed_content_calendar(db, org.id, ali.id)
             await db.commit()
             return {
                 "status": "already_seeded",
@@ -1644,6 +2344,9 @@ async def seed(*, reset: bool = False) -> dict:
                 "sections_stamped": stamped,
                 "posts_added": posts,
                 "work_spine": spine,
+                "chats": chats,
+                "campaign_history": history,
+                "calendar": calendar,
                 "login": _demo_logins(),
             }
 
@@ -2093,6 +2796,13 @@ async def seed(*, reset: bool = False) -> dict:
         await _stamp_sections(db, ctx)
         posts = await _ensure_pricing_demo(db, ctx)
         spine = await _ensure_work_spine(db, ctx)
+        chats = await _unify_conversations(db, ctx)
+        from app.perf.services.history_import import import_campaign_history
+
+        history = await import_campaign_history(db)
+        from app.calendar.seed import seed_content_calendar
+
+        calendar = await seed_content_calendar(db, org.id, ali.id)
         await db.commit()
         return {
             "status": "ok",
@@ -2103,6 +2813,9 @@ async def seed(*, reset: bool = False) -> dict:
             "campaigns": 2,
             "posts_added": posts,
             "work_spine": spine,
+            "chats": chats,
+            "campaign_history": history,
+            "calendar": calendar,
             "login": _demo_logins(),
         }
 
@@ -2119,6 +2832,7 @@ def _demo_logins() -> dict:
         "finance": "finance@autoco.example / password",
         "designer": "leila@autoco.example / password",
         "filmmaker": "kamran@autoco.example / password",
+        "reporter": "reporter@autoco.example / password",
         "mashhad": "maryam@autoco.example / password",
     }
 

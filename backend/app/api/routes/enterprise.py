@@ -291,6 +291,8 @@ async def list_approvals(ctx: AuthContext = Depends(get_current_user), db: Async
 async def work_report_route(
     scope: str = "me",
     group_by: str = "none",
+    project_id: UUID | None = None,
+    request_id: UUID | None = None,
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -304,9 +306,56 @@ async def work_report_route(
             permissions=ctx.permissions,
             scope=scope,
             group_by=group_by,
+            project_id=project_id,
+            request_id=request_id,
         )
     except PermissionError:
         raise HTTPException(status_code=403, detail="این محدوده برای نقش شما مجاز نیست") from None
+
+
+@router.get("/reports/campaigns")
+async def campaign_report_route(
+    scope: str = "me",
+    project_id: UUID | None = None,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.perf.services.reports import campaign_board
+    from app.services.work_report import work_report as scoped_work_report
+
+    if project_id is not None:
+        try:
+            scoped = await scoped_work_report(
+                db,
+                organization_id=ctx.organization_id,
+                user=ctx.user,
+                permissions=ctx.permissions,
+                scope="me",
+                group_by="none",
+                project_id=project_id,
+            )
+        except PermissionError:
+            raise HTTPException(status_code=403, detail="این محدوده برای نقش شما مجاز نیست") from None
+        if not scoped.get("projects"):
+            rows = []
+        else:
+            rows = await campaign_board(
+                db, ctx.organization_id, scope="me", project_ids={project_id}
+            )
+    else:
+        board_scope = "org" if PermissionCode.ORG_ADMIN in ctx.permissions and scope == "org" else "me"
+        rows = await campaign_board(
+            db,
+            ctx.organization_id,
+            user_id=ctx.user.id,
+            scope=board_scope,
+        )
+    return {
+        "count": len(rows),
+        "cost_toman": sum(int(row["cost_toman"] or 0) for row in rows),
+        "leads": sum(int(row["leads"] or 0) for row in rows),
+        "campaigns": rows,
+    }
 
 
 @router.get("/reports/kpis")

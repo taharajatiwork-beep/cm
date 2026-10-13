@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -436,10 +436,27 @@ class WorkService:
         )
         return task
 
+    async def _may_complete(self, task: Task, actor_id: UUID) -> bool:
+        assignees = list(
+            (
+                await self.db.scalars(
+                    select(TaskAssignee).where(
+                        TaskAssignee.task_id == task.id,
+                        TaskAssignee.role == TaskRole.ASSIGNEE,
+                    )
+                )
+            ).all()
+        )
+        if assignees:
+            return any(row.user_id == actor_id for row in assignees)
+        return task.owner_id == actor_id
+
     async def complete_task(self, task_id: UUID, actor_id: UUID) -> Task:
         task = await self.db.get(Task, task_id)
         if not task:
             raise ValueError("Task not found")
+        if not await self._may_complete(task, actor_id):
+            raise PermissionError("فقط مسئول این وظیفه می‌تواند آن را تمام کند")
         # Check dependencies
         deps = await self.db.execute(
             select(TaskDependency).where(TaskDependency.dependent_task_id == task_id)
@@ -494,6 +511,10 @@ class WorkService:
         # Update work item progress
         if task.work_item_id:
             await self._refresh_work_item_status(task.work_item_id)
+        if task.project_id:
+            from app.requests.spine import advance_project_from_tasks
+
+            await advance_project_from_tasks(self.db, task.project_id)
         return task
 
     async def _refresh_work_item_status(self, work_item_id: UUID) -> None:
@@ -549,6 +570,7 @@ class WorkService:
                         t.assignment_target_type.value if t.assignment_target_type else None
                     ),
                     "assignment_target_id": t.assignment_target_id,
+                    "owner_id": t.owner_id,
                     "assignees": [
                         {"user_id": a.user_id, "role": a.role.value} for a in t.assignees
                     ],
@@ -685,9 +707,17 @@ class WorkService:
         if status:
             q = q.where(Task.status == status)
         if assignee_id:
-            q = q.join(TaskAssignee, TaskAssignee.task_id == Task.id).where(
-                TaskAssignee.user_id == assignee_id
+            responsible = select(TaskAssignee.task_id).where(
+                TaskAssignee.user_id == assignee_id,
+                TaskAssignee.role == TaskRole.ASSIGNEE,
             )
+            has_assignee = exists(
+                select(TaskAssignee.id).where(
+                    TaskAssignee.task_id == Task.id,
+                    TaskAssignee.role == TaskRole.ASSIGNEE,
+                )
+            )
+            q = q.where(or_(Task.id.in_(responsible), (Task.owner_id == assignee_id) & ~has_assignee))
         if overdue_only:
             now = utc_now()
             # SQLite often stores naive datetimes; filter in Python for safe tz compare

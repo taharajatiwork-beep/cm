@@ -124,6 +124,7 @@
   <a href="#s12">۱۲ هستهٔ عملیاتی</a>
   <a href="#s13">۱۳ خودرو و مشتری</a>
   <a href="#s14">۱۴ خطوط قرمز</a>
+  <a href="#s15">۱۵ تقویم</a>
 </nav>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -137,21 +138,23 @@
 
 <!-- 1 -->
 <h2 class="section" id="s1"><span class="num">۱</span> نقشهٔ کلی صفحات</h2>
-<p class="section-sub">منوی کناری. درخواست‌ها و پروژه‌ها در گروه اصلی سامانه هستند (مال کل سازمان)، گروه مارکتینگ فقط اجراست.</p>
+<p class="section-sub">منوی کناری + گروه «مارکتینگ» و «بیشتر»؛ حداکثر شش مقصد روزانه با <code>frontend/src/lib/focus.ts</code>. فیلتر هر مسیر: <code>frontend/src/lib/access.ts</code> · <code>canSeeNavPath</code>. «اتصالات» پرفورمنس (<code>/perf/connections</code>) و «تنظیمات» پایین منو هستند. درخت دمو: <code>docs/team-tree.html</code>.</p>
 <div class="navmap">
   <div class="navcard"><h4>خانه</h4><p>صف کارهای امروز: منتظر شما، پروژه‌های در جریان، گفتگوهای منتظر پاسخ، قیمت‌های منتظر، پست‌های امروز.</p></div>
   <div class="navcard"><h4>کارهای من</h4><p>آیتم‌های کار (<code>work_items</code>)، وظایف (<code>tasks</code>) و پرونده‌ها (<code>cases</code>) که به کاربر مربوط است.</p></div>
   <div class="navcard"><h4>درخواست‌ها</h4><p>ثبت درخواست کار (REQ-…)، تریاژ، تبدیل به پروژه یا وظیفهٔ عملیاتی، صفحهٔ پروژه، گفتگو، هزینه و گزارش <code>/reports/work</code>. دسترسی: <code>request.create/triage/manage</code> یا <code>org.admin</code>.</p></div>
-  <div class="navcard"><h4>پروژه‌ها</h4><p>همهٔ پروژه‌ها (PRJ-…) با فیلتر وضعیت، تیم مجری و درخواست مبدأ.</p></div>
+  <div class="navcard"><h4>پروژه‌ها</h4><p>PRJ-… — مدیر فقط‌خواندنی؛ نقش <code>performance_marketing</code> منوی پروژه ندارد (<code>canSeeProjects</code>).</p></div>
+  <div class="navcard"><h4>تقویم</h4><p><code>request.triage</code> / <code>perf.write</code> + اسکوپ تیم — بخش ۱۵.</p></div>
   <div class="navcard"><h4>قیمت و پست‌ها</h4><p>تابلوی قیمت خودرو و ثبت پست تولید محتوا — بخش ۱۱.</p></div>
   <div class="navcard"><h4>پیام‌ها</h4><p>گفتگوهای سازمانی (وب، تلگرام، واتساپ، ایمیل، تلفن) با آرشیو و شرکت‌کنندگان.</p></div>
-  <div class="navcard"><h4>خودروها / مشتریان</h4><p>انبار خودرو و پروندهٔ مشتری؛ مشتریان فقط برای ادمین.</p></div>
-  <div class="navcard"><h4>تأییدها</h4><p>صف تأییدهای انسانی منتظر تصمیم — فقط <code>price.write</code>.</p></div>
+  <div class="navcard"><h4>خودروها / مشتریان</h4><p>انبار خودرو؛ CRM (<code>/customers</code>) فقط ادمین؛ فروش با <code>case.read</code> پرونده در کارهای من.</p></div>
+  <div class="navcard"><h4>تأییدها</h4><p>مسیر <code>/approvals</code> → <code>/my-work</code>؛ قیمت با <code>price.approve</code>، پرداخت با <code>expense.pay</code>.</p></div>
   <div class="navcard"><h4>دستیار</h4><p>پرسش دربارهٔ کار خود کاربر با دسترسی کنترل‌شده؛ هر اقدام فقط با تأیید.</p></div>
   <div class="navcard mkt"><h4>مارکتینگ: پرفورمنس</h4><p>صف «گام بعدی» همهٔ کمپین‌های فعال — بخش ۵.</p></div>
   <div class="navcard mkt"><h4>مارکتینگ: کمپین‌ها، پیامک، سوشال</h4><p>ساخت و ویرایش کمپین، صندوق میزیتو، ارسال پیامک، پیج و استوری.</p></div>
   <div class="navcard mkt"><h4>مارکتینگ: هزینه‌ها، شیت، اتصالات</h4><p>درخواست و تأیید پرداخت، شیت زنده، وضعیت گوگل/میزیتو/پنل‌ها.</p></div>
-  <div class="navcard admin"><h4>همکاران / مدیریت / تنظیمات</h4><p>کاربران و نقش‌ها، ساختار سازمان، اعلان‌ها و تنظیمات یکپارچه‌سازی.</p></div>
+  <div class="navcard mkt"><h4>خانه مارکتینگ</h4><p><code>/teams/{teamId}</code> برای سرپرست مارکتینگ، پرفورمنس و اعضای marketing/designer/filmmaker (خواندنی برای اعضا).</p></div>
+  <div class="navcard admin"><h4>همکاران / قوانین / گزارش / مدیریت</h4><p><code>/people</code> و <code>/knowledge</code> با <code>user.read</code> / <code>kb.read</code> (در قالب‌های مدیر/عضو/سرپرست از <code>SHARED_READ</code>)؛ <code>/reports</code> برای همه؛ <code>/admin</code> با <code>org.admin</code>.</p></div>
 </div>
 
 <!-- 2 -->
@@ -164,16 +167,16 @@
       <span class="tbox root"><b>شعبه / دپارتمان</b><small>مثلاً اتوکو</small></span>
       <ul>
         <li>
-          <span class="tbox mkt"><b>مارکتینگ</b><small>تیم مادر — مقصد درخواست تبلیغات</small></span>
+          <span class="tbox mkt"><b>تیم بازاریابی MKT_T</b><small>marketing_manager — تریاژ و پروژه</small></span>
           <ul>
-            <li><span class="tbox mkt"><b>پرفورمنس</b><small>کمپین، پیامک، سوشال</small></span></li>
-            <li><span class="tbox mkt"><b>تولید محتوا</b><small>پست‌ها، قیمت و پست‌ها</small></span></li>
-            <li><span class="tbox mkt"><b>فیلم‌برداری</b></span></li>
-            <li><span class="tbox mkt"><b>طراحی</b></span></li>
+            <li><span class="tbox mkt"><b>پرفورمنس MKT_PERF</b><small>performance_marketing</small></span></li>
+            <li><span class="tbox mkt"><b>طراحی MKT_DESIGN</b><small>designer</small></span></li>
+            <li><span class="tbox mkt"><b>فیلم‌برداری MKT_FILM</b><small>filmmaker</small></span></li>
+            <li><span class="tbox mkt"><b>تولید محتوا MKT_CONTENT</b><small>در طرح سازمان؛ در seed دمو نیست</small></span></li>
           </ul>
         </li>
         <li><span class="tbox sales"><b>فروش</b><small>درخواست‌دهنده</small></span></li>
-        <li><span class="tbox exec"><b>مالی</b><small>تأیید و پرداخت — <code>price.write</code></small></span></li>
+        <li><span class="tbox exec"><b>مالی FIN_T</b><small>نقش <code>finance</code> — <code>price.approve</code> · <code>expense.pay</code></small></span></li>
       </ul>
     </li>
   </ul>
@@ -188,8 +191,10 @@
     <tr><td><code>request.manage</code></td><td>مدیریت درخواست‌ها</td><td>دیدن همهٔ درخواست‌ها و پروژه‌ها</td></tr>
     <tr><td><code>perf.read / perf.write</code></td><td>تیم پرفورمنس</td><td>دیدن / ساخت و ثبت کمپین، پیامک، استوری</td></tr>
     <tr><td><code>perf.approve</code></td><td>تأییدکنندهٔ پرفورمنس</td><td>تأیید مراحل حساس پرفورمنس</td></tr>
-    <tr><td><code>price.write</code></td><td>مالی</td><td>تأیید قیمت، تأیید و پرداخت هزینه</td></tr>
-    <tr><td><code>org.admin</code></td><td>ادمین سازمان</td><td>عبور از همهٔ مسیرها + مدیریت کاربران و تیم‌ها</td></tr>
+    <tr><td><code>price.approve</code> / <code>expense.pay</code></td><td>مالی (<code>finance</code>)</td><td>تأیید قیمت جدا از پرداخت هزینه — ADR 005</td></tr>
+    <tr><td><code>expense.pay</code></td><td>مالی</td><td>تأیید و پرداخت هزینه در <code>/perf/money</code>؛ درخواست‌دهنده نمی‌تواند خودش را تأیید کند</td></tr>
+    <tr><td><code>expense.approve</code> / <code>request.triage</code></td><td>سرپرست تیم</td><td>گام <code>manager_ok</code> روی هزینهٔ وصل به پروژه/درخواست — جدا از پرداخت مالی</td></tr>
+    <tr><td><code>org.admin</code></td><td>ادمین سازمان</td><td>همهٔ مسیرها + تقویم + مشتریان</td></tr>
   </table>
   <p class="note">خطاهای استاندارد: ۴۰۳ دسترسی ندارد · ۴۰۴ پیدا نشد · ۴۰۹ تعارض (کد تکراری، مبلغ عوض‌شده، تأیید دوباره) · ۴۲۲ ورودی نامعتبر.</p>
 </div>
@@ -273,10 +278,10 @@
     <rect class="b" x="700" y="300" width="270" height="150" rx="10"></rect>
     <text class="tt" x="835" y="324">قواعد دسترسی در این مسیر</text>
     <text class="ts" x="835" y="348">ساخت پروژه توسط مدیر ← ۴۰۳</text>
-    <text class="ts" x="835" y="368">تغییر وضعیت جز تریاژ ← ۴۰۳</text>
-    <text class="ts" x="835" y="388">ویرایش بعد از new توسط سازنده ← ۴۰۳</text>
-    <text class="ts" x="835" y="408">تیم نامعتبر ← ۴۰۴</text>
-    <text class="ts" x="835" y="428">اولویت یا وضعیت نامعتبر ← ۴۲۲</text>
+    <text class="ts" x="835" y="368">مدیر پروژه را فقط‌خواندنی می‌بیند</text>
+    <text class="ts" x="835" y="388">تغییر وضعیت جز تریاژ ← ۴۰۳</text>
+    <text class="ts" x="835" y="408">ویرایش بعد از new توسط سازنده ← ۴۰۳</text>
+    <text class="ts" x="835" y="428">تیم نامعتبر ← ۴۰۴ · وضعیت نامعتبر ← ۴۲۲</text>
   </svg>
 </div>
 <div class="lane">
@@ -298,15 +303,17 @@
 <!-- 4 -->
 <h2 class="section" id="s4"><span class="num">۴</span> دید هر نقش</h2>
 <div class="flow">
-  <div class="node"><h4>مدیر درخواست‌دهنده <span class="tag info">create</span></h4><ul><li>فقط درخواست‌های خودش در فهرست</li><li>کارت «گزارش من»: تعداد بر اساس وضعیت</li><li>روی هر کارت: پروژه‌های همان درخواست</li><li>ساخت پروژه ← ۴۰۳</li></ul></div>
+  <div class="node"><h4>مدیر <span class="tag info">requester</span></h4><ul><li>درخواست و قیمت/پست؛ گزارش خودش</li><li>پروژهٔ ساخته‌شده فقط‌خواندنی؛ ساخت پروژه ← ۴۰۳</li><li>گزارش برای همه؛ همکاران/قوانین با <code>SHARED_READ</code>؛ تقویم ندارد</li></ul></div>
   <div class="arrow">←</div>
-  <div class="node"><h4>تریاژ مارکتینگ <span class="tag violet">triage</span></h4><ul><li>همهٔ درخواست‌ها و پروژه‌ها</li><li>تغییر وضعیت، تیم، ساخت چند پروژه</li><li>کارت «گزارش تیم»</li></ul></div>
+  <div class="node"><h4>سرپرست مارکتینگ <span class="tag violet">marketing_manager</span></h4><ul><li>تریاژ، پروژه، کمپین، شیت</li><li>منوی پرفورمنس: کمپین‌ها + شیت؛ بدون <code>request.create</code></li><li>خانهٔ تیم <code>MKT_T</code></li></ul></div>
   <div class="arrow">←</div>
-  <div class="node"><h4>تیم اجرا <span class="tag teal">perf.*</span></h4><ul><li>پروژه‌های تیم خودش (پروژه تیم‌محور است)</li><li>اجرای کمپین، پیامک، سوشال، بریف</li></ul></div>
+  <div class="node"><h4>پرفورمنس مارکتینگ <span class="tag teal">performance_marketing</span></h4><ul><li>خانه پرفورمنس، پیامک، سوشال، هزینه، شیت</li><li>بدون تریاژ، ساخت پروژه و منوی پروژه‌ها</li><li>گفتگوی کمپین: <code>POST …/thread</code></li></ul></div>
   <div class="arrow">←</div>
-  <div class="node"><h4>مالی <span class="tag ok">price.write</span></h4><ul><li>تأیید قیمت و پست‌ها</li><li>تأیید و پرداخت هزینه</li><li>تأیید درخواست خودش یا مبلغ عوض‌شده ← ۴۰۹</li></ul></div>
+  <div class="node"><h4>عضو مارکتینگ <span class="tag info">marketing / designer / filmmaker</span></h4><ul><li>خانهٔ مارکتینگ فقط‌خواندنی</li><li>قیمت و پست‌ها؛ بدون منوی پرفورمنس</li><li>درخواست و وظیفه در تیم خودش</li></ul></div>
   <div class="arrow">←</div>
-  <div class="node"><h4>ادمین <span class="tag danger">org.admin</span></h4><ul><li>عبور از همهٔ مسیرها</li><li>کاربران، نقش‌ها، تیم‌ها</li></ul></div>
+  <div class="node"><h4>مالی <span class="tag ok">finance</span></h4><ul><li><code>price.approve</code> — قیمت و پست‌ها</li><li><code>expense.pay</code> — <code>/perf/money</code></li><li>تأیید درخواست خودش، همان شخص بعد از <code>manager_ok</code>، یا مبلغ عوض‌شده ← ۴۰۳/۴۰۹</li></ul></div>
+  <div class="arrow">←</div>
+  <div class="node"><h4>ادمین <span class="tag danger">org.admin</span></h4><ul><li>عبور از همهٔ مسیرها</li><li>مشتریان و مدیریت سازمان</li></ul></div>
 </div>
 
 <!-- 5 -->
@@ -486,7 +493,7 @@
 
 <!-- 8 -->
 <h2 class="section" id="s8"><span class="num">۸</span> جریان پول</h2>
-<p class="section-sub">وضعیت‌ها: <code>requested</code> ← <code>manager_ok</code> ← <code>finance_ok</code> ← <code>paid</code> ← <code>recorded</code>، یا <code>rejected</code>. سه وضعیت اول باز هستند.</p>
+<p class="section-sub">وضعیت‌ها: <code>requested</code> ← (اگر <code>project_id</code> یا <code>request_id</code> دارد) <code>manager_ok</code> ← با یک اقدام مالی <code>paid</code> و بلافاصله <code>recorded</code>، یا <code>rejected</code>. <code>finance_ok</code> در دادهٔ قدیمی یا برچسب UI ممکن است بماند؛ <code>advance</code> فعلی آن را ست نمی‌کند. جزئیات: <code>docs/performance-flowchart.html</code> بخش ۳.</p>
 <div class="chart">
   <p class="cap">فلوچارت تأیید پرداخت — دو شرط هم‌زمان: تأییدکننده غیر از درخواست‌دهنده، و مبلغ دقیقاً همان مبلغ دیده‌شده</p>
   <svg viewBox="0 0 1000 420" role="img" aria-label="فلوچارت پرداخت">
@@ -539,11 +546,11 @@
 </div>
 <div class="lane">
   <div class="flow">
-    <div class="node"><h4>درخواست <span class="tag info">requested</span></h4><ul><li>نوع: شارژ پنل / هزینهٔ سوشال / سایر</li><li>مبلغ، ذی‌نفع، شبا، مرکز هزینه</li><li>درخواست‌دهنده فقط مبلغ خودش را قبل از تأیید عوض می‌کند</li></ul></div>
+    <div class="node"><h4>درخواست <span class="tag info">requested</span></h4><ul><li>نوع: شارژ پنل / هزینهٔ سوشال / سایر</li><li>مبلغ، ذی‌نفع، شبا، مرکز هزینه</li><li>درخواست‌دهنده فقط وضعیت <code>requested</code> و فقط درخواست خودش را می‌تواند مبلغ عوض کند</li></ul></div>
     <div class="arrow">←</div>
-    <div class="node"><h4>تأیید <span class="tag warn">finance_ok</span></h4><ul><li>فقط مالی (<code>price.write</code>)</li><li>تأییدکننده ≠ درخواست‌دهنده</li><li>مبلغ ارسالی باید همان مبلغ دیده‌شده باشد؛ وگرنه ۴۰۹</li></ul></div>
+    <div class="node"><h4>تأیید سرپرست (شرطی) <span class="tag warn">manager_ok</span></h4><ul><li>وصل به پروژه/درخواست — دکمهٔ «تأیید سرپرست تیم»</li><li>بدون آن مالی ← ۴۰۳</li><li>همان شخص بعداً نمی‌تواند گام مالی را بزند</li></ul></div>
     <div class="arrow">←</div>
-    <div class="node"><h4>پرداخت و ثبت <span class="tag ok">recorded</span></h4><ul><li>ردیف هزینه با شمارهٔ خودکار ساخته می‌شود</li><li>شارژ پنل موجودی پنل پیامک را بالا می‌برد</li><li>هزینهٔ ثبت‌شده حذف نمی‌شود (۴۰۹)</li><li>ردشده دیگر قابل تأیید نیست</li></ul></div>
+    <div class="node"><h4>پرداخت و ثبت <span class="tag ok">paid → recorded</span></h4><ul><li>فقط مالی؛ تأییدکننده ≠ درخواست‌دهنده</li><li><code>seen_amount_toman</code> — وگرنه ۴۰۹</li><li>ردیف هزینه + شارژ پنل؛ ثبت‌شده حذف نمی‌شود</li></ul></div>
   </div>
   <p class="note">دکمهٔ تأیید و پرداخت هرگز خودکار زده نمی‌شود. نتیجه در پنجرهٔ موفق/ناموفق با متن دقیق خطا می‌آید.</p>
 </div>
@@ -628,7 +635,7 @@
     <div class="arrow">←</div>
     <div class="node"><h4>شیت گزارش پنل</h4><ul><li>تب‌های SMS، Social، Leads، Costs، Report</li><li>بازنویسی کامل با دکمهٔ «بفرست به گوگل‌شیت»</li><li>خروجی اکسل هزینه و ریپورتر</li></ul></div>
   </div>
-  <p class="note">احتیاط: بازکردن فهرست کمپین‌ها یا صفحهٔ یک کمپین، همگام‌سازی و نوشتن گوگل را اجرا می‌کند. صفحهٔ اتصالات فقط می‌خواند. خطای گوگل (۴۰۱ توکن، ۴۰۳ اشتراک، ۴۰۴ شیت نیست) کار را متوقف نمی‌کند؛ وضعیت در اتصالات دیده می‌شود.</p>
+  <p class="note">نوشتن گوگل: دکمهٔ «بفرست به گوگل‌شیت» یا <code>POST /perf/integrations/sheets</code> با قفل <code>perf_sync_state</code> (۴۰۹ اگر همکار در حال sync باشد). فهرست/جزئیات کمپین <code>push=False</code> — فقط جدول محلی. اتصالات در بررسی زنده فقط می‌خواند. جزئیات: <code>docs/performance-flowchart.html</code>.</p>
 </div>
 <div class="navmap">
   <div class="navcard"><h4>گوگل‌شیت</h4><p>حساب سرویس + شناسهٔ هر شیت. بررسی زنده با خواندن عنوان.</p></div>
@@ -694,7 +701,7 @@
   <div class="arrow">←</div>
   <div class="node"><h4>ثبت قیمت</h4><ul><li>ساخت اسلات برای خودرو</li><li>پیشنهاد قیمت (دستیار/الگو)</li><li>تا تأیید، پست ممنوع است</li></ul></div>
   <div class="arrow">←</div>
-  <div class="node"><h4>تأیید <span class="tag ok">price.write</span></h4><ul><li>ثبت قیمت تأییدشده و زمان تأیید</li><li>نیاز به بازبینی ← <code>needs_recheck</code></li></ul></div>
+  <div class="node"><h4>تأیید <span class="tag ok">price.approve</span></h4><ul><li>ثبت قیمت تأییدشده و زمان تأیید</li><li>نیاز به بازبینی ← <code>needs_recheck</code></li></ul></div>
   <div class="arrow">←</div>
   <div class="node"><h4>پست شد</h4><ul><li>ثبت انتشار پست تولید محتوا</li><li>خروجی چاپ/اکسل تابلو</li></ul></div>
 </div>
@@ -831,6 +838,18 @@
   <p>تأیید و پرداخت مالی · ثبت ارسال واقعی پیامک · هر نوشتنی در میزیتو · تأیید فرم ساخت کمپین · تبدیل درخواست به پروژه · تأیید قیمت و انتشار پست · تغییر وضعیت و تیم واگذاری درخواست · فیک‌کردن اتصال گوگل. هر اقدام نتیجهٔ صریح موفق/ناموفق با متن خطا دارد.</p>
 </div>
 
+<h2 class="section" id="s15"><span class="num">۱۵</span> تقویم محتوا و کار</h2>
+<p class="section-sub">API و UI <code>/calendar</code> — خواندن/نوشتن با <code>request.triage</code> / <code>request.manage</code> / <code>perf.write</code> و فیلتر اسکوپ تیم (<code>calendar/routes.py</code>، <code>canSeeCalendar</code> در <code>access.ts</code>). اکسل ماه و پیشنهاد LLM هنوز <code>org.admin</code>. لایه‌ها: long / mid / short / reactive؛ وضعیت todo / doing / done.</p>
+<div class="lane">
+  <div class="flow">
+    <div class="node"><h4>ورودی‌ها</h4><ul><li>ردیف دستی ماه جلالی + seed نمونهٔ آبان ۱۴۰۵ (<code>calendar/seed</code>)</li><li>رویداد از کمپین، استوری، پیامک، پروژه، درخواست، وظیفه، work item، فیلم‌برداری</li><li>پیشنهاد ردیف با مدل زبانی (اختیاری)</li></ul></div>
+    <div class="arrow">←</div>
+    <div class="node"><h4>نمایش</h4><ul><li>صفحهٔ <code>/calendar</code> — فیلتر محتوا / کار / مارکتینگ / فیلم‌برداری</li><li>فیلتر تیم و مسئول</li><li>خروجی اکسل ماه</li></ul></div>
+    <div class="arrow">←</div>
+    <div class="node"><h4>قواعد</h4><ul><li>ویرایش فقط ردیف‌های مجاز؛ رویدادهای سیستمی لینک‌دار جدا</li><li>تاریخ جلالی ← میلادی در سرور</li><li>لایهٔ سبک روی کار واقعی، نه گانت سنگین</li></ul></div>
+  </div>
+</div>
+
 <div class="legend" style="margin-top:18px">
   <span><i style="background:var(--accent)"></i> جریان عادی</span>
   <span><i style="background:var(--ok)"></i> پایانهٔ موفق</span>
@@ -841,7 +860,8 @@
 </div>
 
 <footer>
-  ساخته‌شده از روی کد مخزن CM Ops: <code>backend/app</code> (requests، perf، api/routes، models/enums) و <code>frontend/src</code>. فایل مستند است و به سرویس وصل نمی‌شود.
+  ساخته‌شده از روی کد مخزن CM Ops: <code>backend/app</code> و <code>frontend/src</code> (شامل <code>lib/access.ts</code>، <code>lib/focus.ts</code>، <code>calendar</code>).
+  پرفورمنس تفصیلی: <code>docs/performance-flowchart.html</code> · درخت تیم: <code>docs/team-tree.html</code> · نقش‌ها: <code>docs/roles-plan.md</code>.
 </footer>
 
 </div>

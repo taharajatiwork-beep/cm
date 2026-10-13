@@ -95,6 +95,19 @@ export function Select({
   );
 }
 
+export function Checkbox({
+  label,
+  className = "",
+  ...rest
+}: InputHTMLAttributes<HTMLInputElement> & { label: ReactNode }) {
+  return (
+    <label className={cx("check-row", className)}>
+      <input {...rest} type="checkbox" />
+      <span>{label}</span>
+    </label>
+  );
+}
+
 export function Field({
   label,
   children,

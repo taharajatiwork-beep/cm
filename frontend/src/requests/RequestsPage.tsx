@@ -1,23 +1,21 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import "../perf/perf.css"; // conn-tile / perf-actions استایل‌های مشترک
-import { Badge, Button, Card, ErrorMessage, Field, Input, ListItem, LoadingState, Muted, PageHeader, SectionHeader, Select, TextArea } from "../components/ui";
-import { List } from "../components/ui";
+import { Badge, Button, Card, Checkbox, Dialog, Disclosure, EmptyState, Field, Input, Muted, PageHeader, QueryState, SectionHeader, Select, TextArea } from "../components/ui";
 import { DELETE_CONFIRM_LABEL, useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 import { DateText } from "../components/DateText";
-import { Bi } from "../i18n";
+import { JalaliDateInput } from "../components/JalaliDateInput";
+import { Bi, useBi } from "../i18n";
 import { useAuth } from "../auth";
+import { DEFAULT_PROJECT_KIND, DEFAULT_REQUEST_KIND, DEFAULT_REQUEST_PRIORITY, suggestTeamId } from "../lib/focus";
 import { requestsApi, type TeamOption, type WorkProject, type WorkRequest } from "./api";
+import { REQUEST_STATUS_LABEL } from "./labels";
+import { ConceptHint } from "../ux";
+import { WorkChainLegend, WorkListKindBadge } from "../lib/workContext";
 
-const STATUS_LABEL: Record<string, string> = {
-  new: "جدید",
-  in_review: "در بررسی",
-  converted: "تبدیل به پروژه",
-  rejected: "رد شده",
-  done: "انجام شد",
-};
+const STATUS_LABEL = REQUEST_STATUS_LABEL;
 
 const STATUS_TONE: Record<string, "ok" | "warn" | "danger"> = {
   new: "warn",
@@ -39,11 +37,12 @@ const REQUEST_KINDS = ["تبلیغات", "قیمت و پست‌ها", "عموم�
 const PROJECT_KINDS = ["پرفورمنس", "تولید محتوا", "فیلم‌برداری", "طراحی", "عمومی"];
 
 export function RequestsPage() {
-  const { has } = useAuth();
+  const { has, user } = useAuth();
   const qc = useQueryClient();
   const toast = useToast();
   const triage = has("request.triage") || has("request.manage") || has("org.admin");
   const [statusFilter, setStatusFilter] = useState("");
+  const [creating, setCreating] = useState(false);
   const requests = useQuery({
     queryKey: ["requests", "work-requests", statusFilter],
     queryFn: () => requestsApi.list(statusFilter),
@@ -72,7 +71,7 @@ export function RequestsPage() {
     mutationFn: ({ requestId, title }: { requestId: string; title: string }) => requestsApi.convertTask(requestId, title),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["requests"] });
-      toast("وظیفه ساخته شد و درخواست تبدیل شد");
+      toast("کار ساخته شد و درخواست تبدیل شد");
     },
     onError: (error: Error) => toast(error.message),
   });
@@ -93,15 +92,29 @@ export function RequestsPage() {
   return (
     <>
       <PageHeader
-        title={<Bi en="Requests" fa="درخواست‌ها" />}
+        title={<Bi en="Work requests" fa="درخواست‌های کار" />}
         description={
           <Bi
-            en="Managers file a request for a team. The team turns it into projects; each project holds its own campaigns."
-            fa="مدیرها برای تیم درخواست ثبت می‌کنند. تیم همان را به یک یا چند پروژه تبدیل می‌کند؛ هر پروژه کمپین‌های خودش را می‌گیرد."
+            en="Managers file a work request for a team. The team turns it into projects (title and executing team are separate). Performance campaigns attach to perf projects only."
+            fa="مدیر برای تیم درخواست کار ثبت می‌کند. تیم آن را به یک یا چند پروژه تبدیل می‌کند؛ عنوان و تیم مجری جدا هستند. کمپین پرفورمنس فقط به پروژهٔ نوع پرفورمنس وصل می‌شود."
           />
         }
+        actions={
+          has("request.create") ? (
+            <Button type="button" onClick={() => setCreating(true)}>
+              <Bi en="New work request" fa="درخواست کار جدید" />
+            </Button>
+          ) : null
+        }
       />
-      {has("request.create") || triage ? <CreateRequestCard teams={teams.data ?? []} /> : null}
+      <ConceptHint kind="followup" />
+      {creating && has("request.create") ? (
+        <CreateRequestCard
+          teams={teams.data ?? []}
+          userTeamId={user?.team_id}
+          onDone={() => setCreating(false)}
+        />
+      ) : null}
       <RequestsReportCard requests={requests.data ?? []} projects={projects.data ?? []} triage={triage} />
       <Card>
         <SectionHeader
@@ -119,10 +132,42 @@ export function RequestsPage() {
             ) : null
           }
         />
-        {requests.isLoading ? <LoadingState /> : null}
-        {requests.error ? <ErrorMessage error={requests.error instanceof Error ? requests.error.message : String(requests.error)} /> : null}
-        {requests.data && requests.data.length === 0 ? <Muted as="p">درخواستی با این فیلتر نیست.</Muted> : null}
-        {requests.data && requests.data.length > 0 ? (
+        <WorkChainLegend variant="requests" />
+        <QueryState
+          isLoading={requests.isLoading}
+          error={requests.error}
+          isEmpty={requests.data?.length === 0}
+          empty={
+            statusFilter ? (
+              <EmptyState
+                titleEn="Nothing matches this filter"
+                titleFa="این فیلتر نتیجه‌ای ندارد"
+                bodyEn="The queue may still have requests under another status."
+                bodyFa="صف ممکن است زیر وضعیت دیگری درخواست داشته باشد."
+                action={
+                  <Button type="button" variant="secondary" onClick={() => setStatusFilter("")}>
+                    <Bi en="Clear filter" fa="پاک کردن فیلتر" />
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                titleEn="No requests yet"
+                titleFa="هنوز درخواستی نیست"
+                bodyEn="A request is the starting point. The team turns it into a project."
+                bodyFa="درخواست نقطهٔ شروع است. تیم آن را به پروژه تبدیل می‌کند."
+                action={
+                  has("request.create") ? (
+                    <Button type="button" onClick={() => setCreating(true)}>
+                      <Bi en="New work request" fa="درخواست کار جدید" />
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )
+          }
+        >
+          {requests.data && requests.data.length > 0 ? (
           <div className="conn-grid">
             {requests.data.map((row) => (
               <RequestCard
@@ -142,7 +187,8 @@ export function RequestsPage() {
               />
             ))}
           </div>
-        ) : null}
+          ) : null}
+        </QueryState>
       </Card>
     </>
   );
@@ -190,16 +236,27 @@ function RequestsReportCard({ requests, projects, triage }: { requests: WorkRequ
   );
 }
 
-function CreateRequestCard({ teams }: { teams: TeamOption[] }) {
+function CreateRequestCard({
+  teams,
+  userTeamId,
+  onDone,
+}: {
+  teams: TeamOption[];
+  userTeamId?: string | null;
+  onDone: () => void;
+}) {
+  const bi = useBi();
+  const titleId = useId();
   const qc = useQueryClient();
   const toast = useToast();
   const [title, setTitle] = useState("");
-  const [kind, setKind] = useState("تبلیغات");
+  const [kind, setKind] = useState(DEFAULT_REQUEST_KIND);
   const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState("normal");
+  const [priority, setPriority] = useState(DEFAULT_REQUEST_PRIORITY);
   const [due, setDue] = useState("");
-  const [teamId, setTeamId] = useState("");
+  const [teamChoice, setTeamChoice] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const teamId = teamChoice ?? suggestTeamId(teams, userTeamId);
   function submit() {
     setBusy(true);
     requestsApi.create({
@@ -215,58 +272,75 @@ function CreateRequestCard({ teams }: { teams: TeamOption[] }) {
         setTitle("");
         setDescription("");
         setDue("");
-        setTeamId("");
+        setTeamChoice(undefined);
         void qc.invalidateQueries({ queryKey: ["requests", "work-requests"] });
+        onDone();
       })
       .catch((error: Error) => toast(error.message))
       .finally(() => setBusy(false));
   }
   return (
-    <Card>
+    <Dialog onClose={onDone} className="form-pop" labelledBy={titleId} closeLabel={bi("Close", "بستن")} busy={busy}>
       <SectionHeader
         icon="send"
-        title={<Bi en="New request" fa="ایجاد درخواست" />}
-        hint={<Bi en="The request goes to the team you pick. The team decides how to turn it into projects." fa="درخواست به تیمی که انتخاب می‌کنید می‌رود. تیم تصمیم می‌گیرد چطور به پروژه تبدیلش کند." />}
+        title={<span id={titleId}><Bi en="New request" fa="ایجاد درخواست" /></span>}
+        hint={<Bi en="Title and team are enough. Kind stays advertising and priority stays normal unless you change them." fa="عنوان و تیم کافی است. نوع روی تبلیغات و اولویت روی معمولی می‌ماند، مگر خودتان عوض کنید." />}
       />
       <div className="form-grid">
         <Field className="span-2" label={<Bi en="Title" fa="عنوان" />}>
           <Input value={title} placeholder="مثلاً کمپین فروش بهمن" onChange={(event) => setTitle(event.target.value)} />
         </Field>
-        <Field label={<Bi en="Kind" fa="نوع" />}>
-          <Select value={kind} onChange={(event) => setKind(event.target.value)}>
-            {REQUEST_KINDS.map((item) => (
-              <option key={item} value={item}>{item}</option>
-            ))}
-          </Select>
-        </Field>
         <Field label={<Bi en="Team" fa="تیم" />}>
-          <Select value={teamId} onChange={(event) => setTeamId(event.target.value)}>
+          <Select value={teamId} onChange={(event) => setTeamChoice(event.target.value)}>
             <option value="">— بعداً تعیین می‌شود —</option>
             {teams.filter((team) => !team.parent_team_id).map((team) => (
               <option key={team.id} value={team.id}>{team.name}</option>
             ))}
           </Select>
         </Field>
-        <Field className="span-all" label={<Bi en="Description" fa="توضیح" />}>
-          <TextArea value={description} rows={3} placeholder="جزئیات، بودجه، تاریخ لازم…" onChange={(event) => setDescription(event.target.value)} />
-        </Field>
-        <Field label={<Bi en="Priority" fa="اولویت" />}>
-          <Select value={priority} onChange={(event) => setPriority(event.target.value)}>
-            <option value="low">کم</option>
-            <option value="normal">معمولی</option>
-            <option value="high">بالا</option>
-          </Select>
-        </Field>
-        <Field label={<Bi en="Needed by" fa="تاریخ لازم" />}>
-          <Input type="date" value={due} onChange={(event) => setDue(event.target.value)} />
-        </Field>
+        <div className="span-all">
+          <Disclosure
+            label={
+              <>
+                <Bi en="More details" fa="جزئیات بیشتر" />
+                <Muted>
+                  {" "}
+                  <Bi en={`Kind ${kind} · priority ${PRIORITY_LABEL[priority] || priority}`} fa={`نوع ${kind} · اولویت ${PRIORITY_LABEL[priority] || priority}`} />
+                </Muted>
+              </>
+            }
+          >
+              <div className="form-grid">
+                <Field label={<Bi en="Kind" fa="نوع" />}>
+                  <Select value={kind} onChange={(event) => setKind(event.target.value)}>
+                    {REQUEST_KINDS.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={<Bi en="Priority" fa="اولویت" />}>
+                  <Select value={priority} onChange={(event) => setPriority(event.target.value)}>
+                    <option value="low">کم</option>
+                    <option value="normal">معمولی</option>
+                    <option value="high">بالا</option>
+                  </Select>
+                </Field>
+                <Field className="span-all" label={<Bi en="Description" fa="توضیح" />}>
+                  <TextArea value={description} rows={3} placeholder="جزئیات، بودجه، تاریخ لازم…" onChange={(event) => setDescription(event.target.value)} />
+                </Field>
+                <Field label={<Bi en="Needed by" fa="تاریخ لازم" />}>
+                  <JalaliDateInput value={due} onChange={setDue} />
+                </Field>
+              </div>
+          </Disclosure>
+        </div>
         <div className="span-all perf-actions">
           <Button type="button" disabled={!title.trim() || busy} onClick={submit}>
             {busy ? <Bi en="Saving" fa="در حال ثبت…" /> : <Bi en="File request" fa="ثبت درخواست" />}
           </Button>
         </div>
       </div>
-    </Card>
+    </Dialog>
   );
 }
 
@@ -291,99 +365,104 @@ function RequestCard({
 }) {
   const [adding, setAdding] = useState(false);
   return (
-    <article className="conn-tile" data-tone={STATUS_TONE[row.status] || "warn"}>
-      <div className="conn-tile-head">
-        <h3><span dir="ltr">{row.code}</span> — {row.title}</h3>
+    <Card as="article" className="record-card" stack>
+      <div className="record-head">
+        <div>
+          <div className="record-code" dir="ltr">{row.code}</div>
+          <h3 className="record-title">{row.title}</h3>
+        </div>
         <Badge tone={STATUS_TONE[row.status] || "warn"}>{STATUS_LABEL[row.status] || row.status}</Badge>
       </div>
-      <p className="conn-help">{row.description || "بدون توضیح."}</p>
-      <Muted>
-        {row.kind} · اولویت {PRIORITY_LABEL[row.priority] || row.priority}
-        {row.requester_name ? ` · ${row.requester_name}` : ""}
-        {row.team_id && row.team_name ? (
-          <>
-            {" · "}
-            {triage ? <Link to={`/teams/${row.team_id}`}>{row.team_name}</Link> : row.team_name}
-          </>
-        ) : ""}
-        {row.due_date ? <> · لازم تا <DateText value={row.due_date} /></> : ""}
-        {" · "}
-        <DateText value={row.created_at} withTime />
-      </Muted>
+      {row.description ? <p className="record-body">{row.description}</p> : null}
+      <div className="meta-row">
+        <WorkListKindBadge kind="request" />
+        <span className="meta-chip">{row.kind}</span>
+        <span className="meta-chip">اولویت {PRIORITY_LABEL[row.priority] || row.priority}</span>
+        {row.requester_name ? <span className="meta-chip">{row.requester_name}</span> : null}
+        {row.team_name ? (
+          <span className="meta-chip">
+            {triage && row.team_id ? <Link to={`/teams/${row.team_id}`}>{row.team_name}</Link> : row.team_name}
+          </span>
+        ) : null}
+        {row.due_date ? <span className="meta-chip">لازم تا <DateText value={row.due_date} /></span> : null}
+        <span className="meta-chip"><DateText value={row.created_at} withTime /></span>
+      </div>
       {projects.length > 0 ? (
         <div>
-          <Muted as="p" className="conn-help">
-            <Bi en="Projects" fa="پروژه‌های این درخواست" /> ({projects.length.toLocaleString("fa-IR")}):
+          <Muted as="p">
+            <Bi
+              en="Child projects (team work packages under this request)"
+              fa="پروژه‌های زیرمجموعه (بستهٔ کار تیم برای این درخواست)"
+            />{" "}
+            ({projects.length.toLocaleString("fa-IR")})
           </Muted>
-          <List>
+          <ul className="record-subs">
             {projects.map((project) => (
-              <ListItem key={project.id}>
-                <span dir="ltr">{project.code}</span>
-                {" — "}
-                {triage ? <Link to={`/projects/${project.id}`}>{project.title}</Link> : <Link to="/projects">{project.title}</Link>}
-                {" · "}
-                {project.kind}
-                {project.team_id && project.team_name ? (
-                  <>
-                    {" · "}
-                    {triage ? <Link to={`/teams/${project.team_id}`}>{project.team_name}</Link> : project.team_name}
-                  </>
-                ) : ""}
-                {" · "}
-                {PROJECT_STATUS_LABEL[project.status] || project.status}
-              </ListItem>
+              <li key={project.id}>
+                <Link className="record-sub" to={`/projects/${project.id}`}>
+                  <span className="record-code" dir="ltr">{project.code}</span>
+                  <strong>{project.title}</strong>
+                  <Badge tone={project.status === "done" ? "ok" : "warn"}>{PROJECT_STATUS_LABEL[project.status] || project.status}</Badge>
+                </Link>
+                <span className="row-meta work-parent-context">
+                  <WorkListKindBadge kind="project" />
+                  <span className="meta-chip">{project.kind}</span>
+                </span>
+              </li>
             ))}
-          </List>
+          </ul>
         </div>
       ) : null}
-      {triage ? (
-        <div className="form-grid">
-          <Field label={<Bi en="Status" fa="وضعیت" />}>
-            <Select value={row.status} onChange={(event) => onPatch({ status: event.target.value })}>
-              {Object.entries(STATUS_LABEL).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={<Bi en="Team" fa="تیم" />}>
-            <Select value={row.team_id || ""} onChange={(event) => onPatch({ team_id: event.target.value || null })}>
-              <option value="">—</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>{team.name}</option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-      ) : null}
-      {triage ? (
-        adding ? (
-          <ProjectFromRequest teams={teams} defaultTeamId={row.team_id || ""} onCancel={() => setAdding(false)} onCreate={onCreateProject} />
-        ) : (
-          <div className="row perf-actions">
-            <Button type="button" className="btn-sm" onClick={() => setAdding(true)}>
-              <Bi
-                en={projects.length ? "Add another project" : "Turn into projects"}
-                fa={projects.length ? "پروژهٔ دیگر" : "تبدیل به پروژه"}
-              />
-            </Button>
-            <Button type="button" className="btn-sm" variant="secondary" onClick={onConvertTask}>
-              <Bi en="Turn into a task" fa="تبدیل مستقیم به وظیفه" />
-            </Button>
-            <Button type="button" variant="danger-quiet" className="btn-sm" onClick={onDelete}>
-              <Bi en="Delete" fa="حذف" />
-            </Button>
-          </div>
-        )
-      ) : (
-        <div className="row perf-actions">
-          {row.status === "new" ? (
-            <Button type="button" variant="danger-quiet" className="btn-sm" onClick={onDelete}>
-              <Bi en="Delete" fa="حذف" />
-            </Button>
+      {triage || row.status === "new" ? (
+        <Disclosure label={<Bi en="Review" fa="رسیدگی" />}>
+          {triage ? (
+            <div className="stack">
+              <Field label={<Bi en="Status" fa="وضعیت" />}>
+                <Select value={row.status} onChange={(event) => onPatch({ status: event.target.value })}>
+                  {Object.entries(STATUS_LABEL).map(([key, label]) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label={<Bi en="Team" fa="تیم" />}>
+                <Select value={row.team_id || ""} onChange={(event) => onPatch({ team_id: event.target.value || null })}>
+                  <option value="">—</option>
+                  {teams.filter((team) => !team.parent_team_id).map((team) => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
           ) : null}
-        </div>
-      )}
-    </article>
+          {triage ? (
+            adding ? (
+              <ProjectFromRequest teams={teams} defaultTeamId={row.team_id || ""} onCancel={() => setAdding(false)} onCreate={onCreateProject} />
+            ) : (
+              <div className="record-actions">
+                <Button type="button" className="btn-sm" onClick={() => setAdding(true)}>
+                  <Bi
+                    en={projects.length ? "Add another project" : "Turn into projects"}
+                    fa={projects.length ? "پروژهٔ دیگر" : "تبدیل به پروژه"}
+                  />
+                </Button>
+                <Button type="button" className="btn-sm" variant="secondary" onClick={onConvertTask}>
+                  <Bi en="Turn into work" fa="تبدیل مستقیم به کار" />
+                </Button>
+                <Button type="button" variant="danger-quiet" className="btn-sm" onClick={onDelete}>
+                  <Bi en="Delete" fa="حذف" />
+                </Button>
+              </div>
+            )
+          ) : (
+            <div className="record-actions">
+              <Button type="button" variant="danger-quiet" className="btn-sm" onClick={onDelete}>
+                <Bi en="Delete" fa="حذف" />
+              </Button>
+            </div>
+          )}
+        </Disclosure>
+      ) : null}
+    </Card>
   );
 }
 
@@ -399,15 +478,13 @@ function ProjectFromRequest({
   onCreate: (bodies: Array<Record<string, unknown>>) => void;
 }) {
   const [title, setTitle] = useState("");
-  const [kind, setKind] = useState("پرفورمنس");
+  const [kind, setKind] = useState(DEFAULT_PROJECT_KIND);
   const [teamId, setTeamId] = useState(defaultTeamId);
   const [picked, setPicked] = useState<string[]>([]);
   const [description, setDescription] = useState("");
   const parentTeam = teams.find((team) => team.id === defaultTeamId);
   const childTeams = teams.filter((team) => team.parent_team_id === defaultTeamId);
-  const otherTeams = teams.filter(
-    (team) => team.id !== defaultTeamId && team.parent_team_id !== defaultTeamId,
-  );
+  const otherTeams = teams.filter((team) => !team.parent_team_id && team.id !== defaultTeamId);
   return (
     <div className="form-grid" style={{ marginTop: "var(--space-2)" }}>
       <Field className="span-2" label={<Bi en="Project title" fa="عنوان پروژه" />}>
@@ -422,16 +499,14 @@ function ProjectFromRequest({
       </Field>
       {childTeams.length > 0 ? (
         <Field className="span-all" label={<Bi en="Sections" fa="بخش‌ها" />}>
-          <div className="row" style={{ flexWrap: "wrap", gap: "var(--space-2)" }}>
+          <div className="choice-grid">
             {childTeams.map((team) => (
-              <label key={team.id}>
-                <input
-                  type="checkbox"
-                  checked={picked.includes(team.id)}
-                  onChange={() => setPicked((cur) => (cur.includes(team.id) ? cur.filter((id) => id !== team.id) : [...cur, team.id]))}
-                />{" "}
-                {team.name}
-              </label>
+              <Checkbox
+                key={team.id}
+                label={team.name}
+                checked={picked.includes(team.id)}
+                onChange={() => setPicked((cur) => (cur.includes(team.id) ? cur.filter((id) => id !== team.id) : [...cur, team.id]))}
+              />
             ))}
           </div>
           <Muted as="p">هر بخش تیک‌خورده یک پروژهٔ جدا می‌شود. اگر هیچ‌کدام را نزنید، یک پروژه روی خودِ {parentTeam?.name || "تیم"} ساخته می‌شود.</Muted>
@@ -460,7 +535,7 @@ function ProjectFromRequest({
                   const team = teams.find((item) => item.id === id);
                   const teamKind = team && PROJECT_KINDS.includes(team.name) ? team.name : kind;
                   return {
-                    title: picked.length > 1 ? `${title} — ${team?.name || ""}` : title,
+                    title,
                     kind: teamKind,
                     description,
                     team_id: id,

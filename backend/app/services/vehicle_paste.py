@@ -271,7 +271,9 @@ async def apply_preview(db, *, organization_id, actor_id, actor_permissions, row
 
     inv = InventoryService(db)
     pricing = PricingService(db)
-    can_price = PermissionCode.PRICE_WRITE in actor_permissions or PermissionCode.ORG_ADMIN in actor_permissions
+    from app.core.finance_perms import has_price_approve
+
+    can_price = has_price_approve(actor_permissions)
     now = datetime.now(UTC)
     created = updated = proposed = sold = 0
     branches = list((await db.scalars(select(Branch).where(Branch.organization_id == organization_id))).all())

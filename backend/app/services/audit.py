@@ -177,7 +177,7 @@ async def _write_audit_locked(
     details: dict[str, Any] | None = None,
 ) -> AuditLog:
     """بدنهٔ write_audit — همیشه زیر قفل زنجیره صدا زده می‌شود."""
-    with_for_update = db.bind is not None and db.bind.dialect.name != "sqlite"
+    with_for_update = db.bind is not None and db.bind.dialect.name == "postgresql"
     last_stmt = (
         select(AuditLog.row_hash, AuditLog.chain_seq)
         .where(AuditLog.organization_id == organization_id, AuditLog.row_hash.isnot(None))

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
@@ -7,6 +7,7 @@ import {
   Badge,
   Button,
   Card,
+  Dialog,
   EmptyState,
   ErrorMessage,
   Field,
@@ -121,7 +122,7 @@ export function PricingPage() {
   const toast = useToast();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const canPrice = has("price.write");
+  const canPrice = has("price.approve") || has("price.write");
   const canRequest = has("campaign.write");
   const canPeople = has("user.read");
   const [vehicleIds, setVehicleIds] = useState<string[]>([]);
@@ -132,6 +133,8 @@ export function PricingPage() {
   const [fresh, setFresh] = useState<Record<string, string>>({});
   const [postFilter, setPostFilter] = useState<PostFilter>("all");
   const [stockFilter, setStockFilter] = useState<"stock" | "stale" | "all">("stock");
+  const [askOpen, setAskOpen] = useState(false);
+  const askTitleId = useId();
 
   const board = useQuery({
     queryKey: ["pricing-board"],
@@ -173,6 +176,7 @@ export function PricingPage() {
       );
       setVehicleIds([]);
       setCarsOpen(false);
+      setAskOpen(false);
       refresh();
     },
   });
@@ -240,6 +244,13 @@ export function PricingPage() {
             fa="مارکتینگ برای یک ساعت قیمت می‌خواهد. مالی همان را تأیید می‌کند یا قیمت تازه می‌گذارد. بعد مارکتینگ منتشر می‌کند."
           />
         }
+        actions={
+          canRequest ? (
+            <Button type="button" onClick={() => setAskOpen(true)}>
+              <Bi en="Ask for a price" fa="درخواست قیمت" />
+            </Button>
+          ) : undefined
+        }
       />
       <SheetsSyncCard />
       <ErrorMessage
@@ -279,11 +290,18 @@ export function PricingPage() {
             />
           </div>
 
-          {canRequest ? (
-            <Card className="price-ask">
+          {canRequest && askOpen ? (
+            <Dialog
+              onClose={() => setAskOpen(false)}
+              className="form-pop"
+              labelledBy={askTitleId}
+              closeLabel={bi("Close", "بستن")}
+              busy={request.isPending}
+            >
+            <div className="price-ask stack">
               <SectionHeader
                 icon="megaphone"
-                title={<Bi en="Ask for a price" fa="درخواست قیمت" />}
+                title={<span id={askTitleId}><Bi en="Ask for a price" fa="درخواست قیمت" /></span>}
                 hint={
                   <Bi
                     en="Choose one or more cars and the post time. Finance confirms each price, then you can publish."
@@ -397,7 +415,8 @@ export function PricingPage() {
                   <Bi en="Send to finance" fa="بفرست برای مالی" />
                 </Button>
               </form>
-            </Card>
+            </div>
+            </Dialog>
           ) : null}
 
           <section>

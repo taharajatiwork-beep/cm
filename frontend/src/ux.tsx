@@ -1,7 +1,6 @@
 /* Provider file intentionally exports hooks and helpers beside its components. */
 /* eslint-disable react/only-export-components */
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { Bi, useBi } from "./i18n";
 import { Badge, Button, Card, EmptyState as UiEmptyState } from "./components/ui";
 
@@ -23,7 +22,7 @@ export function concept(en: "shared" | "followup" | "task" | "conversation" | "m
   const map = {
     shared: { en: "Project", fa: "پروژه" },
     followup: { en: "Follow-up", fa: "پیگیری" },
-    task: { en: "To-do", fa: "کار" },
+    task: { en: "Task", fa: "کار" },
     conversation: { en: "Conversation", fa: "گفتگو" },
     mywork: { en: "My Work", fa: "کارهای من" },
   } as const;
@@ -33,16 +32,16 @@ export function concept(en: "shared" | "followup" | "task" | "conversation" | "m
 export function ConceptHint({ kind }: { kind: "shared" | "followup" | "task" }) {
   const copy = {
     shared: {
-      en: "A project is a shared job for several people in your section. A case tracks one subject. A campaign is only an ad.",
-      fa: "پروژه کار مشترکی است که چند نفر در بخش شما با هم جلو می‌برند. پرونده پیگیری یک موضوع است. کمپین فقط آگهی و تبلیغ است.",
+      en: "A request starts the chain. A project is where the team does the work. A campaign is only ads and results.",
+      fa: "درخواست شروع زنجیره است. پروژه جایی است که تیم کار را انجام می‌دهد. کمپین فقط آگهی و نتیجه است.",
     },
     followup: {
-      en: "A case tracks one subject — a customer, a branch request, a deadline. It is not the project and not the ad.",
-      fa: "پرونده پیگیری یک موضوع است: مشتری، درخواست شعبه، یا یک مهلت. پروژه نیست و آگهی هم نیست.",
+      en: "A request is what a manager asks the team to do. It becomes one or more projects.",
+      fa: "درخواست همان چیزی است که مدیر از تیم می‌خواهد. از آن یک یا چند پروژه ساخته می‌شود.",
     },
     task: {
-      en: "One concrete action someone must finish.",
-      fa: "یک کار مشخص که یک نفر باید انجام دهد.",
+      en: "One concrete action on a project that someone must finish.",
+      fa: "یک کار مشخص روی پروژه که یک نفر باید انجام دهد.",
     },
   }[kind];
   return (
@@ -108,34 +107,51 @@ export function dismissOnboarding() {
   }
 }
 
-export function OnboardingBanner({ onDismiss }: { onDismiss: () => void }) {
+export function recallOnboarding() {
+  try {
+    localStorage.removeItem(ONBOARD_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function OnboardingBanner({
+  titleEn,
+  titleFa,
+  bodyEn,
+  bodyFa,
+  to,
+  actionEn,
+  actionFa,
+  onDismiss,
+}: {
+  titleEn: string;
+  titleFa: string;
+  bodyEn: string;
+  bodyFa: string;
+  to: string;
+  actionEn: string;
+  actionFa: string;
+  onDismiss: () => void;
+}) {
   return (
     <Card className="onboard">
-      <div>
+      <div className="onboard-cue">
         <strong>
-          <Bi en="New here? Three things to know" fa="تازه وارد شده‌اید؟ سه نکته کافی است" />
+          <Bi en={titleEn} fa={titleFa} />
         </strong>
-        <ol className="onboard-steps">
-          <li>
-            <Link to="/my-work">
-              <Bi en="“My Work” lists what you need to do today" fa="«کارهای من» یعنی کارهایی که امروز باید انجام دهید" />
-            </Link>
-          </li>
-          <li>
-            <Link to="/communication">
-              <Bi en="“Messages” shows who is waiting for your reply" fa="«پیام‌ها» نشان می‌دهد چه کسی منتظر جواب شماست" />
-            </Link>
-          </li>
-          <li>
-            <Link to="/agent">
-              <Bi en="Not sure? Just ask the assistant in plain words" fa="مطمئن نیستید؟ ساده از دستیار بپرسید" />
-            </Link>
-          </li>
-        </ol>
+        <span>
+          <Bi en={bodyEn} fa={bodyFa} />
+        </span>
       </div>
-      <Button variant="secondary" onClick={onDismiss}>
-        <Bi en="Got it" fa="متوجه شدم" />
-      </Button>
+      <div className="row">
+        <Button to={to}>
+          <Bi en={actionEn} fa={actionFa} />
+        </Button>
+        <Button variant="secondary" onClick={onDismiss}>
+          <Bi en="Got it" fa="متوجه شدم" />
+        </Button>
+      </div>
     </Card>
   );
 }

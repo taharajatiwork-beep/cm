@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.permissions import PermissionCode, require_permission
+from app.core.permissions import PermissionCode, require_permission, require_price_approve
 from app.models import User
 from app.models.inventory import Vehicle, VehiclePrice
 from app.models.pricing import PostSlot
@@ -23,6 +23,19 @@ class PricingService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def _price_approver_users(self, organization_id: UUID) -> list[User]:
+        seen: set[UUID] = set()
+        people: list[User] = []
+        for code in (PermissionCode.PRICE_APPROVE, PermissionCode.PRICE_WRITE):
+            for user in await self._users_with(organization_id, code):
+                if user.id in seen:
+                    continue
+                perms = await get_user_permissions(self.db, user)
+                if PermissionCode.PRICE_APPROVE in perms or PermissionCode.PRICE_WRITE in perms:
+                    seen.add(user.id)
+                    people.append(user)
+        return people
+
     async def set_price(
         self,
         *,
@@ -33,7 +46,7 @@ class PricingService:
         actor_permissions: set[str],
         note: str | None = None,
     ) -> Vehicle:
-        require_permission(actor_permissions, PermissionCode.PRICE_WRITE)
+        require_price_approve(actor_permissions)
         vehicle = await self._vehicle(organization_id, vehicle_id)
         now = datetime.now(UTC)
         vehicle.sale_price = amount
@@ -99,7 +112,7 @@ class PricingService:
         self.db.add(slot)
         await self.db.flush()
         label = f"{vehicle.brand} {vehicle.model}"
-        for user in await self._users_with(organization_id, PermissionCode.PRICE_WRITE):
+        for user in await self._price_approver_users(organization_id):
             await notify(
                 self.db,
                 organization_id=organization_id,
@@ -133,7 +146,7 @@ class PricingService:
         )
         self.db.add(slot)
         await self.db.flush()
-        for user in await self._users_with(organization_id, PermissionCode.PRICE_WRITE):
+        for user in await self._price_approver_users(organization_id):
             await notify(
                 self.db,
                 organization_id=organization_id,
@@ -154,7 +167,7 @@ class PricingService:
         actor_permissions: set[str],
         amount: int | None = None,
     ) -> PostSlot:
-        require_permission(actor_permissions, PermissionCode.PRICE_WRITE)
+        require_price_approve(actor_permissions)
         slot = await self._slot(organization_id, slot_id)
         vehicle = await self._vehicle(organization_id, slot.vehicle_id)
         chosen = amount
@@ -239,7 +252,7 @@ class PricingService:
             vehicle = await self.db.get(Vehicle, slot.vehicle_id)
             label = f"{vehicle.brand} {vehicle.model}" if vehicle else "خودرو"
             targets = {slot.requester_id}
-            for user in await self._users_with(slot.organization_id, PermissionCode.PRICE_WRITE):
+            for user in await self._price_approver_users(slot.organization_id):
                 targets.add(user.id)
             for user_id in targets:
                 await notify(

@@ -3,7 +3,7 @@
 import sqlalchemy as sa
 
 from alembic import op
-from app.db.migration_guard import table_exists
+from app.db.migration_guard import column_exists, table_exists
 
 revision = "0024_work_spine"
 down_revision = "0023_work_project"
@@ -15,8 +15,7 @@ def _add(table: str, name: str, column: sa.Column) -> None:
     bind = op.get_bind()
     if not table_exists(bind, table):
         return
-    cols = [row[1] for row in bind.execute(sa.text(f"PRAGMA table_info({table})")).fetchall()]
-    if name not in cols:
+    if not column_exists(bind, table, name):
         op.add_column(table, column)
 
 
@@ -58,7 +57,6 @@ def downgrade() -> None:
     }.items():
         if not table_exists(bind, table):
             continue
-        cols = [row[1] for row in bind.execute(sa.text(f"PRAGMA table_info({table})")).fetchall()]
         for name in names:
-            if name in cols:
+            if column_exists(bind, table, name):
                 op.drop_column(table, name)

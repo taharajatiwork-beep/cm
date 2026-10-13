@@ -41,15 +41,18 @@ uv sync --extra dev
 uv run pytest -q
 ```
 
-Tests use in-memory SQLite (no Docker required). `tests/test_deploy_secrets.py` and
-`tests/test_production_guard.py` instead read the deployment files directly, so they
+Tests and the API use PostgreSQL (`docker compose up postgres`). Pytest uses `cm_test` so demo data on `cm` is left alone. `tests/test_deploy_secrets.py` and
+`tests/test_production_guard.py` read the deployment files directly, so they
 catch a hardcoded secret or an unsafe production default before it ships.
 
 ```bash
 cd frontend
 npx tsc -b && npm run lint && npm test && npm run build
 npm run e2e        # starts its own API + web server
+npm run synthetic:ci   # demo seed + scripted AI-user journeys (mock LLM)
 ```
+
+Synthetic UX users (Playwright + optional LLM debrief): see `frontend/synthetic/README.md` and `docs/synthetic-users-goals.md`.
 
 ### Load test
 

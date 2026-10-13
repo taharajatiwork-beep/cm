@@ -16,6 +16,7 @@ import {
   Muted,
   PageHeader,
 } from "../components/ui";
+import { DELETE_CONFIRM_LABEL, useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 import { Bi, LangSwitch, useBi } from "../i18n";
 import { useAuth } from "../auth";
@@ -46,6 +47,7 @@ const DEFAULT_PREFS: Record<string, boolean> = {
 
 export function SettingsPage() {
   const bi = useBi();
+  const confirmDialog = useConfirm();
   const { has } = useAuth();
   const canOpenTeam = has("request.triage") || has("request.manage");
   const [section, setSection] = useState<Section>("telegram");
@@ -227,7 +229,20 @@ export function SettingsPage() {
                     </Muted>
                   )}
                 </p>
-                <Button variant="secondary" disabled={tgBusy} onClick={() => void disconnectTelegram()}>
+                <Button
+                  variant="secondary"
+                  disabled={tgBusy}
+                  onClick={() => {
+                    void confirmDialog(
+                      bi("Disconnect Telegram", "قطع اتصال تلگرام"),
+                      bi("You will stop getting alerts on Telegram until you connect again.", "تا وقتی دوباره وصل نشوید، اعلان تلگرام نمی‌گیرید."),
+                      DELETE_CONFIRM_LABEL,
+                      { danger: true },
+                    ).then((ok) => {
+                      if (ok) void disconnectTelegram();
+                    });
+                  }}
+                >
                   <Bi en="Disconnect" fa="قطع اتصال" />
                 </Button>
               </>
@@ -365,8 +380,8 @@ export function SettingsPage() {
                 <Bi en="Advanced tools" fa="ابزارهای پیشرفته" />
               </summary>
               <div className="advanced-body">
-                <Button variant="ghost" to="/cases">
-                  <Bi en="All follow-ups (full list)" fa="همه پیگیری‌ها (فهرست کامل)" />
+                <Button variant="ghost" to="/my-work">
+                  <Bi en="My work" fa="کارهای من" />
                 </Button>
               </div>
             </details>

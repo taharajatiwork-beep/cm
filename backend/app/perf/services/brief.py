@@ -154,7 +154,9 @@ def _template_draft(campaign: PmCampaign) -> dict:
 
 async def draft_brief(campaign: PmCampaign) -> tuple[dict, str]:
     """(بریف نرمال‌شده، منبع) — منبع llm یا template."""
-    client = get_llm_client()
+    from app.core.config import get_settings
+
+    client = get_llm_client() if get_settings().llm_external_enabled else None
     if client is not None:
         budget = f"{campaign.budget_toman:,}" if campaign.budget_toman else "نامشخص"
         user = _BRIEF_USER_TMPL.format(

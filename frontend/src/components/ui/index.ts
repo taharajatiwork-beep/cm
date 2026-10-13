@@ -7,17 +7,20 @@ export { ErrorMessage, ErrorBoundaryFallback, type ErrorMessageProps } from "./E
 export {
   Badge,
   EmptyState,
+  QueryState,
   PageHeader,
   Muted,
   List,
   ListItem,
   type BadgeTone,
 } from "./Feedback";
-export { Input, TextArea, Select, Field, Toolbar } from "./FormControls";
+export { Input, TextArea, Select, Checkbox, Field, Toolbar } from "./FormControls";
 export { Icon, type IconName } from "./Icon";
 export { Dialog, type DialogProps } from "./Dialog";
 export {
   StatCard,
+  Disclosure,
+  MoreMenu,
   Segmented,
   Sheet,
   Avatar,

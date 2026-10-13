@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import {
@@ -379,8 +379,8 @@ export function CommunicationPage() {
             </span>
             <div className="thread-row-tags">
               <StatusLabel status={String(c.status)} />
-              {c.work_item_id && has("work_item.read") ? (
-                <Button variant="ghost" to={`/work-items/${String(c.work_item_id)}`}>
+              {c.project_id ? (
+                <Button variant="ghost" to={`/projects/${String(c.project_id)}`}>
                   <Bi en="Open project" fa="باز کردن پروژه" />
                 </Button>
               ) : null}
@@ -484,23 +484,23 @@ export function CommunicationPage() {
                 {String(c.last_message_text)}
               </span>
             ) : null}
-            {Boolean(waiting || c.work_item_id || c.campaign_id) && (
+            {Boolean(waiting || c.project_id || c.pm_campaign_id) && (
               <div className="thread-row-tags">
                 {waiting ? (
                   <Badge tone="warn">
                     <Bi en="Reply" fa="پاسخ" />
                   </Badge>
                 ) : null}
-                {c.work_item_id && has("work_item.read") ? (
+                {c.project_id ? (
                   <Badge>
                     <Icon name="layers" size={10} />
-                    {workTitle(c.work_item_id) || bi("Project", "پروژه")}
+                    <Link to={`/projects/${String(c.project_id)}`}>{bi("Project", "پروژه")}</Link>
                   </Badge>
                 ) : null}
-                {c.campaign_id ? (
+                {c.pm_campaign_id ? (
                   <Badge>
                     <Icon name="megaphone" size={10} />
-                    {campaignTitle(c.campaign_id) || bi("Campaign", "کمپین")}
+                    <Link to={`/perf/campaigns/${String(c.pm_campaign_id)}`}>{bi("Campaign", "کمپین")}</Link>
                   </Badge>
                 ) : null}
               </div>
@@ -511,6 +511,7 @@ export function CommunicationPage() {
               className="row-lead"
               role="button"
               tabIndex={0}
+              aria-label={bi("Restore conversation", "بازگرداندن گفتگو")}
               onClick={(e) => {
                 e.stopPropagation();
                 void unarchive(c);

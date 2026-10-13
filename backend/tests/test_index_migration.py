@@ -48,28 +48,14 @@ async def _run_upgrade(module, engine) -> None:
 
 async def _index_names(engine) -> set[str]:
     async with engine.connect() as conn:
-        if engine.url.get_backend_name() == "sqlite":
-            rows = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type = 'index'")
-            )
-        else:
-            rows = await conn.execute(
-                text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public'")
-            )
+        rows = await conn.execute(
+            text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public'")
+        )
         return {r[0] for r in rows}
 
 
 async def _table_columns(engine, table: str) -> set[str]:
-    """نام ستون‌های جدول.
-
-    SQLite: ``PRAGMA table_info`` سطرهایی به شکل
-    ``(cid, name, type, notnull, dflt_value, pk)`` می‌دهد — یعنی نام ستون
-    در اندیس ۱ است، نه ۰.
-    """
     async with engine.connect() as conn:
-        if engine.url.get_backend_name() == "sqlite":
-            rows = await conn.execute(text(f"PRAGMA table_info({table})"))
-            return {r[1] for r in rows}
         rows = await conn.execute(
             text(
                 "SELECT column_name FROM information_schema.columns "

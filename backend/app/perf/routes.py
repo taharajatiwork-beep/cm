@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_current_user, handle_authz
 from app.core.config import get_settings
+from app.core.field_crypto import decrypt_secret, encrypt_secret, mask_iban
 from app.core.files import UploadRejected, save_upload
 from app.core.permissions import AuthorizationError, PermissionCode, require_any_permission, require_permission
 from app.db.session import get_db
@@ -97,6 +98,7 @@ from app.perf.services.payments import advance, notify_requested
 from app.perf.services.remove import drop_campaign, drop_list, drop_page, drop_payment, drop_send, drop_story
 from app.perf.services.reports import booked_cost, build_report, load_settlement, placement_live, story_rates
 from app.perf.services.sheets import refresh_sheet
+from app.perf.services.pishgam_targeting import AreaKeysIn, PreviewAudienceIn
 from app.perf.services.sms import draft_messages
 from app.perf.services.stories import parse_car_request, suggest_pages
 from app.perf.sms_rules import check_sms, ensure_opt_out, estimate_cost, page_count
@@ -140,7 +142,7 @@ def _read(ctx: AuthContext) -> None:
         PermissionCode.PERF_READ,
         PermissionCode.PERF_WRITE,
         PermissionCode.PERF_APPROVE,
-        PermissionCode.PRICE_WRITE,
+        PermissionCode.PRICE_APPROVE,
     )
 
 
@@ -149,6 +151,19 @@ def _write(ctx: AuthContext) -> None:
 
 
 def _fail(exc: PerfError) -> None:
+    raise HTTPException(status_code=exc.status, detail=exc.message)
+
+
+def _fail_targeting(exc: PerfError) -> None:
+    if exc.pishgam_status_code is not None:
+        raise HTTPException(
+            status_code=exc.status,
+            detail={
+                "message": exc.message,
+                "pishgam_statusCode": exc.pishgam_status_code,
+                "pishgam_message": exc.pishgam_message or "",
+            },
+        )
     raise HTTPException(status_code=exc.status, detail=exc.message)
 
 
@@ -205,10 +220,45 @@ def _panel_out(row: PmPanel) -> dict:
     }
 
 
+def _sees_all_campaigns(ctx: AuthContext) -> bool:
+    return bool(
+        {PermissionCode.ORG_ADMIN, PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE} & ctx.permissions
+    )
+
+
+async def _member_campaign_scope(db: AsyncSession, ctx: AuthContext) -> set[UUID]:
+    from app.models import Task, TaskAssignee
+    from app.requests.models import WorkProjectMember
+
+    member_ids = set(
+        (
+            await db.scalars(
+                select(WorkProjectMember.project_id).where(WorkProjectMember.user_id == ctx.user.id)
+            )
+        ).all()
+    )
+    assigned = set(
+        (
+            await db.scalars(
+                select(Task.project_id).where(
+                    Task.organization_id == ctx.organization_id,
+                    Task.project_id.is_not(None),
+                    Task.id.in_(select(TaskAssignee.task_id).where(TaskAssignee.user_id == ctx.user.id)),
+                )
+            )
+        ).all()
+    )
+    return {item for item in member_ids | assigned if item}
+
+
 async def _campaign(db: AsyncSession, ctx: AuthContext, campaign_id: UUID) -> PmCampaign:
     row = await db.get(PmCampaign, campaign_id)
     if not row or row.organization_id != ctx.organization_id:
         raise HTTPException(status_code=404, detail="کمپین پیدا نشد")
+    if not _sees_all_campaigns(ctx):
+        scope = await _member_campaign_scope(db, ctx)
+        if row.created_by != ctx.user.id and row.project_id not in scope:
+            raise HTTPException(status_code=404, detail="کمپین پیدا نشد")
     return row
 
 
@@ -276,9 +326,13 @@ async def home(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = 
 @router.get("/campaigns")
 async def list_campaigns(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     _read(ctx)
-    state = await refresh_sheet(db, ctx.organization_id)
+    state = await refresh_sheet(db, ctx.organization_id, push=False)
+    rows = state.campaigns
+    if not _sees_all_campaigns(ctx):
+        scope = await _member_campaign_scope(db, ctx)
+        rows = [row for row in rows if row.created_by == ctx.user.id or row.project_id in scope]
     out = []
-    for row in state.campaigns:
+    for row in rows:
         report = state.reports[row.id]
         item = _campaign_out(row)
         item["cost_toman"] = report["cost_toman"]
@@ -324,12 +378,9 @@ async def create_campaign(
         if tag and tag not in known:
             raise HTTPException(status_code=422, detail="حرف برند در دفتر شماره نیست")
         tag = tag or "S"
-        codes = list(
-            (
-                await db.scalars(select(PmCampaign.code).where(PmCampaign.organization_id == ctx.organization_id))
-            ).all()
-        )
-        code = next_code(tag, codes)
+        from app.perf.services.campaign_codes import allocate_campaign_code
+
+        code = await allocate_campaign_code(db, ctx.organization_id, tag)
         if not brand:
             brand = tag_brand(tag)
     if body.project_id:
@@ -360,16 +411,90 @@ async def create_campaign(
     return _campaign_out(row)
 
 
-@router.get("/campaigns/{campaign_id}")
-async def get_campaign(
+@router.post("/campaigns/{campaign_id}/thread")
+async def campaign_thread(
     campaign_id: UUID,
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     _read(ctx)
     row = await _campaign(db, ctx, campaign_id)
-    state = await refresh_sheet(db, ctx.organization_id)
-    report = state.reports.get(row.id) or await build_report(db, row)
+    from app.requests.spine import ensure_thread
+
+    thread = await ensure_thread(
+        db,
+        organization_id=ctx.organization_id,
+        actor_id=ctx.user.id,
+        project_id=row.project_id,
+        pm_campaign_id=row.id,
+        topic=row.title,
+    )
+    return {"id": str(thread.id)}
+
+
+async def _may_open_linked_project(db: AsyncSession, ctx: AuthContext, project_id: UUID | None) -> bool:
+    """کسی که خود پروژه را می‌بیند، کمپین وصل‌شده به آن را هم می‌تواند باز کند."""
+    if project_id is None:
+        return False
+    from app.models import Task, TaskAssignee
+    from app.requests.models import WorkProject, WorkProjectMember, WorkRequest
+    from app.requests.spine import child_team_ids
+
+    row = await db.get(WorkProject, project_id)
+    if not row or row.organization_id != ctx.organization_id:
+        return False
+    if PermissionCode.ORG_ADMIN in ctx.permissions:
+        return True
+    if PermissionCode.REQUEST_TRIAGE in ctx.permissions or PermissionCode.REQUEST_MANAGE in ctx.permissions:
+        if ctx.user.team_id is None:
+            return True
+        visible = set(await child_team_ids(db, [ctx.user.team_id]))
+        return row.team_id in visible
+    if row.request_id and PermissionCode.REQUEST_CREATE in ctx.permissions:
+        parent = await db.get(WorkRequest, row.request_id)
+        if parent and parent.requested_by == ctx.user.id:
+            return True
+    member = await db.scalar(
+        select(WorkProjectMember.id).where(
+            WorkProjectMember.project_id == row.id,
+            WorkProjectMember.user_id == ctx.user.id,
+        )
+    )
+    if member:
+        return True
+    assigned = await db.scalar(
+        select(Task.id).where(
+            Task.organization_id == ctx.organization_id,
+            Task.project_id == row.id,
+            Task.id.in_(select(TaskAssignee.task_id).where(TaskAssignee.user_id == ctx.user.id)),
+        )
+    )
+    return assigned is not None
+
+
+@router.get("/campaigns/{campaign_id}")
+async def get_campaign(
+    campaign_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    perf_reader = True
+    try:
+        _read(ctx)
+    except HTTPException:
+        perf_reader = False
+    row = await db.get(PmCampaign, campaign_id)
+    if not row or row.organization_id != ctx.organization_id:
+        raise HTTPException(status_code=404, detail="کمپین پیدا نشد")
+    if perf_reader:
+        row = await _campaign(db, ctx, campaign_id)
+    elif not await _may_open_linked_project(db, ctx, row.project_id):
+        raise HTTPException(status_code=403, detail="دسترسی به این کمپین ندارید")
+    try:
+        state = await refresh_sheet(db, ctx.organization_id, push=False)
+        report = state.reports.get(row.id) or await build_report(db, row)
+    except Exception:
+        report = await build_report(db, row)
     return {**_campaign_out(row), "report": report}
 
 
@@ -471,8 +596,8 @@ async def create_panel(
         low_balance_toman=body.low_balance_toman,
         api_base=body.api_base,
         api_username=body.api_username,
-        api_secret=body.api_secret,
-        api_token=body.api_token,
+        api_secret=encrypt_secret(body.api_secret),
+        api_token=encrypt_secret(body.api_token),
         updated_at=now(),
     )
     db.add(row)
@@ -493,6 +618,8 @@ async def patch_panel(
     for key in ("api_secret", "api_token"):
         if key in data and not data[key]:
             data.pop(key)
+        elif key in data:
+            data[key] = encrypt_secret(str(data[key]))
     for key, value in data.items():
         setattr(row, key, value)
     row.updated_at = now()
@@ -527,6 +654,17 @@ async def sms_drafts(body: SmsDraftIn, ctx: AuthContext = Depends(get_current_us
         link=body.link,
         campaign_code=body.campaign_code,
     )
+
+
+@router.post("/sms/pull")
+async def pull_sms_from_panels(ctx: AuthContext = Depends(get_current_user)):
+    """پیش‌نویس از پنل. تا وقتی فهرست ارسال در API پیشگام نباشد، چیزی ساخته نمی‌شود و پیامک فرستاده نمی‌شود."""
+    _read(ctx)
+    return {
+        "imported": 0,
+        "drafts": [],
+        "note": "فهرست ارسال در API پیشگام ثبت نشده است. ارسال را با گزارش تحویل و شیت تطبیق دهید و فقط تأیید کنید.",
+    }
 
 
 @router.get("/sms/sends")
@@ -1043,7 +1181,7 @@ async def create_payment(
         kind=body.kind,
         amount_toman=body.amount_toman,
         beneficiary=body.beneficiary,
-        iban=body.iban,
+        iban=encrypt_secret(body.iban),
         campaign_id=body.campaign_id,
         panel_id=body.panel_id if body.kind == "panel_charge" else None,
         story_id=body.story_id,
@@ -1699,7 +1837,7 @@ async def isms_send(
     try:
         return await send_isms_service(
             username=panel.api_username,
-            password=panel.api_secret,
+            password=decrypt_secret(panel.api_secret),
             sender=panel.sender_line,
             mobiles=mobiles,
             body=body.body,
@@ -1967,7 +2105,19 @@ async def sync_sheets(
     db: AsyncSession = Depends(get_db),
 ):
     _write(ctx)
-    state = await refresh_sheet(db, ctx.organization_id)
+    from app.perf.services.sync_lock import SyncBusy, begin_sync, finish_sync
+
+    try:
+        await begin_sync(db, ctx.organization_id, ctx.user.id, ctx.user.full_name)
+    except SyncBusy as exc:
+        raise HTTPException(status_code=409, detail=f"{exc.name} در حال به‌روزرسانی است") from exc
+    try:
+        state = await refresh_sheet(db, ctx.organization_id)
+    except Exception:
+        await finish_sync(db, ctx.organization_id, ok=False, error="خطا")
+        raise
+    err = state.reason or (state.sources.get("note") if isinstance(state.sources, dict) else "") or ""
+    await finish_sync(db, ctx.organization_id, ok=bool(state.google_connected), error=err if not state.google_connected else "")
     if state.google_connected:
         return {
             "pushed": True,
@@ -2030,7 +2180,7 @@ def _payment_out(row: PmPaymentRequest, requester_name: str = "") -> dict:
         "kind": row.kind,
         "amount_toman": row.amount_toman,
         "beneficiary": row.beneficiary,
-        "iban": row.iban,
+        "iban": mask_iban(decrypt_secret(row.iban)),
         "campaign_id": str(row.campaign_id) if row.campaign_id else None,
         "panel_id": str(row.panel_id) if row.panel_id else None,
         "story_id": str(row.story_id) if row.story_id else None,
@@ -2163,5 +2313,71 @@ def _cost_dict(row: PmCost) -> dict:
         "cost_center": row.cost_center,
         "description": row.description,
     }
+
+
+@router.get("/pishgam/targeting")
+async def pishgam_targeting(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """محله‌ها، شمار مسیرها و مرجع ذخیره‌شده. به پیشگام کال نمی‌زند."""
+    _read(ctx)
+    from app.perf.services.pishgam_targeting import snapshot
+
+    return await snapshot(db, ctx.organization_id)
+
+
+@router.post("/pishgam/targeting/sync")
+async def pishgam_targeting_sync(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """فقط استان، شهر، برند و نوع دستگاه را می‌خواند. ارسال و ساخت درخواست اینجا نیست."""
+    _write(ctx)
+    from app.perf.services.pishgam_targeting import sync_reference
+
+    try:
+        saved = await sync_reference(db, organization_id=ctx.organization_id, actor_id=ctx.user.id)
+    except PerfError as exc:
+        _fail_targeting(exc)
+    return saved
+
+
+@router.post("/pishgam/targeting/check-polygons")
+async def pishgam_check_polygons(
+    body: AreaKeysIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """پلیگان محله‌های تیک‌خورده را با CheckPolygonCells می‌سنجد. ساخت و ارسال نمی‌کند."""
+    _write(ctx)
+    from app.perf.services.pishgam_targeting import check_polygons
+
+    try:
+        return await check_polygons(
+            db,
+            organization_id=ctx.organization_id,
+            actor_id=ctx.user.id,
+            keys=body.keys,
+            operators=body.operators,
+        )
+    except PerfError as exc:
+        _fail_targeting(exc)
+
+
+@router.post("/pishgam/targeting/preview")
+async def pishgam_preview_audience(
+    body: PreviewAudienceIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """شمارش مخاطب را در پس‌زمینه شروع می‌کند یا کش را برمی‌گرداند. SendSimpleSmartSms اینجا نیست."""
+    _write(ctx)
+    from app.perf.services.pishgam_targeting import preview_audience
+
+    try:
+        return await preview_audience(
+            db,
+            organization_id=ctx.organization_id,
+            actor_id=ctx.user.id,
+            body=body,
+        )
+    except PerfError as exc:
+        _fail_targeting(exc)
+
 
 

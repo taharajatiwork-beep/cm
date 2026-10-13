@@ -4,7 +4,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_current_user, get_org_by_slug
-from app.core.permissions import PermissionCode, require_any_permission, require_permission
+from app.core.permissions import (
+    PermissionCode,
+    admin_role_permission_codes,
+    require_any_permission,
+    require_permission,
+)
 from app.core.security import create_access_token
 from app.db.session import get_db
 from app.schemas import (
@@ -51,7 +56,7 @@ async def bootstrap(body: BootstrapIn, db: AsyncSession = Depends(get_db)):
         org.id,
         name="Admin",
         code="admin",
-        permission_codes=[p.value for p in PermissionCode],
+        permission_codes=admin_role_permission_codes(),
         data_scope_level="organization",
     )
     # Manager / Seller / Marketing roles for demos
@@ -244,9 +249,34 @@ async def logout_all(ctx: AuthContext = Depends(get_current_user), db: AsyncSess
 
 
 @router.get("/auth/me", response_model=MeOut)
-async def me(ctx: AuthContext = Depends(get_current_user)):
+async def me(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models import Branch, Role, Team
+
     base = UserOut.model_validate(ctx.user)
-    return MeOut(**base.model_dump(), permissions=sorted(ctx.permissions))
+    branch_name = None
+    if ctx.user.branch_id:
+        branch = await db.get(Branch, ctx.user.branch_id)
+        branch_name = branch.name if branch else None
+    team_home_team_id = ctx.user.team_id
+    if ctx.user.team_id:
+        team = await db.get(Team, ctx.user.team_id)
+        if team and team.parent_team_id:
+            team_home_team_id = team.parent_team_id
+    role_code: str | None = None
+    role_name: str | None = None
+    if ctx.user.role_id:
+        role = await db.get(Role, ctx.user.role_id)
+        if role:
+            role_code = role.code
+            role_name = role.name
+    return MeOut(
+        **base.model_dump(),
+        permissions=sorted(ctx.permissions),
+        role_code=role_code,
+        role_name=role_name,
+        branch_name=branch_name,
+        team_home_team_id=team_home_team_id,
+    )
 
 
 @router.get("/org", response_model=OrganizationOut)

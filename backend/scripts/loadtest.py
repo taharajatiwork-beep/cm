@@ -39,7 +39,6 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 # بودجهٔ هر endpoint بر حسب ms، بر پایهٔ baseline واقعی ۲۰ کاربر هم‌زمان روی
@@ -136,24 +135,10 @@ def prepare_app() -> Any:
     os.environ["TELEGRAM_MODE"] = "off"
     os.environ["TELEGRAM_BOT_TOKEN"] = ""
     os.environ["BALE_MODE"] = "off"
-    # seed_demo از engine ماژول‌لِول app.db.session استفاده می‌کند، پس باید
-    # پیش از import تنظیم شود. پیش‌فرض SQLite فایلی است (نه حافظه)، چون
-    # session.py خودش engine را می‌سازد و StaticPool را نمی‌گذارد — و هر
-    # coroutine باید همان دادهٔ seedشده را ببیند، نه یک کپی خالی.
-    #
-    # اگر DATABASE_URL از قبل مقدار داشته باشد (مثل CI که Postgres دارد)
-    # به آن احترام می‌گذاریم؛ این تنها جایی است که اعداد کارایی به
-    # دیتابیس واقعی نزدیک می‌شوند. برای این حالت db_url را خالی می‌گذاریم
-    # تا جدول‌ها پاک نشوند و seed روی همان دیتابیس بنشیند.
-    db_url = os.environ.get("LOADTEST_DATABASE_URL") or os.environ.get("DATABASE_URL") or ""
-    if db_url and not db_url.startswith("sqlite"):
-        os.environ["DATABASE_URL"] = db_url
-    else:
-        os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./var/loadtest.db"
-        db_path = Path("var/loadtest.db")
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        for stale in (db_path, db_path.with_name("loadtest.db-wal"), db_path.with_name("loadtest.db-shm")):
-            stale.unlink(missing_ok=True)
+    db_url = os.environ.get("LOADTEST_DATABASE_URL") or os.environ.get("DATABASE_URL") or "postgresql+asyncpg://cm:cm@localhost:5432/cm"
+    if db_url.startswith("sqlite"):
+        raise SystemExit("loadtest requires PostgreSQL DATABASE_URL")
+    os.environ["DATABASE_URL"] = db_url
 
     from app.main import app
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { requestsApi } from "../requests/api";
 import { useAuth } from "../auth";
 import {
   Badge,
@@ -20,14 +21,12 @@ import { formatJalaliLong } from "../jalali";
 import { faNum } from "../fa";
 import {
   type AttentionStory,
-  assigneeNames,
-  buildPersonMap,
   formatDeadline,
   isOverdue,
-  personName,
   taskMark,
 } from "../lib/collaboration";
-import { OnboardingBanner, dismissOnboarding, shouldShowOnboarding } from "../ux";
+import { caughtUpTarget, onboardingCue, visibleHomeKpis, type HomeKpi } from "../lib/focus";
+import { OnboardingBanner, dismissOnboarding, recallOnboarding, shouldShowOnboarding } from "../ux";
 
 export function HomePage() {
   const { user, roleHint, has } = useAuth();
@@ -40,8 +39,6 @@ export function HomePage() {
     queryFn: async () => {
       const out: AttentionStory[] = [];
       let roleHintLine = "";
-        const people = await api.people.list().catch(() => []);
-        const map = buildPersonMap(people);
 
         if (roleHint === "manager" || roleHint === "admin") {
           roleHintLine = bi(
@@ -62,135 +59,91 @@ export function HomePage() {
           roleHintLine = bi("What’s happening around you.", "الان اطراف شما چه خبر است.");
         }
 
-        const myTasks =
+        const isRequester =
+          has("request.create") && !has("request.triage") && !has("request.manage") && !has("task.read");
+        const canSeeProjects =
+          has("request.create") || has("request.triage") || has("request.manage") || has("task.read");
+        const [myTasks, projects, camps, conversations] = await Promise.all([
           user?.id && has("task.read")
-            ? await api.tasks.list({ assignee_id: user.id })
-            : [];
+            ? api.tasks.list({ assignee_id: user.id }).catch(() => [])
+            : Promise.resolve([]),
+          canSeeProjects ? requestsApi.projects().catch(() => []) : Promise.resolve([]),
+          !isRequester && has("campaign.read") ? api.campaigns.list().catch(() => []) : Promise.resolve([]),
+          api.conversations.list().catch(() => []),
+        ]);
         const openMine = myTasks.filter((t) => t.status !== "COMPLETED");
-
-        const overdue =
-          has("task.read") && (roleHint === "manager" || roleHint === "admin")
-            ? await api.tasks.list({ overdue_only: true })
-            : openMine.filter((t) => isOverdue(t.deadline, t.status));
-
-        const wiIds = new Set<string>();
-        for (const t of [...openMine, ...overdue]) {
-          if (t.work_item_id) wiIds.add(String(t.work_item_id));
+        const projectById = new Map(projects.map((p) => [String(p.id), p]));
+        for (const project of projects.filter((p) => p.status !== "done").slice(0, 8)) {
+          const subline = project.request_code
+            ? bi(`Under request ${project.request_code}`, `زیر درخواست ${project.request_code}`)
+            : project.team_name || project.kind;
+          out.push({
+            id: `prj-${project.id}`,
+            title: project.title,
+            href: `/projects/${project.id}`,
+            lines: [
+              {
+                text: subline,
+                waiting: project.status === "new",
+              },
+            ],
+            tone: project.status === "new" ? "warn" : undefined,
+            kind: "shared",
+            waitingOnMe: false,
+          });
         }
 
-        for (const wiId of [...wiIds].slice(0, 8)) {
-          try {
-            const prog = await api.workItems.progress(wiId);
-            const openTasks = prog.tasks.filter((t) => t.status !== "COMPLETED");
-            const lines = openTasks.slice(0, 4).map((t) => ({
-              text: `${assigneeNames(t.assignees, map, bi)} → ${String(t.title)}`,
-              done: false,
-              waiting: isOverdue(t.deadline, t.status),
-            }));
-            const nearest = openTasks
-              .map((t) => t.deadline)
-              .filter(Boolean)
-              .sort()[0];
-            const tone =
-              (prog.overdue_tasks || 0) > 0 || openTasks.some((t) => isOverdue(t.deadline, t.status))
-                ? "danger"
-                : openTasks.length
-                  ? "warn"
-                  : undefined;
+        const activeCamps = camps.filter((c) => c.status === "ACTIVE").slice(0, 3);
+        const campProgress = await Promise.all(
+          activeCamps.map(async (camp) => {
+            if (!camp.work_item_id) return { camp, overdueCount: 0 };
+            try {
+              const prog = await api.workItems.progress(String(camp.work_item_id));
+              return { camp, overdueCount: prog.overdue_tasks || 0 };
+            } catch {
+              return { camp, overdueCount: 0 };
+            }
+          }),
+        );
+        for (const { camp, overdueCount } of campProgress) {
+          if (overdueCount > 0 || camp.status === "ACTIVE") {
             out.push({
-              id: `wi-${wiId}`,
-              title: prog.title,
-              href: `/work-items/${wiId}`,
-              lines:
-                lines.length > 0
-                  ? lines
-                  : [{ text: bi("All to-dos done", "همه کارها انجام شده"), done: true }],
-              deadline: formatDeadline(nearest, bi, locale),
-              tone,
-              kind: "shared",
-              waitingOnMe: openTasks.some((t) =>
-                Array.isArray(t.assignees)
-                  ? (t.assignees as Array<Record<string, unknown>>).some(
-                      (a) => String(a.user_id) === String(user?.id),
-                    )
-                  : false,
-              ),
-            });
-          } catch {
-            /* skip */
-          }
-        }
-
-        if (has("case.read") && (roleHint === "manager" || roleHint === "admin")) {
-          const branchCases = await api.cases
-            .list({ type: "BRANCH_REQUEST" })
-            .catch(() => []);
-          for (const c of branchCases
-            .filter((x) => x.status !== "COMPLETED" && x.status !== "CANCELLED")
-            .slice(0, 4)) {
-            out.push({
-              id: `case-${c.id}`,
-              title: String(c.subject),
-              href: c.work_item_id ? `/work-items/${c.work_item_id}` : "/cases",
+              id: `camp-${camp.id}`,
+              title: String(camp.title),
+              href: `/perf/campaigns/${camp.id}`,
               lines: [
                 {
-                  text: bi("Waiting for your response", "منتظر پاسخ شما"),
-                  waiting: true,
-                },
-                {
-                  text: `${bi("Owner", "مسئول")}: ${personName(map, c.owner_id)}`,
+                  text:
+                    overdueCount > 0
+                      ? bi(`${overdueCount} late tasks`, `${faNum(overdueCount)} کار عقب‌افتاده`)
+                      : bi("Campaign in progress", "کمپین در جریان"),
+                  waiting: overdueCount > 0,
                 },
               ],
-              deadline: formatDeadline(c.deadline, bi, locale),
-              tone: c.sla_state === "BREACHED" || c.sla_state === "ESCALATED" ? "danger" : "warn",
-              kind: "branch",
-              waitingOnMe: true,
+              tone: overdueCount > 0 ? "danger" : undefined,
+              kind: "campaign",
             });
-          }
-        }
-
-        if (has("campaign.read")) {
-          const camps = await api.campaigns.list().catch(() => []);
-          for (const camp of camps.filter((c) => c.status === "ACTIVE").slice(0, 3)) {
-            let overdueCount = 0;
-            if (camp.work_item_id) {
-              try {
-                const prog = await api.workItems.progress(String(camp.work_item_id));
-                overdueCount = prog.overdue_tasks || 0;
-              } catch {
-                /* ignore */
-              }
-            }
-            if (overdueCount > 0 || camp.status === "ACTIVE") {
-              out.push({
-                id: `camp-${camp.id}`,
-                title: String(camp.title),
-                href: "/communication",
-                lines: [
-                  {
-                    text:
-                      overdueCount > 0
-                        ? bi(
-                            `${overdueCount} late to-dos`,
-                            `${faNum(overdueCount)} کار عقب‌افتاده`,
-                          )
-                        : bi("Campaign in progress", "کمپین در جریان"),
-                    waiting: overdueCount > 0,
-                  },
-                ],
-                tone: overdueCount > 0 ? "danger" : undefined,
-                kind: "campaign",
-              });
-            }
           }
         }
 
         for (const t of openMine.filter((x) => !x.work_item_id).slice(0, 3)) {
+          const proj = t.project_id ? projectById.get(String(t.project_id)) : undefined;
+          const lines = [{ text: bi("Task assigned to you", "کار — به شما سپرده شده") }];
+          if (proj?.request_code) {
+            lines.push({
+              text: bi(`Under request ${proj.request_code}`, `زیر درخواست ${proj.request_code}`),
+            });
+          }
+          if (proj) {
+            lines.push({
+              text: bi(`In project ${proj.code}`, `در پروژه ${proj.code}`),
+            });
+          }
           out.push({
             id: `task-${t.id}`,
             title: String(t.title),
             href: "/my-work",
-            lines: [{ text: bi("Assigned to you", "به شما سپرده شده") }],
+            lines,
             deadline: formatDeadline(t.deadline, bi, locale),
             tone: isOverdue(t.deadline, t.status) ? "danger" : undefined,
             kind: "task",
@@ -212,24 +165,18 @@ export function HomePage() {
             return true;
           });
 
-        // «منتظر پاسخ شما» — همان needs_reply سمت سرور، بدون درخواست اضافه.
-        const conversations = await api.conversations.list().catch(() => []);
         const waitingReply = conversations.filter((c) => Boolean(c.needs_reply)).length;
-        const approvals = (await api.approvals.list().catch(() => [])).filter(
-          (a) => String(a.status || "pending") === "pending",
-        ).length;
 
-        return { stories: ranked.slice(0, 8), roleHintLine, waitingReply, approvals };
+        return { stories: ranked.slice(0, 8), roleHintLine, waitingReply };
     },
   });
   const stories = inbox.data?.stories ?? [];
   const roleHintLine = inbox.data?.roleHintLine ?? "";
   const waitingReply = inbox.data?.waitingReply ?? 0;
-  const approvals = inbox.data?.approvals ?? 0;
   const pricing = useQuery({
     queryKey: ["pricing-board", "home"],
     queryFn: () => api.pricing.board(),
-    enabled: has("price.write") || has("campaign.read"),
+    enabled: has("price.approve") || has("price.write") || has("campaign.read"),
   });
   const loading = inbox.isLoading;
   const error = inbox.isError ? String((inbox.error as Error).message) : "";
@@ -248,6 +195,19 @@ export function HomePage() {
   const atRisk = stories.filter((s) => s.tone === "danger").length;
   const sharedCount = stories.filter((s) => s.kind === "shared").length;
   const next = stories[0];
+  const cue = onboardingCue(roleHint);
+  const kpis = visibleHomeKpis({
+    roleHint,
+    roleCode: user?.roleCode,
+    permissions: user?.permissions ?? [],
+    teamId: user?.team_id,
+  });
+  const clearTarget = caughtUpTarget({
+    roleHint,
+    roleCode: user?.roleCode,
+    permissions: user?.permissions ?? [],
+    teamId: user?.team_id,
+  });
 
   return (
     <>
@@ -266,16 +226,30 @@ export function HomePage() {
         }
         actions={
           <>
-            <Button variant="secondary" to="/communication">
-              <Icon name="message" size={14} />
-              <Bi en="Messages" fa="پیام‌ها" />
-            </Button>
+            {!showOnboard ? (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  recallOnboarding();
+                  setShowOnboard(true);
+                }}
+              >
+                <Bi en="Guide" fa="راهنما" />
+              </Button>
+            ) : null}
+            {kpis.includes("replies") ? (
+              <Button variant="secondary" to="/communication">
+                <Icon name="message" size={14} />
+                <Bi en="Messages" fa="پیام‌ها" />
+              </Button>
+            ) : null}
           </>
         }
       />
 
       {showOnboard && (
         <OnboardingBanner
+          {...cue}
           onDismiss={() => {
             dismissOnboarding();
             setShowOnboard(false);
@@ -283,13 +257,6 @@ export function HomePage() {
         />
       )}
 
-      {approvals > 0 ? (
-        <p>
-          <Link to="/approvals">
-            <Bi en="Open approvals" fa="تأییدهای منتظر" /> ({faNum(approvals)})
-          </Link>
-        </p>
-      ) : null}
       <ErrorMessage error={error} />
 
       {!loading && (
@@ -309,82 +276,33 @@ export function HomePage() {
                 ? next.tone === "danger"
                   ? bi("This is late. Start here.", "این کار دیر شده؛ از همین شروع کنید.")
                   : bi("This is the most important item right now.", "مهم‌ترین مورد همین الان.")
-                : bi("You can check your list or ask the assistant.", "می‌توانید فهرست کارهایتان را ببینید یا از دستیار بپرسید.")}
+                : bi("The next useful page is ready. Nothing else is waiting.", "صفحهٔ بعدی آماده است. چیز دیگری منتظر شما نیست.")}
             </span>
           </div>
-          <Button to={next ? next.href : "/my-work"}>
-            {next ? <Bi en="Start" fa="شروع کن" /> : <Bi en="See my work" fa="دیدن کارهای من" />}
+          <Button to={next ? next.href : clearTarget}>
+            {next ? <Bi en="Start" fa="شروع کن" /> : <Bi en="Continue" fa="ادامه" />}
             <Icon name="arrow" size={14} className="icon-arrow" />
           </Button>
         </Card>
       )}
 
-      <div className="kpi-row kpi-row--4">
-        <StatCard
-          icon="user"
-          tone="accent"
-          label={<Bi en="Waiting for you" fa="منتظر شما" />}
-          value={loading ? "–" : waiting}
-          hint={<Bi en="people need your action" fa="مواردی که کسی منتظر شماست" />}
-          to="/my-work"
-        />
-        <StatCard
-          icon="alert"
-          tone={atRisk > 0 ? "danger" : "neutral"}
-          label={<Bi en="Late" fa="دیر شده" />}
-          value={loading ? "–" : atRisk}
-          hint={<Bi en="past their deadline" fa="از مهلتشان گذشته" />}
-        />
-        {has("work_item.read") ? (
-          <StatCard
-            icon="layers"
-            tone="ok"
-            label={<Bi en="Active projects" fa="پروژه‌های در جریان" />}
-            value={loading ? "–" : sharedCount}
-            hint={<Bi en="team work you’re part of" fa="کارهای تیمی که در آن هستید" />}
-            to="/work-items"
+      <div className="kpi-row">
+        {kpis.map((key) => (
+          <HomeKpiCard
+            key={key}
+            kpi={key}
+            loading={loading}
+            pricingLoading={pricing.isLoading}
+            waiting={waiting}
+            atRisk={atRisk}
+            sharedCount={sharedCount}
+            waitingReply={waitingReply}
+            pricesWaiting={pricing.data?.waiting ?? 0}
+            postsToday={pricing.data?.today_total ?? 0}
+            allPriced={Boolean(pricing.data?.all_priced)}
           />
-        ) : null}
-        <StatCard
-          icon="message"
-          tone={waitingReply > 0 ? "warn" : "neutral"}
-          label={<Bi en="Waiting for your reply" fa="منتظر پاسخ شما" />}
-          value={loading ? "–" : waitingReply}
-          hint={<Bi en="conversations you owe an answer" fa="گفتگوهایی که جوابتان را می‌خواهند" />}
-          to="/communication"
-        />
+        ))}
       </div>
-
-      {has("price.write") || has("campaign.read") ? (
-        <div className="kpi-row kpi-row--4">
-          {has("price.write") ? (
-            <StatCard
-              icon="megaphone"
-              tone={(pricing.data?.waiting ?? 0) > 0 ? "warn" : "ok"}
-              label={<Bi en="Prices waiting for you" fa="قیمت منتظر شماست" />}
-              value={pricing.isLoading ? "–" : pricing.data?.waiting ?? 0}
-              hint={<Bi en="posts that still need a confirmed price" fa="پست‌هایی که قیمت تأییدشده ندارند" />}
-              to="/pricing"
-            />
-          ) : null}
-          {has("campaign.read") ? (
-            <StatCard
-              icon="car"
-              tone="accent"
-              label={<Bi en="Today’s posts" fa="پست‌های امروز" />}
-              value={pricing.isLoading ? "–" : pricing.data?.today_total ?? 0}
-              hint={
-                pricing.data?.all_priced ? (
-                  <Bi en="every post has a price" fa="همه قیمت دارند" />
-                ) : (
-                  <Bi en="some posts still need a price" fa="بعضی پست‌ها هنوز قیمت ندارند" />
-                )
-              }
-              to="/pricing"
-            />
-          ) : null}
-        </div>
-      ) : null}
 
       {stories.length === 0 && !loading ? null : (
         <section className="home-main">
@@ -393,15 +311,9 @@ export function HomePage() {
             title={<Bi en="Needs your attention" fa="نیاز به رسیدگی شما" />}
             count={loading ? undefined : stories.length}
             action={
-              has("work_item.read") ? (
-                <Button variant="ghost" to="/work-items">
-                  <Bi en="All projects" fa="همه پروژه‌ها" />
-                </Button>
-              ) : (
-                <Button variant="ghost" to="/my-work">
-                  <Bi en="My work" fa="کارهای من" />
-                </Button>
-              )
+              <Button variant="ghost" to="/projects">
+                <Bi en="All projects" fa="همه پروژه‌ها" />
+              </Button>
             }
           />
 
@@ -472,11 +384,111 @@ export function HomePage() {
   );
 }
 
+function HomeKpiCard({
+  kpi,
+  loading,
+  pricingLoading,
+  waiting,
+  atRisk,
+  sharedCount,
+  waitingReply,
+  pricesWaiting,
+  postsToday,
+  allPriced,
+}: {
+  kpi: HomeKpi;
+  loading: boolean;
+  pricingLoading: boolean;
+  waiting: number;
+  atRisk: number;
+  sharedCount: number;
+  waitingReply: number;
+  pricesWaiting: number;
+  postsToday: number;
+  allPriced: boolean;
+}) {
+  if (kpi === "waiting") {
+    return (
+      <StatCard
+        icon="user"
+        tone="accent"
+        label={<Bi en="Waiting for you" fa="منتظر شما" />}
+        value={loading ? "–" : waiting}
+        hint={<Bi en="people need your action" fa="مواردی که کسی منتظر شماست" />}
+        to="/my-work"
+      />
+    );
+  }
+  if (kpi === "late") {
+    return (
+      <StatCard
+        icon="alert"
+        tone={atRisk > 0 ? "danger" : "neutral"}
+        label={<Bi en="Late" fa="دیر شده" />}
+        value={loading ? "–" : atRisk}
+        hint={<Bi en="past their deadline" fa="از مهلتشان گذشته" />}
+      />
+    );
+  }
+  if (kpi === "projects") {
+    return (
+      <StatCard
+        icon="layers"
+        tone="ok"
+        label={<Bi en="Active projects" fa="پروژه‌های در جریان" />}
+        value={loading ? "–" : sharedCount}
+        hint={<Bi en="projects you can see" fa="پروژه‌هایی که می‌بینید" />}
+        to="/projects"
+      />
+    );
+  }
+  if (kpi === "replies") {
+    return (
+      <StatCard
+        icon="message"
+        tone={waitingReply > 0 ? "warn" : "neutral"}
+        label={<Bi en="Waiting for your reply" fa="منتظر پاسخ شما" />}
+        value={loading ? "–" : waitingReply}
+        hint={<Bi en="conversations you owe an answer" fa="گفتگوهایی که جوابتان را می‌خواهند" />}
+        to="/communication"
+      />
+    );
+  }
+  if (kpi === "prices") {
+    return (
+      <StatCard
+        icon="megaphone"
+        tone={pricesWaiting > 0 ? "warn" : "ok"}
+        label={<Bi en="Prices waiting for you" fa="قیمت منتظر شماست" />}
+        value={pricingLoading ? "–" : pricesWaiting}
+        hint={<Bi en="posts that still need a confirmed price" fa="پست‌هایی که قیمت تأییدشده ندارند" />}
+        to="/pricing"
+      />
+    );
+  }
+  return (
+    <StatCard
+      icon="car"
+      tone="accent"
+      label={<Bi en="Today’s posts" fa="پست‌های امروز" />}
+      value={pricingLoading ? "–" : postsToday}
+      hint={
+        allPriced ? (
+          <Bi en="every post has a price" fa="همه قیمت دارند" />
+        ) : (
+          <Bi en="some posts still need a price" fa="بعضی پست‌ها هنوز قیمت ندارند" />
+        )
+      }
+      to="/pricing"
+    />
+  );
+}
+
 const KIND_META: Record<AttentionStory["kind"], { icon: IconName; en: string; fa: string }> = {
   shared: { icon: "layers", en: "Project", fa: "پروژه" },
   branch: { icon: "branch", en: "Branch request", fa: "درخواست شعبه" },
   campaign: { icon: "megaphone", en: "Campaign", fa: "کمپین" },
-  task: { icon: "check", en: "To-do", fa: "کار" },
+  task: { icon: "check", en: "Task", fa: "کار" },
   alert: { icon: "bell", en: "Alert", fa: "هشدار" },
 };
 

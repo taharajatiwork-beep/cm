@@ -60,6 +60,7 @@ from app.models.inventory import (  # noqa: F401 — register metadata
     VehiclePrice,
 )
 from app.models.pricing import PostSlot  # noqa: F401
+from app.calendar.models import CalendarEntry, CalendarMonth  # noqa: F401
 from app.requests import models as _request_models  # noqa: F401
 from app.perf.models import (  # noqa: F401
     PmBlacklist,
@@ -75,8 +76,14 @@ from app.perf.models import (  # noqa: F401
     PmPanel,
     PmPaymentRequest,
     PmPhoneTouch,
+    PmPishgamAudit,
+    PmPishgamPreview,
     PmRecipient,
     PmRecipientList,
+    PmRefCity,
+    PmRefDeviceBrand,
+    PmRefDeviceType,
+    PmRefProvince,
     PmSmsSend,
     PmStory,
 )
@@ -267,6 +274,7 @@ class Conversation(Base):
     case_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("cases.id"))
     project_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    pm_campaign_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     vehicle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("vehicles.id"))
     customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customers.id"))  # CRM
     campaign_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("campaigns.id"))

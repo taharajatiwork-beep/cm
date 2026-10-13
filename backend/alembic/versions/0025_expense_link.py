@@ -5,7 +5,7 @@ import uuid
 import sqlalchemy as sa
 
 from alembic import op
-from app.db.migration_guard import table_exists
+from app.db.migration_guard import column_exists, table_exists
 
 revision = "0025_expense_link"
 down_revision = "0024_work_spine"
@@ -16,9 +16,8 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     if table_exists(bind, "pm_payment_request"):
-        cols = [row[1] for row in bind.execute(sa.text("PRAGMA table_info(pm_payment_request)")).fetchall()]
         for name in ("project_id", "request_id", "team_id"):
-            if name not in cols:
+            if not column_exists(bind, "pm_payment_request", name):
                 op.add_column("pm_payment_request", sa.Column(name, sa.Uuid(), nullable=True))
     if not table_exists(bind, "permissions"):
         return
@@ -61,7 +60,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     if table_exists(bind, "pm_payment_request"):
-        cols = [row[1] for row in bind.execute(sa.text("PRAGMA table_info(pm_payment_request)")).fetchall()]
         for name in ("project_id", "request_id", "team_id"):
-            if name in cols:
+            if column_exists(bind, "pm_payment_request", name):
                 op.drop_column("pm_payment_request", name)

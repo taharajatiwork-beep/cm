@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-const TABS = ["overview", "tasks", "links", "chat", "costs", "activity", "type"];
+import { PROJECT_TABS } from "../lib/focus";
 
 describe("project page", () => {
-  it("keeps the seven tabs in order", () => {
-    expect(TABS).toEqual(["overview", "tasks", "links", "chat", "costs", "activity", "type"]);
+  it("puts work first, then overview and resources", () => {
+    expect(PROJECT_TABS).toEqual(["tasks", "overview", "resources"]);
   });
 
   it("clamps a scope picker to the four report scopes", () => {

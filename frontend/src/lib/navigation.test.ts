@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isPerformanceUser, loginRedirectTarget, orderNavGroups } from "./navigation";
+import { isPerformanceUser, loginRedirectTarget } from "./navigation";
 
 describe("loginRedirectTarget", () => {
   it("keeps the deep link the user was bounced from", () => {
@@ -40,17 +40,5 @@ describe("isPerformanceUser", () => {
     expect(isPerformanceUser({ roleCode: "finance", permissions: ["perf.read"] })).toBe(false);
     expect(isPerformanceUser({ roleCode: "lead", permissions: ["task.read"] })).toBe(false);
     expect(isPerformanceUser(null)).toBe(false);
-  });
-});
-
-describe("orderNavGroups", () => {
-  const groups = [{ en: "" }, { en: "Marketing" }, { en: "More" }];
-
-  it("puts the marketing group first for performance users", () => {
-    expect(orderNavGroups(groups, true).map((g) => g.en)).toEqual(["Marketing", "", "More"]);
-  });
-
-  it("keeps the order for everyone else", () => {
-    expect(orderNavGroups(groups, false)).toBe(groups);
   });
 });

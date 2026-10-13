@@ -19,7 +19,7 @@ test("request becomes a project the requester can open", async ({ page, request 
   await page.getByRole("link", { name: "باز کردن" }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${made.id}`));
   await expect(page.getByRole("heading", { name: "پروژه پرفورمنس" })).toBeVisible();
-  await page.getByRole("button", { name: "وظایف" }).click();
+  await page.getByRole("tab", { name: "وظایف" }).click();
   await expect(page.getByRole("button", { name: "اعمال قالب" })).toBeVisible();
 });
 
@@ -36,7 +36,8 @@ test("price request converts to a task", async ({ page, request }) => {
     data: { title: "اصلاح قیمت امروز" },
   });
   expect(task.ok(), await task.text()).toBeTruthy();
-  await page.getByRole("link", { name: "درخواست‌ها" }).click();
+  await page.getByRole("link", { name: "درخواست‌های کار", exact: true }).click();
   await expect(page.getByRole("heading", { name: /قیمت امروز/ })).toBeVisible();
+  await page.getByRole("button", { name: "رسیدگی" }).click();
   await expect(page.getByRole("button", { name: "تبدیل مستقیم به وظیفه" })).toBeVisible();
 });

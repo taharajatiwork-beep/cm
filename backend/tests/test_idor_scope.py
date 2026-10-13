@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.permissions import PermissionCode
+from app.core.permissions import PermissionCode, admin_role_permission_codes
 from app.models.enums import CaseType, Channel, Priority, VehicleStatus
 from app.services import CommunicationService, OrgService, WorkService
 from app.services.inventory import InventoryService
@@ -28,7 +28,7 @@ async def org2(db: AsyncSession, seeded):
         org.id,
         "Admin",
         "admin",
-        [p.value for p in PermissionCode],
+        admin_role_permission_codes(),
         "organization",
     )
     boss = await svc.create_user(
@@ -327,6 +327,40 @@ class TestInventoryWrite:
             json={"to_status": "RESERVED"},
         )
         assert r.status_code == 200, r.text
+
+
+class TestReportsScope:
+    @pytest.mark.asyncio
+    async def test_requester_cannot_focus_foreign_project_report(self, client, seeded, org1_headers):
+        other = auth(await login(client, "maryam@autoco.example"))
+        created = await client.post(
+            "/requests",
+            headers=other,
+            json={"title": "مشهد", "kind": "عمومی", "priority": "normal"},
+        )
+        assert created.status_code == 201, created.text
+        lead = auth(await login(client, "mina@autoco.example"))
+        project = await client.post(
+            f"/requests/{created.json()['id']}/projects",
+            headers=lead,
+            json={"title": "پروژه مشهد", "kind": "عمومی", "status": "new", "team_id": str(seeded["mkt_team"].id)},
+        )
+        assert project.status_code == 201, project.text
+        pid = project.json()["id"]
+        r = await client.get(f"/reports/work?scope=me&project_id={pid}", headers=org1_headers)
+        assert r.status_code == 200
+        assert r.json().get("projects") == 0
+        camps = await client.get(f"/reports/campaigns?scope=me&project_id={pid}", headers=org1_headers)
+        assert camps.status_code == 200
+        assert camps.json().get("count") == 0
+
+    @pytest.mark.asyncio
+    async def test_campaign_board_not_org_wide_for_requester(self, client, org1_headers):
+        camps = await client.get("/reports/campaigns?scope=me", headers=org1_headers)
+        assert camps.status_code == 200
+        org_camps = await client.get("/reports/campaigns?scope=org", headers=org1_headers)
+        assert org_camps.status_code == 200
+        assert org_camps.json().get("count", 0) <= camps.json().get("count", 0) + 1
 
 
 class TestAssignmentSkills:

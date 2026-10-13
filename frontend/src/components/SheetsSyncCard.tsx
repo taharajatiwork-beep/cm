@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
 import { Button, Card, ErrorMessage, Muted, SectionHeader } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -31,12 +31,14 @@ function label(key: string, bi: (en: string, fa: string) => string): string {
   return pair ? bi(pair[0], pair[1]) : key;
 }
 
-export function SheetsSyncCard() {
+export function SheetsSyncCard({ embedded = false }: { embedded?: boolean } = {}) {
   const bi = useBi();
   const toast = useToast();
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
+  const status = useQuery({ queryKey: ["sheets", "status"], queryFn: () => api.perfSheets.status() });
+  const running = Boolean(status.data?.running);
   const sync = useMutation({
     mutationFn: () => api.perfSheets.sync(),
     onSuccess: (data: SyncResult) => {
@@ -70,28 +72,48 @@ export function SheetsSyncCard() {
     },
   });
 
-  return (
-    <Card>
-      <SectionHeader
-        title={<Bi en="Google Sheets" fa="گوگل‌شیت" />}
-        action={
-          <Button onClick={() => sync.mutate()} disabled={sync.isPending}>
+  const body = (
+    <>
+      {embedded ? (
+        <div className="record-actions">
+          <Button onClick={() => sync.mutate()} disabled={sync.isPending || running}>
             {sync.isPending ? (
               <Bi en="Updating…" fa="در حال به‌روزرسانی…" />
             ) : (
               <Bi en="Update Google Sheets" fa="به‌روزرسانی گوگل‌شیت" />
             )}
           </Button>
-        }
-      />
-      <Muted>
-        <Bi
-          en="After you change posts, prices, customers, or campaigns, push them to the Sotoudeh sheet and the cost, campaign, and report workbooks."
-          fa="بعد از تغییر پست، قیمت، مشتری یا کمپین، شیت ستوده و شیت‌های هزینه، کمپین و گزارش را به‌روز کنید."
+        </div>
+      ) : (
+        <SectionHeader
+          title={<Bi en="Google Sheets" fa="گوگل‌شیت" />}
+          action={
+            <Button onClick={() => sync.mutate()} disabled={sync.isPending || running}>
+              {sync.isPending ? (
+                <Bi en="Updating…" fa="در حال به‌روزرسانی…" />
+              ) : (
+                <Bi en="Update Google Sheets" fa="به‌روزرسانی گوگل‌شیت" />
+              )}
+            </Button>
+          }
         />
+      )}
+      <Muted>
+        {running ? (
+          <Bi en={`${status.data?.actor_name || "Someone"} is updating the sheet`} fa={`${status.data?.actor_name || "یک همکار"} در حال به‌روزرسانی است`} />
+        ) : status.data?.finished_at ? (
+          <Bi en={`Last update by ${status.data.actor_name || "—"}`} fa={`آخرین به‌روزرسانی: ${status.data.actor_name || "—"} · ${status.data.result || ""}`} />
+        ) : (
+          <Bi
+            en="After you change posts, prices, customers, or campaigns, push them to the Sotoudeh sheet and the cost, campaign, and report workbooks."
+            fa="بعد از تغییر پست، قیمت، مشتری یا کمپین، شیت ستوده و شیت‌های هزینه، کمپین و گزارش را به‌روز کنید."
+          />
+        )}
       </Muted>
       {notice ? <p className="fine">{notice}</p> : null}
       <ErrorMessage error={error} friendly={false} />
-    </Card>
+    </>
   );
+  if (embedded) return <div className="stack">{body}</div>;
+  return <Card>{body}</Card>;
 }

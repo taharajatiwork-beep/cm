@@ -6,6 +6,8 @@ import { Button, Card, ErrorMessage, LoadingState, Muted } from "../components/u
 import { Bi, LangSwitch, useBi } from "../i18n";
 import { friendlyError } from "../lib/errors";
 import { loginRedirectTarget, type LoginFrom } from "../lib/navigation";
+import symbolUrl from "../../../assets/sotoodeh-brand-kit/assets/sotoodeh-symbol.png";
+import wordmarkUrl from "../../../assets/sotoodeh-brand-kit/assets/sotoodeh-wordmark.png";
 
 // حساب نمایشی فقط در حالت توسعه پیش‌پر می‌شود. در build تولید import.meta.env.DEV برابر false است
 // و این رشته‌ها کلاً از باندل حذف می‌شوند.
@@ -57,18 +59,36 @@ export function LoginPage() {
         <div className="login-lang">
           <LangSwitch />
         </div>
+        <div className="login-brand">
+          <img className="login-symbol" src={symbolUrl} alt="" width={8268} height={5874} />
+          <img
+            className="login-wordmark"
+            src={wordmarkUrl}
+            alt={bi("Sotoodeh Automotive Group", "گروه خودرویی ستوده")}
+            width={8268}
+            height={5874}
+          />
+        </div>
         <h1>
-          <Bi en="CM Ops" fa="سامانه عملیاتی" />
+          <Bi en="Operations" fa="سامانه عملیاتی" />
         </h1>
         <p className="sub">
           <Bi en="Sign in to your branch workspace" fa="ورود به فضای کاری شعبه" />
         </p>
         {import.meta.env.DEV ? (
-          <Muted className="login-demo-hint">
-            <Bi
-              en="Demo password for all: password. Site admin admin@, manager ali@, marketing sara@ or mina@, finance finance@"
-              fa="رمز همه: password. ادمین سایت admin@، مدیر علی ali@، مارکتینگ سارا sara@ یا مینا mina@، مالی finance@"
-            />
+          <Muted as="div" className="login-demo-hint">
+            <Bi en="Password for every account: password" fa="رمز همه: password" />
+            <ul>
+              <li><span dir="ltr">admin@</span> — <Bi en="Site admin" fa="ادمین سایت" /></li>
+              <li><span dir="ltr">ali@</span> — <Bi en="Manager" fa="مدیر" /></li>
+              <li><span dir="ltr">maryam@</span> — <Bi en="Mashhad branch manager" fa="مدیر شعبه مشهد" /></li>
+              <li><span dir="ltr">mina@</span> — <Bi en="Marketing lead" fa="سرپرست مارکتینگ" /></li>
+              <li><span dir="ltr">nadia@</span> — <Bi en="Performance marketing" fa="پرفورمنس مارکتینگ" /></li>
+              <li><span dir="ltr">finance@</span> — <Bi en="Lead" fa="سرپرست" /></li>
+              <li><span dir="ltr">reza@</span> · <span dir="ltr">sara@</span> · <span dir="ltr">leila@</span> · <span dir="ltr">kamran@</span> · <span dir="ltr">nima@</span> — <Bi en="Member" fa="عضو" /></li>
+              <li><span dir="ltr">reporter@</span> — <Bi en="Reporter" fa="گزارش‌گیر" /></li>
+              <li><span dir="ltr">viewer@</span> — <Bi en="Viewer" fa="بازدیدکننده" /></li>
+            </ul>
           </Muted>
         ) : null}
         <div className="field mt-4">

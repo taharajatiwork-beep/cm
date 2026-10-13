@@ -120,6 +120,22 @@ class OrgService:
                 self.db.add(RolePermission(role_id=role_id, permission_id=perm.id))
         await self.db.flush()
 
+    async def revoke_role_permissions(self, role_id: UUID, permission_codes: list[str]) -> None:
+        for pcode in permission_codes:
+            code = pcode.value if hasattr(pcode, "value") else str(pcode)
+            perm = await self.db.scalar(select(Permission).where(Permission.code == code))
+            if not perm:
+                continue
+            row = await self.db.scalar(
+                select(RolePermission).where(
+                    RolePermission.role_id == role_id,
+                    RolePermission.permission_id == perm.id,
+                )
+            )
+            if row:
+                await self.db.delete(row)
+        await self.db.flush()
+
     async def create_role(
         self,
         organization_id: UUID,

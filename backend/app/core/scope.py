@@ -41,6 +41,9 @@ def apply_scope(stmt: Select, model, scope: DataScopeContext | None) -> Select:
 def scope_clause(model, scope: DataScopeContext | None):
     if scope is None or scope.is_org_wide or scope.level == "organization":
         return None
+    # خودرو، مشتری، همکار و راهنما فهرست مشترک سازمان‌اند، نه کار شخصی.
+    if model.__tablename__ in ("vehicles", "customers", "users", "documents"):
+        return None
 
     base = _level_clause(model, scope)
     section = _section_clause(model, scope)

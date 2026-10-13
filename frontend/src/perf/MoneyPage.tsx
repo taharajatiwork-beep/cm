@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
-import { Badge, Button, Card, ErrorMessage, Field, Input, LoadingState, Muted, PageHeader, SectionHeader, Select, Table } from "../components/ui";
+import { Badge, Button, Card, Dialog, EmptyState, ErrorMessage, Field, Input, LoadingState, Muted, PageHeader, SectionHeader, Select, Table } from "../components/ui";
 import { DELETE_CONFIRM_LABEL, useConfirm } from "../components/ui/ConfirmDialog";
 import { DateText } from "../components/DateText";
-import { Bi } from "../i18n";
+import { Bi, useBi } from "../i18n";
 import { MIZITO_STATUS, mizitoStatus, perfApi, toman, type CampaignRow, type MizitoCard, type MizitoFinance, type MizitoFinanceCard, type Payment } from "./api";
 import { CampaignCode, exactError, OutcomePop, RelatedLinks, type Outcome } from "./bits";
 import { ArrangeBar, hit, ShowMore, useArrange, type SortOption } from "./browse";
 import { MizitoCardDialog, MizitoOpenButton, type MizitoCardLike } from "./MizitoCardDialog";
 import { withoutEmptyColumns } from "../lib/columns";
+import { hasExpensePay, hasExpenseTeamApprove } from "../lib/permissions";
 
 const KIND: Record<string, string> = {
   panel_charge: "شارژ پنل",
@@ -23,7 +24,7 @@ const CENTERS = ["پرفورمنس", "دفتر مرکزی", "شعبه فروش �
 const STATUS: Record<string, string> = {
   requested: "درخواست — منتظر تأیید مالی",
   manager_ok: "تأیید مدیر — منتظر مالی",
-  finance_ok: "تأیید مالی — منتظر ثبت هزینه",
+  finance_ok: "منتظر مالی (وضعیت قدیمی)",
   paid: "پرداخت شد — هزینه هنوز در شیت نیامده",
   recorded: "ثبت شد — هزینه در شیت کمپین آمده",
   rejected: "رد شد — دیگر قابل تأیید نیست",
@@ -36,14 +37,15 @@ function paymentStatus(status: string): string {
 export function MoneyPage() {
   const [params] = useSearchParams();
   const { has, user } = useAuth();
-  const canFinance = !!user?.permissions.includes("price.write");
+  const canFinance = hasExpensePay(has);
+  const canTeamApprove = hasExpenseTeamApprove(has);
   const qc = useQueryClient();
   const payments = useQuery({ queryKey: ["perf", "payments"], queryFn: perfApi.payments });
   const panels = useQuery({ queryKey: ["perf", "panels"], queryFn: perfApi.panels });
   const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
   const [kind, setKind] = useState("panel_charge");
   const pages = useQuery({ queryKey: ["perf", "pages"], queryFn: perfApi.pages, enabled: kind === "story" });
-  const [amount, setAmount] = useState(0);
+  const [amount, setAmount] = useState("");
   const [beneficiary, setBeneficiary] = useState("");
   const [iban, setIban] = useState("");
   const [panelId, setPanelId] = useState("");
@@ -53,11 +55,13 @@ export function MoneyPage() {
   const [center, setCenter] = useState("پرفورمنس");
   const [campaignQuery, setCampaignQuery] = useState("");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const bi = useBi();
+  const moneyFormTitleId = useId();
   const create = useMutation({
     mutationFn: () =>
       perfApi.createPayment({
         kind,
-        amount_toman: amount,
+        amount_toman: amount === "" ? 0 : Number(amount),
         beneficiary,
         iban,
         panel_id: kind === "panel_charge" ? panelId || null : null,
@@ -66,6 +70,7 @@ export function MoneyPage() {
       }),
     onSuccess: (row) => {
       qc.invalidateQueries({ queryKey: ["perf"] });
+      setOpen(false);
       setOutcome({
         ok: true,
         title: "ثبت درخواست موفق بود",
@@ -91,22 +96,28 @@ export function MoneyPage() {
     <>
       <PageHeader
         title={<Bi en="Costs" fa="هزینه‌ها" />}
-        description={<Bi en="Panel top-ups and social costs are requested here. Finance approves and pays here." fa="شارژ پنل و هزینهٔ سوشال همین‌جا درخواست می‌شود. مالی همین‌جا تأیید و پرداخت می‌کند." />}
+        description={<Bi en="Payment requests (panel, social, other). Finance approves and pays here — not work requests." fa="درخواست پرداخت (شارژ پنل، سوشال، …). مالی همین‌جا تأیید و پرداخت می‌کند — با درخواست کار در «درخواست‌های کار» اشتباه نشود." />}
         actions={
           <div className="row">
             {campaignId ? <RelatedLinks id={campaignId} code={(campaigns.data ?? []).find((row) => row.id === campaignId)?.code} here="money" /> : (
               <Button variant="secondary" to="/perf/sheet"><Bi en="Sheet" fa="شیت" /></Button>
             )}
             <Button variant="secondary" to="/perf/connections"><Bi en="Connections" fa="اتصالات" /></Button>
-            {has("perf.write") ? <Button type="button" onClick={() => setOpen((value) => !value)}><Bi en="New request" fa="درخواست تازه" /></Button> : null}
+            {has("perf.write") ? <Button type="button" onClick={() => setOpen(true)}><Bi en="New payment request" fa="درخواست پرداخت جدید" /></Button> : null}
           </div>
         }
       />
       {has("perf.write") && open ? (
-        <Card>
+        <Dialog
+          onClose={() => setOpen(false)}
+          className="form-pop"
+          labelledBy={moneyFormTitleId}
+          closeLabel={bi("Close", "بستن")}
+          busy={create.isPending}
+        >
           <SectionHeader
             icon="briefcase"
-            title={<Bi en="New request" fa="درخواست تازه" />}
+            title={<span id={moneyFormTitleId}><Bi en="New request" fa="درخواست تازه" /></span>}
             hint={<Bi en="Finance pays this request here. A panel top-up increases the balance. A social cost enters the campaign." fa="مالی همین درخواست را همین‌جا پرداخت می‌کند. شارژ پنل مانده را زیاد می‌کند و هزینهٔ سوشال در کمپین می‌آید." />}
           />
           <div className="form-grid">
@@ -123,7 +134,7 @@ export function MoneyPage() {
               </Select>
             </Field>
             <Field label={<Bi en="Amount (toman)" fa="مبلغ (تومان)" />}>
-              <Input type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
+              <Input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} />
             </Field>
             {kind === "panel_charge" ? (
               <Field label={<Bi en="Panel" fa="پنل" />}>
@@ -146,7 +157,7 @@ export function MoneyPage() {
                   const page = (pages.data ?? []).find((row) => row.id === id);
                   if (page) {
                     setBeneficiary(page.name);
-                    if (page.price_toman) setAmount(page.price_toman);
+                    if (page.price_toman) setAmount(String(page.price_toman));
                   }
                 }}>
                   <option value="">—</option>
@@ -164,7 +175,7 @@ export function MoneyPage() {
               </Select>
             </Field>
             <div className="span-all perf-actions">
-              <Button type="button" disabled={amount <= 0 || create.isPending || (kind === "story" && !pageId)} onClick={() => create.mutate()}>
+              <Button type="button" disabled={!amount || Number(amount) <= 0 || create.isPending || (kind === "story" && !pageId)} onClick={() => create.mutate()}>
                 <Bi en="Request" fa="ثبت درخواست" />
               </Button>
               <Button variant="ghost" to="/perf/sheet"><Bi en="It lands on the sheet" fa="روی شیت دیده می‌شود" /></Button>
@@ -182,14 +193,23 @@ export function MoneyPage() {
               </div>
             </details>
           </div>
-        </Card>
+        </Dialog>
       ) : null}
       <MizitoList campaigns={campaigns.data ?? []} />
       <MizitoFinanceBlock campaigns={campaigns.data ?? []} />
       {payments.isLoading ? <LoadingState /> : null}
       {payments.error ? <ErrorMessage error={payments.error instanceof Error ? payments.error.message : String(payments.error)} /> : null}
       {payments.data ? (
-        <MoneyTable rows={payments.data} campaigns={campaigns.data ?? []} canFinance={canFinance} userId={user?.id} onAct={(id, action, amount) => act.mutate({ id, action, amount })} onOutcome={setOutcome} />
+        payments.data.length === 0 ? (
+          <EmptyState
+            titleEn="No payment requests yet"
+            titleFa="هنوز درخواست پرداختی نیست"
+            bodyEn="Panel top-ups and social costs start with a new request."
+            bodyFa="شارژ پنل و هزینهٔ سوشال با «درخواست تازه» شروع می‌شود."
+          />
+        ) : (
+          <MoneyTable rows={payments.data} campaigns={campaigns.data ?? []} canFinance={canFinance} canTeamApprove={canTeamApprove} userId={user?.id} onAct={(id, action, amount) => act.mutate({ id, action, amount })} onOutcome={setOutcome} />
+        )
       ) : null}
       <OutcomePop outcome={outcome} onClose={() => setOutcome(null)} />
     </>
@@ -316,8 +336,8 @@ function MizitoFinanceBlock({ campaigns }: { campaigns: CampaignRow[] }) {
     <Card>
       <SectionHeader
         icon="briefcase"
-        title={<Bi en="Mizito payments and Cost Tracking" fa="پرداخت‌های میزیتو و Cost Tracking" />}
-        hint={<Bi en="Finance project cards from the last Mizito read next to the panel's Cost Tracking rows. Matching is by campaign code only and is a suggestion; nothing is recorded automatically." fa="کارت‌های پروژهٔ مالی از آخرین خواندن میزیتو، کنار ردیف‌های Cost Tracking پنل. تطبیق فقط با کد کمپین و پیشنهادی است؛ چیزی خودکار ثبت نمی‌شود." />}
+        title={<Bi en="Mizito payments and cost tracking" fa="پرداخت‌های میزیتو و پیگیری هزینه" />}
+        hint={<Bi en="Finance project cards from the last Mizito read next to the panel's cost-tracking rows. Matching is by campaign code only and is a suggestion; nothing is recorded automatically." fa="کارت‌های پروژهٔ مالی از آخرین خواندن میزیتو، کنار ردیف‌های پیگیری هزینه پنل. تطبیق فقط با کد کمپین و پیشنهادی است؛ چیزی خودکار ثبت نمی‌شود." />}
       />
       <p className="muted">
         {FINANCE_ORDER.map((status, index) => {
@@ -331,11 +351,11 @@ function MizitoFinanceBlock({ campaigns }: { campaigns: CampaignRow[] }) {
           );
         })}
       </p>
-      <h4><Bi en="Not yet in Cost Tracking" fa="ثبت‌نشده در Cost Tracking" /> ({toman(data.to_register_count)})</h4>
-      {data.to_register.length ? <FinanceCards rows={data.to_register} /> : <Muted as="p">کارت بازی در ستون «ثبت نشده در Cost Tracking» نیست.</Muted>}
-      <h4><Bi en="Paid in Mizito, no Cost Tracking row" fa="پرداخت‌شده در میزیتو، بدون ردیف Cost Tracking" /> ({toman(data.paid_without_cost_count)})</h4>
-      {data.paid_without_cost.length ? <FinanceCards rows={data.paid_without_cost} /> : <Muted as="p">همهٔ کارت‌های پرداخت‌شده کد هم‌خوان در Cost Tracking دارند.</Muted>}
-      {data.paid_suggested_count ? <Muted as="p">{toman(data.paid_suggested_count)} کارت پرداخت‌شده کد هم‌خوان در Cost Tracking دارد (پیشنهادی، بدون بررسی مبلغ).</Muted> : null}
+      <h4><Bi en="Not yet in cost tracking" fa="ثبت‌نشده در پیگیری هزینه" /> ({toman(data.to_register_count)})</h4>
+      {data.to_register.length ? <FinanceCards rows={data.to_register} /> : <Muted as="p">کارت بازی در ستون «ثبت نشده در پیگیری هزینه» نیست.</Muted>}
+      <h4><Bi en="Paid in Mizito, no cost-tracking row" fa="پرداخت‌شده در میزیتو، بدون ردیف پیگیری هزینه" /> ({toman(data.paid_without_cost_count)})</h4>
+      {data.paid_without_cost.length ? <FinanceCards rows={data.paid_without_cost} /> : <Muted as="p">همهٔ کارت‌های پرداخت‌شده کد هم‌خوان در پیگیری هزینه دارند.</Muted>}
+      {data.paid_suggested_count ? <Muted as="p">{toman(data.paid_suggested_count)} کارت پرداخت‌شده کد هم‌خوان در پیگیری هزینه دارد (پیشنهادی، بدون بررسی مبلغ).</Muted> : null}
       <h4><Bi en="Tracked in Mizito, no finance card" fa="در میزیتو هست، کارت مالی ندارد" /> ({toman(data.panel_without_card_count ?? 0)})</h4>
       {(data.panel_without_card ?? []).length ? <PanelCosts rows={data.panel_without_card ?? []} campaigns={campaigns} /> : <Muted as="p">هر کمپینی که در میزیتو کارت دارد، اگر هزینه‌ای در پنل داشته باشد کارت مالی هم دارد.</Muted>}
     </Card>
@@ -380,7 +400,7 @@ function PanelCosts({
 
 const FINANCE_MATCH: Record<string, string> = {
   suggested: "پیشنهاد",
-  no_cost_row: "کد در Cost Tracking نیست",
+  no_cost_row: "کد در پیگیری هزینه نیست",
   no_code: "بدون کد کمپین",
 };
 
@@ -404,7 +424,7 @@ function FinanceCards({ rows }: { rows: MizitoFinanceCard[] }) {
           },
           {
             key: "match",
-            header: "Cost Tracking",
+            header: "پیگیری هزینه",
             render: (row: MizitoFinanceCard) => (row.match === "suggested"
               ? `${FINANCE_MATCH.suggested}: ${row.suggested_costs.map((number) => `#${toman(number)}`).join("، ")}`
               : FINANCE_MATCH[row.match] || "—"),
@@ -435,10 +455,21 @@ const PAYMENT_SORTS: SortOption<Payment>[] = [
   { key: "status", label: "وضعیت", pick: (row) => STATUS[row.status] || row.status, dir: "asc" },
 ];
 
+function paymentLinked(row: Payment): boolean {
+  return Boolean(row.project_id || row.request_id);
+}
+
+function canFinancePay(row: Payment): boolean {
+  if (row.status === "finance_ok") return true;
+  if (paymentLinked(row)) return row.status === "manager_ok";
+  return row.status === "requested" || row.status === "manager_ok";
+}
+
 function MoneyTable({
   rows,
   campaigns,
   canFinance,
+  canTeamApprove,
   userId,
   onAct,
   onOutcome,
@@ -446,6 +477,7 @@ function MoneyTable({
   rows: Payment[];
   campaigns: CampaignRow[];
   canFinance: boolean;
+  canTeamApprove: boolean;
   userId?: string;
   onAct: (id: string, action: string, amount?: number) => void;
   onOutcome: (outcome: Outcome) => void;
@@ -460,7 +492,7 @@ function MoneyTable({
   const list = useArrange(narrowed, 12, PAYMENT_SORTS, (row) => [KIND[row.kind], row.beneficiary, STATUS[row.status], row.amount_toman, row.note], `${status}|${kind}`);
   return (
     <Card>
-      <SectionHeader icon="briefcase" title={<Bi en="Requests" fa="درخواست‌ها" />} count={list.ordered.length} />
+      <SectionHeader icon="briefcase" title={<Bi en="Payment requests" fa="درخواست‌های پرداخت" />} count={list.ordered.length} />
       <ArrangeBar
         query={list.query}
         onQuery={list.setQuery}
@@ -500,7 +532,12 @@ function MoneyTable({
               header: "",
               render: (row) => (
                 <div className="row">
-                  {["requested", "manager_ok", "finance_ok"].includes(row.status) && canFinance && userId !== row.requester_id ? (
+                  {row.status === "requested" && paymentLinked(row) && canTeamApprove && userId !== row.requester_id ? (
+                    <Button type="button" variant="secondary" onClick={() => onAct(row.id, "manager")}>
+                      تأیید سرپرست تیم
+                    </Button>
+                  ) : null}
+                  {canFinancePay(row) && canFinance && userId !== row.requester_id ? (
                     <Button type="button" onClick={() => onAct(row.id, "finance", row.amount_toman)}>تأیید و پرداخت</Button>
                   ) : null}
                   {row.status === "requested" && userId === row.requester_id ? (

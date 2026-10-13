@@ -20,6 +20,7 @@ import {
   SectionHeader,
   Select,
 } from "../components/ui";
+import { canFinishTask } from "../lib/collaboration";
 import { Bi, useBi } from "../i18n";
 import { nextCursor } from "../lib/pagination";
 import { queryKeys } from "../lib/queryKeys";
@@ -140,7 +141,7 @@ export function WorkItemsPage() {
 
 export function WorkItemDetailPage() {
   const { id = "" } = useParams();
-  const { has } = useAuth();
+  const { has, user } = useAuth();
   const bi = useBi();
   const [taskTitle, setTaskTitle] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
@@ -366,19 +367,25 @@ export function WorkItemDetailPage() {
               <ul className="rows">
                 {progress.tasks.map((t) => {
                   const done = t.status === "COMPLETED";
-                  const names = Array.isArray(t.assignees)
-                    ? (t.assignees as Array<Record<string, unknown>>)
-                        .filter((a) => a.role !== "OWNER")
-                        .map((a) => personName(a.user_id))
-                        .join("، ")
-                    : "";
+                  const people = Array.isArray(t.assignees) ? (t.assignees as Array<Record<string, unknown>>) : [];
+                  const names = people
+                    .filter((a) => a.role !== "OWNER")
+                    .map((a) => personName(a.user_id))
+                    .join("، ");
+                  const mine = canFinishTask(
+                    {
+                      owner_id: t.owner_id,
+                      assignee_ids: people.filter((a) => a.role !== "OWNER").map((a) => a.user_id),
+                    },
+                    user?.id,
+                  );
                   return (
                     <li key={String(t.id)} className="row-item">
                       {done ? (
                         <span className="check-mark check-mark--ok">
                           ✓
                         </span>
-                      ) : (
+                      ) : mine ? (
                         <button
                           type="button"
                           className="done-btn"
@@ -388,6 +395,8 @@ export function WorkItemDetailPage() {
                         >
                           <Icon name="check" size={12} />
                         </button>
+                      ) : (
+                        <span className="check-mark" aria-hidden>○</span>
                       )}
                       <div className="row-main">
                         <span

@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 import { Bi } from "../../i18n";
+import symbolUrl from "../../../../assets/sotoodeh-brand-kit/assets/sotoodeh-symbol-96.png";
+import { ErrorMessage } from "./ErrorMessage";
+import { LoadingState } from "./LoadingState";
 
 export type BadgeTone = "" | "ok" | "warn" | "danger";
 
@@ -32,6 +35,7 @@ export function EmptyState({
 }) {
   return (
     <div className={`empty-state ui-empty ${className}`.trim()}>
+      <img className="empty-state-mark" src={symbolUrl} alt="" width={48} height={34} />
       <h3>
         <Bi en={titleEn} fa={titleFa} />
       </h3>
@@ -41,6 +45,28 @@ export function EmptyState({
       {action}
     </div>
   );
+}
+
+export function QueryState({
+  isLoading,
+  error,
+  isEmpty = false,
+  empty,
+  children,
+}: {
+  isLoading: boolean;
+  error?: unknown;
+  isEmpty?: boolean;
+  empty?: ReactNode;
+  children: ReactNode;
+}) {
+  if (isLoading) return <LoadingState />;
+  if (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return <ErrorMessage error={message} />;
+  }
+  if (isEmpty) return empty ?? null;
+  return children;
 }
 
 export function PageHeader({

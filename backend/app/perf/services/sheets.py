@@ -308,7 +308,7 @@ async def write_google(tables: dict[str, list[list]]) -> dict:
     }
 
 
-async def refresh_sheet(db: AsyncSession, organization_id: UUID) -> SheetState:
+async def refresh_sheet(db: AsyncSession, organization_id: UUID, *, push: bool = True) -> SheetState:
     """ردیف‌ها را می‌سازد، در گوگل‌شیت می‌نویسد و آمار را از تب Report برمی‌گرداند."""
     campaigns = list(
         (
@@ -346,7 +346,16 @@ async def refresh_sheet(db: AsyncSession, organization_id: UUID) -> SheetState:
         for campaign in campaigns
     }
     tables = build_tables(campaigns, sends, stories, leads, costs, pages, paid_ids, linked_ids)
-    remote = await write_google(tables)
+    if push:
+        remote = await write_google(tables)
+    else:
+        remote = {
+            "pushed": False,
+            "google_connected": False,
+            "spreadsheet_url": "",
+            "reason": "",
+            "report_values": [],
+        }
     if remote["report_values"]:
         apply_report_values(campaigns, reports, remote["report_values"])
     sources: dict = {}

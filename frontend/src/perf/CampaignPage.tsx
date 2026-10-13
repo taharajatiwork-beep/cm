@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Donut, LineTrend } from "../components/charts";
-import { Button, Card, ErrorMessage, List, ListItem, LoadingState, Muted, PageHeader, SectionHeader, Select, StatCard, Table, type Tone } from "../components/ui";
+import { Badge, Button, Card, ErrorMessage, List, ListItem, LoadingState, MoreMenu, Muted, PageHeader, SectionHeader, Select, StatCard, Table, type Tone } from "../components/ui";
 import { DateText } from "../components/DateText";
 import { useToast } from "../components/ui/Toast";
 import { Bi } from "../i18n";
@@ -33,13 +33,37 @@ export function CampaignPage() {
   if (row.isLoading) return <LoadingState />;
   if (row.error || !row.data) return <ErrorMessage error={row.error instanceof Error ? row.error.message : "کمپین پیدا نشد"} />;
   const data = row.data;
-  const report = data.report;
+  const report: Report = {
+    trend: data.report?.trend ?? [],
+    pages: data.report?.pages ?? [],
+    channels: data.report?.channels ?? [],
+    views: data.report?.views ?? 0,
+    leads: data.report?.leads ?? 0,
+    cost_toman: data.report?.cost_toman ?? 0,
+    cpl: data.report?.cpl ?? 0,
+    cpv: data.report?.cpv ?? 0,
+    clicks: data.report?.clicks ?? 0,
+    starts_on: data.report?.starts_on ?? null,
+    ends_on: data.report?.ends_on ?? null,
+    notes: data.report?.notes ?? [],
+    advice: data.report?.advice,
+    budget_toman: data.report?.budget_toman,
+    budget_over: data.report?.budget_over,
+    budget_warning: data.report?.budget_warning,
+    source: data.report?.source,
+  };
   const shift = periodShift(report.trend);
   const lines = decisionLines(report, shift);
   const leadRate = report.views > 0 && report.leads > 0 ? (report.leads / report.views) * 100 : null;
   const shownRate = leadRate != null && leadRate >= 0.5 ? leadRate : null;
+  const budgetWarn = report.budget_warning || (report.budget_over ? "هزینه از بودجه بیشتر شده است." : "");
   return (
     <div className="perf-report">
+      {budgetWarn ? (
+        <p className="callout warn" role="status">
+          <Badge tone="warn">بودجه</Badge> {budgetWarn}
+        </p>
+      ) : null}
       <PageHeader
         title={`${data.code} — ${data.title}`}
         description={
@@ -60,10 +84,21 @@ export function CampaignPage() {
         actions={
           <div className="row no-print">
             <Button variant="secondary" to={`/perf/sms?campaign=${data.id}`}><Bi en="SMS" fa="پیامک" /></Button>
-            <Button variant="secondary" to={`/perf/social?campaign=${data.id}`}><Bi en="Social" fa="سوشال" /></Button>
-            <Button variant="secondary" to={`/perf/money?campaign=${data.id}`}><Bi en="Costs" fa="هزینه‌ها" /></Button>
-            <Button variant="secondary" to={`/perf/sheet?campaign=${data.code}`}><Bi en="Sheet" fa="شیت" /></Button>
-            <Button type="button" variant="secondary" onClick={() => window.print()}><Bi en="Print" fa="چاپ" /></Button>
+            <MoreMenu label={<Bi en="More" fa="بیشتر" />}>
+              {data.project_id ? <Button variant="ghost" to={`/projects/${data.project_id}`}><Bi en="Project" fa="پروژه" /></Button> : null}
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  void perfApi.campaignThread(data.id).then((thread) => navigate(`/communication?c=${thread.id}`));
+                }}
+              >
+                <Bi en="Chat" fa="گفتگو" />
+              </Button>
+              <Button variant="ghost" to={`/perf/social?campaign=${data.id}`}><Bi en="Social" fa="سوشال" /></Button>
+              <Button variant="ghost" to={`/perf/money?campaign=${data.id}`}><Bi en="Costs" fa="هزینه‌ها" /></Button>
+              <Button variant="ghost" to={`/perf/sheet?campaign=${data.code}`}><Bi en="Sheet" fa="شیت" /></Button>
+              <Button type="button" variant="ghost" onClick={() => window.print()}><Bi en="Print" fa="چاپ" /></Button>
+            </MoreMenu>
             <RowActions
               onEdit={() => setEditing(true)}
               onDelete={() => void remove(`کمپین ${data.code}`, () => perfApi.deleteCampaign(data.id).then(() => navigate("/perf/campaigns")))}
@@ -90,14 +125,14 @@ export function CampaignPage() {
         <StatCard
           icon="activity"
           tone={shiftTone(shift?.cplPct ?? null, true)}
-          label="CPL"
+          label={<Bi en="CPL" fa="هزینه هر ورودی" />}
           value={compactToman(report.cpl)}
           hint={<>هزینهٔ هر ورودی<Shift pct={shift?.cplPct ?? null} lowerIsBetter /></>}
         />
         <StatCard
           icon="users"
           tone="neutral"
-          label="CPV"
+          label={<Bi en="CPV" fa="هزینه هر بازدید" />}
           value={compactToman(report.cpv)}
           hint={<>هزینهٔ هر نمایش · از {toman(report.views)} نمایش</>}
         />
@@ -171,7 +206,7 @@ export function CampaignPage() {
 function MizitoCards({ code }: { code: string }) {
   const mizito = useQuery({ queryKey: ["perf", "mizito"], queryFn: perfApi.mizito });
   const [openCard, setOpenCard] = useState<MizitoCardLike | null>(null);
-  if (mizito.isLoading) return null;
+  if (mizito.isLoading) return <LoadingState block={false} />;
   const key = mizitoCode(code);
   const cards = (mizito.data?.cards ?? [])
     .filter((card) => key && mizitoCode(card.code) === key)
@@ -232,7 +267,7 @@ type Metric = "cost" | "leads" | "cpl";
 const METRICS: Array<{ key: Metric; label: string; title: string }> = [
   { key: "cost", label: "هزینه", title: "هزینه در این بازه" },
   { key: "leads", label: "ورودی", title: "ورودی در این بازه" },
-  { key: "cpl", label: "CPL", title: "هزینهٔ هر ورودی در این بازه" },
+  { key: "cpl", label: "هزینه هر ورودی", title: "هزینهٔ هر ورودی در این بازه" },
 ];
 
 const PAGE_SORTS: SortOption<ReportPage>[] = [
@@ -353,7 +388,7 @@ function dayDetail(point: TrendPoint): string {
     date,
     `هزینه ${compactToman(point.cost)}`,
     `ورودی ${leadsLabel(point.leads)}`,
-    cpl != null ? `CPL ${compactToman(cpl)}` : "",
+    cpl != null ? `هزینه هر ورودی ${compactToman(cpl)}` : "",
   ].filter(Boolean).join(" · ");
 }
 
@@ -445,7 +480,7 @@ function BestPages({ pages, campaignId }: { pages: ReportPage[]; campaignId: str
             { key: "cost", header: "هزینه", className: "perf-num", render: (item) => compactToman(item.cost) },
             { key: "views", header: "نمایش", className: "perf-num hide-sm", render: (item) => toman(item.views) },
             { key: "leads", header: "ورودی", className: "perf-num", render: (item) => leadsLabel(item.leads) },
-            { key: "cpl", header: "CPL", className: "perf-num", render: (item) => compactToman(item.cpl) },
+            { key: "cpl", header: "هزینه هر ورودی", className: "perf-num", render: (item) => compactToman(item.cpl) },
             { key: "status", header: "وضعیت", render: (item) => <PageStatus page={item} avg={avg} /> },
           ]}
         />

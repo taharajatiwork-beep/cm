@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { api, getToken, setToken } from "./api";
+import { focusRoleFromCode, type FocusRole } from "./lib/roles";
 
 export type Me = {
   id: string;
@@ -19,11 +20,15 @@ export type Me = {
   email: string;
   organization_id: string;
   role_id: string | null;
+  role_code?: string | null;
+  role_name?: string | null;
   branch_id: string | null;
   department_id: string | null;
   team_id: string | null;
+  team_home_team_id?: string | null;
   permissions: string[];
   roleCode?: string;
+  branch_name?: string | null;
 };
 
 type AuthState = {
@@ -32,20 +37,12 @@ type AuthState = {
   login: (slug: string, email: string, password: string, totp?: string) => Promise<void>;
   logout: () => void;
   has: (perm: string) => boolean;
-  roleHint: "admin" | "manager" | "seller" | "marketing" | "finance" | "viewer";
+  /** @deprecated use focusRole — kept for gradual migration */
+  roleHint: FocusRole;
+  focusRole: FocusRole;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
-
-function roleHintFromPerms(perms: string[]): AuthState["roleHint"] {
-  if (perms.includes("org.admin")) return "admin";
-  if (perms.includes("task.delegate") || perms.includes("task.assign")) return "manager";
-  if (perms.includes("inventory.write")) return "manager";
-  if (perms.includes("work_item.write") && perms.includes("case.write")) return "manager";
-  // sellers/marketing share similar perms — distinguish weakly
-  if (perms.includes("inventory.read") && !perms.includes("work_item.write")) return "seller";
-  return "viewer";
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
@@ -76,14 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         const me = await api.me();
-        let roleCode: string | undefined;
-        try {
-          const roles = await api.roles();
-          roleCode = roles.find((r) => r.id === me.role_id)?.code;
-        } catch {
-          /* roles may be restricted */
-        }
-        setUser({ ...me, roleCode });
+        const roleCode = me.role_code ?? undefined;
+        setUser({ ...me, roleCode, branch_name: me.branch_name });
       } catch {
         setToken(null);
         setUser(null);
@@ -115,6 +106,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const focusRole = user ? focusRoleFromCode(user.roleCode) : "viewer";
+
   const value = useMemo<AuthState>(
     () => ({
       user,
@@ -122,21 +115,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       has: (perm) => !!user?.permissions.includes(perm) || !!user?.permissions.includes("org.admin"),
-      roleHint: user
-        ? user.roleCode === "seller"
-          ? "seller"
-          : user.roleCode === "marketing"
-            ? "marketing"
-            : user.roleCode === "manager"
-              ? "manager"
-              : user.roleCode === "finance"
-                ? "finance"
-                : user.roleCode === "admin"
-                  ? "admin"
-                  : roleHintFromPerms(user.permissions)
-        : "viewer",
+      focusRole,
+      roleHint: focusRole,
     }),
-    [user, loading, login, logout],
+    [user, loading, login, logout, focusRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

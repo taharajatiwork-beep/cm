@@ -7,7 +7,9 @@ export type TeamHome = {
   requests: Array<{ id: string; code: string; title: string; status: string }>;
   projects: Array<{ id: string; code: string; title: string; request_code: string; team_name: string; status: string; due_date: string | null; progress: { total: number; done: number; ratio: number } }>;
   sections: Array<{ id: string; name: string; code: string }>;
+  campaigns?: Array<{ id: string; code: string; title: string; project_id: string | null; status: string }>;
   own_section: boolean;
+  counts?: { open_requests: number; active_projects: number; active_campaigns: number; month_cost: number };
 };
 
 export type WorkRequest = {
@@ -35,11 +37,32 @@ export type WorkProject = {
   kind: string;
   request_id: string | null;
   request_code: string;
+  request_title?: string;
   team_id: string | null;
   team_name: string;
   status: string;
   created_at: string;
   updated_at: string | null;
+};
+
+export type CampaignReportRow = {
+  id: string;
+  code: string;
+  title: string;
+  brand: string;
+  status: string;
+  cost_toman: number;
+  leads: number;
+  views: number;
+  cpl: number | null;
+  cpv: number | null;
+};
+
+export type CampaignReportResponse = {
+  count: number;
+  cost_toman: number;
+  leads: number;
+  campaigns: CampaignReportRow[];
 };
 
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
@@ -90,6 +113,11 @@ export const requestsApi = {
   },
   createProject: (requestId: string, body: Record<string, unknown>) =>
     request<WorkProject>(`/requests/${requestId}/projects`, { method: "POST", body: JSON.stringify(body) }),
+  createStandaloneProject: (body: Record<string, unknown>, requestId = "") =>
+    request<WorkProject>(`/requests/projects${requestId ? `?request_id=${encodeURIComponent(requestId)}` : ""}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   patchProject: (id: string, body: Record<string, unknown>) =>
     request<WorkProject>(`/requests/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteProject: (id: string) => request<void>(`/requests/projects/${id}`, { method: "DELETE" }),
@@ -118,7 +146,52 @@ export const requestsApi = {
       method: "PUT",
       body: JSON.stringify({ campaign_ids: campaignIds }),
     }),
+  createCampaign: (projectId: string, title: string, tag: string) =>
+    request<{ id: string; code: string; title: string; brand: string }>(`/requests/projects/${projectId}/campaigns`, {
+      method: "POST",
+      body: JSON.stringify({ title, tag }),
+    }),
+  addAttachment: (projectId: string, body: { title: string; url: string }) =>
+    request<Record<string, string>>(`/requests/projects/${projectId}/attachments`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  addDesign: (projectId: string, title: string) =>
+    request<Record<string, string>>(`/requests/projects/${projectId}/designs`, {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    }),
+  patchDesign: (projectId: string, itemId: string, status: string) =>
+    request<Record<string, string>>(`/requests/projects/${projectId}/designs/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+  addShoot: (projectId: string, title: string) =>
+    request<Record<string, string>>(`/requests/projects/${projectId}/shoots`, {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    }),
+  patchShoot: (projectId: string, itemId: string, status: string) =>
+    request<Record<string, string>>(`/requests/projects/${projectId}/shoots/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
   myWork: () =>
     request<Record<string, Array<Record<string, string>>>>("/requests/my-work"),
-  workReport: (scope: string) => request<Record<string, unknown>>(`/reports/work?scope=${encodeURIComponent(scope)}`),
+  workReport: (scope: string, projectId = "", requestId = "") => {
+    const params = new URLSearchParams({ scope });
+    if (projectId) params.set("project_id", projectId);
+    if (requestId) params.set("request_id", requestId);
+    return request<Record<string, unknown>>(`/reports/work?${params.toString()}`);
+  },
+  campaignReport: (scope = "me", projectId = "") => {
+    const params = new URLSearchParams({ scope });
+    if (projectId) params.set("project_id", projectId);
+    return request<CampaignReportResponse>(`/reports/campaigns?${params.toString()}`);
+  },
+  projectAcceptance: (projectId: string, decision: "accepted" | "returned", note = "") =>
+    request<{ ok: boolean }>(`/requests/projects/${projectId}/acceptance`, {
+      method: "POST",
+      body: JSON.stringify({ decision, note }),
+    }),
 };

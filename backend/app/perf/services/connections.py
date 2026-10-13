@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.field_crypto import decrypt_secret, encrypt_secret
 from app.perf.models import PmIntegration, PmPanel
 from app.perf.services.common import now
 from app.perf.services.sheets import _access_token, _credentials, spreadsheet_id
@@ -30,20 +31,20 @@ async def mizito_token_for(db: AsyncSession, organization_id: UUID) -> str:
     row = await db.scalar(select(PmIntegration).where(PmIntegration.organization_id == organization_id))
     saved = (row.mizito_token if row else "").strip()
     if saved:
-        return saved
+        return decrypt_secret(saved)
     return get_settings().perf_mizito_token.strip()
 
 
 async def save_mizito_token(db: AsyncSession, organization_id: UUID, token: str) -> str:
     row = await db.scalar(select(PmIntegration).where(PmIntegration.organization_id == organization_id))
     if row is None:
-        row = PmIntegration(organization_id=organization_id, mizito_token=token.strip())
+        row = PmIntegration(organization_id=organization_id, mizito_token=encrypt_secret(token.strip()))
         db.add(row)
     else:
-        row.mizito_token = token.strip()
+        row.mizito_token = encrypt_secret(token.strip()) if token.strip() else ""
     row.updated_at = now()
     await db.flush()
-    return _mask(row.mizito_token)
+    return _mask(decrypt_secret(row.mizito_token))
 
 
 def _mizito_status(token: str, snapshot: dict) -> dict:
@@ -173,10 +174,14 @@ async def connection_status(db: AsyncSession, organization_id: UUID, *, live: bo
         async with httpx.AsyncClient(timeout=20) as client:
             for row in isms_style:
                 panel_live[row.code] = await probe_isms_credit(client, row)
+    from app.perf.services.sync_lock import sync_status
+
+    sheet_sync = await sync_status(db, organization_id)
     return {
         "sheets_ready": sheets_ready,
         "service_account": email,
         "sheets": checked,
+        "sheet_sync": sheet_sync,
         "mizito": _mizito_status(token, snapshot),
         "panels": [
             {
@@ -206,7 +211,7 @@ def _panel_auth(row: PmPanel) -> tuple[str, str]:
         base = (row.api_base or "").strip() or settings.pishgam_sms_api_url.strip()
         token = (row.api_token or "").strip() or settings.pishgam_sms_token.strip()
         return base, token
-    return (row.api_base or "").strip(), (row.api_token or "").strip()
+    return (row.api_base or "").strip(), decrypt_secret((row.api_token or "").strip())
 
 
 async def probe_panel(client: httpx.AsyncClient, row: PmPanel) -> dict:

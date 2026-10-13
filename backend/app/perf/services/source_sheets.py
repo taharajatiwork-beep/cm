@@ -6,8 +6,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
-from collections import Counter
+from datetime import UTC, date, datetime
 
 import httpx
 
@@ -45,23 +44,14 @@ def _when(value: date | datetime | None) -> str:
     return format_jalali(value).replace("/", "-")
 
 
-def _hour(value: datetime) -> datetime:
-    if value.tzinfo is not None:
-        value = value.replace(tzinfo=None)
-    return value.replace(minute=0, second=0, microsecond=0)
+def pending_source_export(rows: list) -> list:
+    """ردیف‌هایی که هنوز به شیت منبع فرستاده نشده‌اند — کلید پایدار همان id/کد است، نه ساعت آرشیو."""
+    return [row for row in rows if getattr(row, "source_sheet_exported_at", None) is None]
 
 
 def since_import(rows: list) -> list:
-    """ردیف‌های بعد از ورود یکجای آرشیو. همان آرشیو دوباره به شیت برنمی‌گردد."""
-    stamped = [row for row in rows if getattr(row, "created_at", None)]
-    if len(stamped) < 3:
-        return list(rows)
-    hours = Counter(_hour(row.created_at) for row in stamped)
-    peak, count = hours.most_common(1)[0]
-    if count < 10:
-        return list(rows)
-    cutoff = peak + timedelta(hours=1)
-    return [row for row in stamped if _hour(row.created_at) >= cutoff]
+    """سازگاری با تست‌های قدیمی — همان pending_source_export."""
+    return pending_source_export(rows)
 
 
 def _tag(code: str) -> str:
@@ -336,6 +326,7 @@ async def sync_source_sheets(
     if creds is None or not any((register_id, cost_id, reporter_id)):
         return {**counts, "note": ""}
     codes = {row.id: row.code for row in campaigns}
+    stamped = datetime.now(UTC)
     try:
         async with httpx.AsyncClient(timeout=90) as client:
             token = await _access_token(client, creds)
@@ -344,18 +335,28 @@ async def sync_source_sheets(
                 header = current[0] if current else []
                 code_at = _indexed(header, "campaign number")
                 existing = _column_keys(current, code_at if code_at is not None else 2)
-                fresh = register_rows(since_import(campaigns), existing)
+                pending_campaigns = pending_source_export(campaigns)
+                fresh = register_rows(pending_campaigns, existing)
                 if write:
                     await _append(client, token, register_id, "Campaign Number", fresh)
+                    exported_codes = {row[2] for row in fresh if len(row) > 2}
+                    for campaign in pending_campaigns:
+                        if _text(campaign.code) in exported_codes:
+                            campaign.source_sheet_exported_at = stamped
                 counts["register"] = len(fresh)
             if cost_id:
                 sheet = await _get_values(client, token, cost_id, "Sheet3", "A:I")
                 log = await _get_values(client, token, cost_id, "Log", "A:K")
                 existing_costs = _cost_keys(sheet) | _cost_keys(log)
-                sheet_fresh, log_fresh = cost_rows(since_import(costs), existing_costs)
+                pending_costs = pending_source_export(costs)
+                sheet_fresh, log_fresh = cost_rows(pending_costs, existing_costs)
                 if write:
                     await _append(client, token, cost_id, "Sheet3", sheet_fresh)
                     await _append(client, token, cost_id, "Log", log_fresh)
+                    for cost in pending_costs:
+                        key = _cost_key(cost.campaign_code, cost.amount_toman, cost.description)
+                        if key[1] > 0 and key not in existing_costs:
+                            cost.source_sheet_exported_at = stamped
                 counts["costs"] = len(sheet_fresh)
             if reporter_id:
                 if write:
@@ -374,9 +375,16 @@ async def sync_source_sheets(
                             _text(row[body_at]).replace("\n", " ")[:80] if body_at is not None and body_at < len(row) else "",
                         )
                     )
-                fresh_sms = sms_rows(since_import(sends), codes, existing_sms)
+                pending_sends = pending_source_export(sends)
+                fresh_sms = sms_rows(pending_sends, codes, existing_sms)
                 if write:
                     await _append(client, token, reporter_id, "SMS", fresh_sms)
+                    for send in pending_sends:
+                        code = _text(codes.get(send.campaign_id, ""))
+                        body = _text(send.body).replace("\n", " ")
+                        key = (code, send.recipient_count or 0, body[:80])
+                        if key not in existing_sms and (code or body):
+                            send.source_sheet_exported_at = stamped
                 counts["sms"] = len(fresh_sms)
 
                 instagram = await _get_values(client, token, reporter_id, "Instagram-S", "A:V")
@@ -389,7 +397,7 @@ async def sync_source_sheets(
                 bale_existing = _social_keys(bale, bale_header)
                 ig_stories = []
                 bale_stories = []
-                for story in since_import(stories):
+                for story in pending_source_export(stories):
                     page = pages.get(story.page_id)
                     name = page.name if page else ""
                     if social_tab(name, bale_pages, ig_pages) == "BaleRubika":
@@ -405,6 +413,8 @@ async def sync_source_sheets(
                 if write:
                     await _append(client, token, reporter_id, "Instagram-S", ig_fresh)
                     await _append(client, token, reporter_id, "BaleRubika", bale_fresh)
+                    for story in ig_stories + bale_stories:
+                        story.source_sheet_exported_at = stamped
                 counts["social"] = len(ig_fresh) + len(bale_fresh)
     except (httpx.HTTPError, KeyError, ValueError, TypeError) as exc:
         return {**counts, "note": f"شیت‌های اصلی به‌روز نشد: {exc}"}

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = True
     secret_key: str = "dev-secret-change-me"
+    field_encryption_key: str = ""  # Fernet key; در production الزامی
+    llm_external_enabled: bool = True  # خاموش = بدون ارسال به LLM بیرونی
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 14
     cookie_secure: bool = False
@@ -48,7 +50,7 @@ class Settings(BaseSettings):
     erp_api_token: str = ""
     ai_daily_token_quota: int = 200_000
     require_human_approval_for_sensitive_ai: bool = False
-    database_url: str = "sqlite+aiosqlite:///./cm_dev.db"
+    database_url: str = "postgresql+asyncpg://cm:cm@localhost:5432/cm"
     redis_url: str = "redis://localhost:6379/0"
     log_level: str = "INFO"
     algorithm: str = "HS256"

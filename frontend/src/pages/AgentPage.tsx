@@ -282,9 +282,9 @@ export function AgentPage() {
 
   function sourceHref(etype: string, id: string): string | null {
     if (etype === "vehicle") return `/vehicles/${id}`;
-    if (etype === "work_item") return `/work-items/${id}`;
+    if (etype === "work_item") return `/projects`;
     if (etype === "document") return `/knowledge`;
-    if (etype === "case") return `/cases`;
+    if (etype === "case") return `/`;
     return null;
   }
 
@@ -314,7 +314,7 @@ export function AgentPage() {
           </strong>
           {extra}
           {workItemId ? (
-            <Button variant="secondary" className="btn-sm" to={`/work-items/${workItemId}`}>
+            <Button variant="secondary" className="btn-sm" to="/projects">
               <Icon name="layers" size={13} />
               <Bi en="Open the new project" fa="دیدن پروژه ساخته‌شده" />
             </Button>

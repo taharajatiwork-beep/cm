@@ -60,7 +60,12 @@ async def board(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        require_any_permission(ctx.permissions, PermissionCode.PRICE_WRITE, PermissionCode.CAMPAIGN_READ)
+        require_any_permission(
+            ctx.permissions,
+            PermissionCode.PRICE_APPROVE,
+            PermissionCode.PRICE_WRITE,
+            PermissionCode.CAMPAIGN_READ,
+        )
     except AuthorizationError as e:
         raise handle_authz(e) from e
     now = datetime.now(UTC)
@@ -106,7 +111,12 @@ async def list_slots(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        require_any_permission(ctx.permissions, PermissionCode.PRICE_WRITE, PermissionCode.CAMPAIGN_READ)
+        require_any_permission(
+            ctx.permissions,
+            PermissionCode.PRICE_APPROVE,
+            PermissionCode.PRICE_WRITE,
+            PermissionCode.CAMPAIGN_READ,
+        )
     except AuthorizationError as e:
         raise handle_authz(e) from e
     slots = await PricingService(db).list_slots(ctx.organization_id, day=day)

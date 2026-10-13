@@ -92,7 +92,7 @@ export function SheetPage() {
           { key: "brand", header: "برند", render: (row) => row.brand },
           { key: "cost", header: "هزینه", render: (row) => toman(row.cost_toman) },
           { key: "leads", header: "ورودی", render: (row) => leadsLabel(row.leads) },
-          { key: "cpl", header: "CPL", render: (row) => toman(row.cpl) },
+          { key: "cpl", header: "هزینه هر ورودی", render: (row) => toman(row.cpl) },
           {
             key: "actions",
             header: "",
@@ -149,7 +149,7 @@ export function SheetPage() {
           { key: "page", header: "پیج", render: (row) => row.page },
           { key: "views", header: "نمایش", render: (row) => toman(row.views) },
           { key: "leads", header: "ورودی", render: (row) => toman(row.leads) },
-          { key: "cpl", header: "CPL", render: (row) => toman(row.cpl) },
+          { key: "cpl", header: "هزینه هر ورودی", render: (row) => toman(row.cpl) },
           {
             key: "actions",
             header: "",

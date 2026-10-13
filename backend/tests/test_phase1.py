@@ -43,7 +43,9 @@ async def test_bootstrap_and_me(client: AsyncClient):
     token = r.json()["access_token"]
     me = await client.get("/auth/me", headers=auth(token))
     assert me.status_code == 200
-    assert "org.admin" in me.json()["permissions"]
+    body = me.json()
+    assert "org.admin" in body["permissions"]
+    assert body["role_code"] == "admin"
 
 
 @pytest.mark.asyncio
@@ -226,11 +228,13 @@ async def test_task_dependencies(client: AsyncClient, seeded):
     )
     assert dep.status_code == 200
 
-    fail = await client.post(f"/tasks/{b.json()['id']}/complete", headers=auth(token))
+    sara = auth(await login(client, "sara@autoco.example"))
+    reza = auth(await login(client, "reza@autoco.example"))
+    fail = await client.post(f"/tasks/{b.json()['id']}/complete", headers=reza)
     assert fail.status_code == 400
 
-    await client.post(f"/tasks/{a.json()['id']}/complete", headers=auth(token))
-    ok = await client.post(f"/tasks/{b.json()['id']}/complete", headers=auth(token))
+    await client.post(f"/tasks/{a.json()['id']}/complete", headers=sara)
+    ok = await client.post(f"/tasks/{b.json()['id']}/complete", headers=reza)
     assert ok.status_code == 200
 
 

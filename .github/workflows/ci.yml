@@ -57,7 +57,7 @@ jobs:
         env:
           APP_ENV: development
           LLM_PROVIDER: rules
-          POSTGRES_TEST_URL: postgresql+asyncpg://cm:cm@localhost:5432/cm
+          POSTGRES_TEST_URL: postgresql+asyncpg://cm:cm@localhost:5432/cm_test
         run: pytest -q --tb=short
       - name: Load test on Postgres (perf budgets)
         working-directory: backend
@@ -97,6 +97,20 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cm
+          POSTGRES_PASSWORD: cm
+          POSTGRES_DB: cm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cm -d cm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -125,6 +139,9 @@ jobs:
       - name: Playwright
         working-directory: frontend
         run: npx playwright install --with-deps chromium && npm run e2e
+      - name: Synthetic UX users (scripted, demo seed)
+        working-directory: frontend
+        run: npm run synthetic:ci
       - name: npm audit
         working-directory: frontend
         continue-on-error: true

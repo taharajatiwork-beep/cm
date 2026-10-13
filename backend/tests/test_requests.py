@@ -61,10 +61,12 @@ async def test_request_flow_manager_creates_and_triage_updates(client, seeded, d
     filtered = await client.get("/requests?status=converted", headers=triage)
     assert [item["id"] for item in filtered.json()] == [request_id]
 
-    # حذف توسط ترییج
+    # سرپرست حذف نمی‌کند؛ صاحب درخواست تا وقتی جدید است حذف می‌کند
     second = await client.post("/requests", headers=manager, json={"title": "درخواست دوم"})
     assert second.status_code == 201
-    deleted = await client.delete(f"/requests/{second.json()['id']}", headers=triage)
+    denied_delete = await client.delete(f"/requests/{second.json()['id']}", headers=triage)
+    assert denied_delete.status_code == 403
+    deleted = await client.delete(f"/requests/{second.json()['id']}", headers=manager)
     assert deleted.status_code == 204
 
     # کد پشت‌سرهم
@@ -150,3 +152,125 @@ async def test_user_without_request_permission_cannot_see(client, seeded):
     token = await login(client, "reza@autoco.example")
     response = await client.get("/requests", headers=auth(token))
     assert response.status_code in (401, 403)
+
+
+async def test_member_sees_only_projects_they_belong_to(client, seeded, db):
+    from sqlalchemy import select
+
+    from app.models import User
+
+    await _request_user(db, seeded, "boss-m@autoco.example", "مدیر عضو", [PermissionCode.REQUEST_CREATE])
+    await _request_user(db, seeded, "lead-m@autoco.example", "سرپرست عضو", [PermissionCode.REQUEST_TRIAGE])
+    await _request_user(db, seeded, "member-m@autoco.example", "عضو تست", [PermissionCode.TASK_READ])
+    boss = auth(await login(client, "boss-m@autoco.example"))
+    lead = auth(await login(client, "lead-m@autoco.example"))
+    member = auth(await login(client, "member-m@autoco.example"))
+    user = await db.scalar(select(User).where(User.email == "member-m@autoco.example"))
+    created = await client.post("/requests", headers=boss, json={"title": "برای عضو"})
+    first = await client.post(f"/requests/{created.json()['id']}/projects", headers=lead, json={"title": "پروژه عضو"})
+    second = await client.post("/requests/projects", headers=lead, json={"title": "پروژه دیگران"})
+    assert first.status_code == 201 and second.status_code == 201
+    saved = await client.put(
+        f"/requests/projects/{first.json()['id']}/members",
+        headers=lead,
+        json={"user_ids": [str(user.id)]},
+    )
+    assert saved.status_code == 200, saved.text
+    listed = await client.get("/requests/projects", headers=member)
+    assert listed.status_code == 200, listed.text
+    ids = [item["id"] for item in listed.json()]
+    assert first.json()["id"] in ids
+    assert second.json()["id"] not in ids
+    text_edit = await client.patch(f"/requests/{created.json()['id']}", headers=lead, json={"title": "عوض نشود"})
+    assert text_edit.status_code == 403
+
+
+async def test_ticking_tasks_advances_project_and_request(client, seeded, db):
+    await _request_user(db, seeded, "boss-tick@autoco.example", "مدیر تیک", [PermissionCode.REQUEST_CREATE])
+    await _request_user(
+        db,
+        seeded,
+        "lead-tick@autoco.example",
+        "سرپرست تیک",
+        [PermissionCode.REQUEST_TRIAGE, PermissionCode.TASK_WRITE, PermissionCode.TASK_READ],
+    )
+    boss = auth(await login(client, "boss-tick@autoco.example"))
+    lead = auth(await login(client, "lead-tick@autoco.example"))
+    created = await client.post("/requests", headers=boss, json={"title": "کمپین تیک"})
+    request_id = created.json()["id"]
+    first = await client.post(f"/requests/{request_id}/projects", headers=lead, json={"title": "پروژه اول"})
+    second = await client.post(f"/requests/{request_id}/projects", headers=lead, json={"title": "پروژه دوم"})
+    assert first.status_code == 201 and second.status_code == 201
+    first_id = first.json()["id"]
+    second_id = second.json()["id"]
+
+    async def add(project_id: str, title: str) -> str:
+        made = await client.post(f"/requests/projects/{project_id}/tasks", headers=lead, json={"title": title})
+        assert made.status_code == 201, made.text
+        return made.json()["id"]
+
+    one = await add(first_id, "قدم اول")
+    two = await add(first_id, "قدم دوم")
+    three = await add(second_id, "قدم سوم")
+
+    started = await client.post(f"/tasks/{one}/complete", headers=lead)
+    assert started.status_code == 200, started.text
+    detail = await client.get(f"/requests/projects/{first_id}", headers=lead)
+    assert detail.json()["status"] == "in_progress"
+    assert detail.json()["progress"]["done"] == 1
+    mine = await client.get("/requests/my-work", headers=lead)
+    open_ids = [row["id"] for key in ("overdue", "today", "later", "waiting") for row in mine.json()[key]]
+    assert one not in open_ids
+    assert two in open_ids
+
+    finished_first = await client.post(f"/tasks/{two}/complete", headers=lead)
+    assert finished_first.status_code == 200
+    detail = await client.get(f"/requests/projects/{first_id}", headers=lead)
+    assert detail.json()["status"] == "done"
+    still = await client.get("/requests", headers=lead)
+    assert next(row["status"] for row in still.json() if row["id"] == request_id) == "converted"
+
+    finished_second = await client.post(f"/tasks/{three}/complete", headers=lead)
+    assert finished_second.status_code == 200
+    closed = await client.get("/requests", headers=lead)
+    assert next(row["status"] for row in closed.json() if row["id"] == request_id) == "done"
+    gone = await client.get("/requests/my-work", headers=lead)
+    left = [row["id"] for key in ("overdue", "today", "later", "waiting") for row in gone.json()[key]]
+    assert three not in left
+
+
+async def test_only_the_assignee_can_tick(client, seeded, db):
+    await _request_user(
+        db,
+        seeded,
+        "lead-own@autoco.example",
+        "سرپرست تیک",
+        [PermissionCode.REQUEST_TRIAGE, PermissionCode.TASK_WRITE, PermissionCode.TASK_READ],
+    )
+    await _request_user(db, seeded, "maker-own@autoco.example", "طراح تیک", [PermissionCode.TASK_READ])
+    lead = auth(await login(client, "lead-own@autoco.example"))
+    maker = auth(await login(client, "maker-own@autoco.example"))
+    from sqlalchemy import select
+
+    from app.models import User
+
+    maker_user = await db.scalar(select(User).where(User.email == "maker-own@autoco.example"))
+    project = await client.post("/requests/projects", headers=lead, json={"title": "پروژه نقش"})
+    assert project.status_code == 201, project.text
+    project_id = project.json()["id"]
+    made = await client.post(
+        f"/requests/projects/{project_id}/tasks",
+        headers=lead,
+        json={"title": "طرح بنر", "assignee_ids": [str(maker_user.id)]},
+    )
+    assert made.status_code == 201, made.text
+    task_id = made.json()["id"]
+
+    denied = await client.post(f"/tasks/{task_id}/complete", headers=lead)
+    assert denied.status_code == 403
+
+    done = await client.post(f"/tasks/{task_id}/complete", headers=maker)
+    assert done.status_code == 200, done.text
+    detail = await client.get(f"/requests/projects/{project_id}", headers=lead)
+    assert detail.json()["tasks"][0]["assignee_ids"] == [str(maker_user.id)]
+    assert detail.json()["status"] == "done"

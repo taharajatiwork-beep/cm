@@ -57,6 +57,17 @@ export type AttentionStory = {
   waitingOnMe?: boolean;
 };
 
+/** تیک فقط برای مسئول وظیفه است. اگر مسئولی نیست، سازندهٔ وظیفه. */
+export function canFinishTask(
+  task: { owner_id?: unknown; assignee_ids?: unknown },
+  userId: string | undefined,
+): boolean {
+  if (!userId) return false;
+  const ids = Array.isArray(task.assignee_ids) ? task.assignee_ids.map(String) : [];
+  if (ids.length > 0) return ids.includes(userId);
+  return String(task.owner_id ?? "") === userId;
+}
+
 export function taskMark(status: string): "✓" | "◷" | "○" {
   if (status === "COMPLETED") return "✓";
   if (status === "BLOCKED" || status === "IN_PROGRESS" || status === "ASSIGNED") return "◷";

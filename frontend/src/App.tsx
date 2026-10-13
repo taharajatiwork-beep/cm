@@ -3,9 +3,8 @@ import { AuthProvider, useAuth } from "./auth";
 import { Shell } from "./Shell";
 import { LoadingState } from "./components/ui";
 import { AdminPage } from "./pages/AdminPage";
-import { ApprovalsPage } from "./pages/ApprovalsPage";
+import { CalendarPage } from "./pages/CalendarPage";
 import { AgentPage } from "./pages/AgentPage";
-import { CasesPage } from "./pages/CasesPage";
 import { CommunicationPage } from "./pages/CommunicationPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { HomePage } from "./pages/HomePage";
@@ -20,8 +19,6 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { VehiclesPage, VehicleDetailPage } from "./pages/VehiclesPage";
-import { WorkItemDetailPage, WorkItemsPage } from "./pages/WorkItemsPage";
-import { isPerformanceUser } from "./lib/navigation";
 import { PerfRoutes } from "./perf/PerfRoutes";
 import { ProjectPage } from "./requests/ProjectPage";
 import { TeamHomePage } from "./requests/TeamHomePage";
@@ -44,8 +41,6 @@ function SearchRoute() {
 }
 
 function HomeRoute() {
-  const { user } = useAuth();
-  if (isPerformanceUser(user)) return <Navigate to="/perf" replace />;
   return <HomePage />;
 }
 
@@ -65,10 +60,10 @@ export default function App() {
           <Route index element={<HomeRoute />} />
           <Route path="my-work" element={<MyWorkPage />} />
           <Route path="tasks" element={<Navigate to="/my-work" replace />} />
-          <Route path="work-items" element={<WorkItemsPage />} />
-          <Route path="work-items/:id" element={<WorkItemDetailPage />} />
+          <Route path="work-items" element={<Navigate to="/projects" replace />} />
+          <Route path="work-items/:id" element={<Navigate to="/projects" replace />} />
           <Route path="communication" element={<CommunicationPage />} />
-          <Route path="cases" element={<CasesPage />} />
+          <Route path="cases" element={<Navigate to="/" replace />} />
           <Route path="people" element={<PeoplePage />} />
           <Route path="teams" element={<Navigate to="/settings" replace />} />
           <Route path="branches" element={<Navigate to="/settings" replace />} />
@@ -80,8 +75,9 @@ export default function App() {
           <Route path="knowledge" element={<KnowledgePage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="admin" element={<AdminPage />} />
-          <Route path="approvals" element={<ApprovalsPage />} />
+          <Route path="approvals" element={<Navigate to="/my-work" replace />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="calendar" element={<CalendarPage />} />
           <Route path="agent" element={<AgentPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="perf/*" element={<PerfRoutes />} />

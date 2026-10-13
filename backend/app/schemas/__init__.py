@@ -124,6 +124,10 @@ class UserOut(BaseModel):
 
 class MeOut(UserOut):
     permissions: list[str]
+    role_code: str | None = None
+    role_name: str | None = None
+    branch_name: str | None = None
+    team_home_team_id: UUID | None = None
 
 
 class RelationshipCreate(BaseModel):
@@ -163,6 +167,8 @@ class ConversationOut(BaseModel):
     branch_id: UUID | None
     team_id: UUID | None
     work_item_id: UUID | None
+    project_id: UUID | None = None
+    pm_campaign_id: UUID | None = None
     case_id: UUID | None
     vehicle_id: UUID | None
     customer_id: UUID | None

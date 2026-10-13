@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Dialog,
+  Disclosure,
   EmptyState,
   ErrorMessage,
   Field,
@@ -71,27 +72,27 @@ const PERM_COPY: Record<string, [string, string]> = {
     "پروژه بسازد و آن را تغییر دهد.",
   ],
   "case.read": [
-    "See cases: a customer, a branch request, or a deadline.",
-    "پرونده‌ها را ببیند: مشتری، درخواست شعبه، یا یک مهلت.",
+    "See follow-ups: a customer, a branch request, or a deadline.",
+    "پیگیری‌ها را ببیند: مشتری، درخواست شعبه، یا یک مهلت.",
   ],
   "case.write": [
-    "Open a case and change its status or owner.",
-    "پرونده باز کند و وضعیت یا مسئولش را عوض کند.",
+    "Open a follow-up and change its status or owner.",
+    "پیگیری باز کند و وضعیت یا مسئولش را عوض کند.",
   ],
   "task.read": [
-    "See the to-dos on their list.",
+    "See the tasks on their list.",
     "کارهایی را که باید انجام شود ببیند.",
   ],
   "task.write": [
-    "Add a to-do and mark it done.",
+    "Add a task and mark it done.",
     "کار جدید اضافه کند و آن را انجام‌شده کند.",
   ],
   "task.assign": [
-    "Give a to-do to a person or a team.",
+    "Give a task to a person or a team.",
     "یک کار را به یک نفر یا یک تیم بسپارد.",
   ],
   "task.delegate": [
-    "Hand a to-do to someone else; the handover stays on record.",
+    "Hand a task to someone else; the handover stays on record.",
     "کاری را که خودش دارد به فرد دیگری واگذار کند و این واگذاری ثبت شود.",
   ],
   "notification.read": [
@@ -154,9 +155,17 @@ const PERM_COPY: Record<string, [string, string]> = {
     "Create an ad campaign and change it.",
     "کمپین تبلیغاتی بسازد و آن را تغییر دهد.",
   ],
-  "price.write": [
+  "price.approve": [
     "Confirm the sale price of a car, including the price used in a scheduled post.",
     "قیمت فروش خودرو را ثبت کند، از جمله قیمتی که برای یک پست زمان‌دار استفاده می‌شود.",
+  ],
+  "expense.pay": [
+    "Record performance payments and expenses (finance step).",
+    "پرداخت و ثبت هزینهٔ پرفورمنس (گام مالی).",
+  ],
+  "price.write": [
+    "Legacy alias — use price.approve and expense.pay instead.",
+    "نام مستعار منسوخ — به‌جای آن price.approve و expense.pay.",
   ],
   "perf.read": [
     "See performance campaigns, SMS, stories and payments.",
@@ -179,13 +188,13 @@ const PERM_GROUPS: Array<{ en: string; fa: string; codes: string[] }> = [
     codes: ["conversation.read", "conversation.write", "notification.read", "search.run", "user.read"],
   },
   {
-    en: "Projects and to-dos",
+    en: "Projects and tasks",
     fa: "پروژه و کار",
     codes: ["work_item.read", "work_item.write", "task.read", "task.write", "task.assign", "task.delegate"],
   },
   {
-    en: "Cases and customers",
-    fa: "پرونده و مشتری",
+    en: "Follow-ups and customers",
+    fa: "پیگیری و مشتری",
     codes: ["case.read", "case.write", "customer.read", "customer.write"],
   },
   {
@@ -201,7 +210,7 @@ const PERM_GROUPS: Array<{ en: string; fa: string; codes: string[] }> = [
   {
     en: "Finance",
     fa: "مالی",
-    codes: ["price.write"],
+    codes: ["price.approve", "expense.pay", "expense.request"],
   },
   {
     en: "Vehicles",
@@ -220,24 +229,20 @@ const PERM_GROUPS: Array<{ en: string; fa: string; codes: string[] }> = [
   },
 ];
 
-type AdminTab = "overview" | "analytics" | "people" | "monitoring" | "audit";
+type AdminTab = "overview" | "advanced" | "people" | "audit";
 
 const TAB_COPY: Record<AdminTab, [string, string]> = {
   overview: [
     "Where the organization stands right now, and what needs a person.",
     "وضعیت همین لحظهٔ سازمان، و کارهایی که یک نفر باید انجام دهد.",
   ],
-  analytics: [
-    "How each area moved recently: tasks, replies, cases, stock, and audit.",
-    "روند اخیر هر بخش: کارها، پاسخ‌ها، پرونده‌ها، موجودی و ممیزی.",
+  advanced: [
+    "Charts, trends, and whether the system is healthy.",
+    "نمودارها، روندها، و سلامت سیستم.",
   ],
   people: [
     "Add a person, turn an account on or off, and decide what each role can see.",
     "افزودن فرد، فعال یا غیرفعال کردن حساب، و تعیین اینکه هر نقش چه چیزی ببیند.",
-  ],
-  monitoring: [
-    "Is the system healthy? This refreshes itself every 15 seconds.",
-    "آیا سیستم سالم است؟ این صفحه هر ۱۵ ثانیه خودش تازه می‌شود.",
   ],
   audit: [
     "Who did what, and when. Narrow the list, then export it if you need a record.",
@@ -283,10 +288,10 @@ const VEHICLE_FA: Record<string, [string, string]> = {
 
 const TABLE_FA: Record<string, [string, string]> = {
   users: ["People", "کاربران"],
-  tasks: ["To-dos", "کارها"],
+  tasks: ["Tasks", "کارها"],
   work_items: ["Projects", "پروژه‌ها"],
   messages: ["Messages", "پیام‌ها"],
-  cases: ["Cases", "پرونده‌ها"],
+  cases: ["Follow-ups", "پیگیری‌ها"],
   vehicles: ["Vehicles", "خودروها"],
   audit_logs: ["Audit rows", "ردیف‌های ممیزی"],
   events: ["Events", "رویدادها"],
@@ -331,9 +336,9 @@ const JOB_FA: Record<string, [string, string]> = {
 };
 
 const SECTION_FA: Record<string, [string, string]> = {
-  task: ["To-do", "کار"],
+  task: ["Task", "کار"],
   work_item: ["Project", "پروژه"],
-  case: ["Case", "پرونده"],
+  case: ["Follow-up", "پیگیری"],
   conversation: ["Conversation", "گفتگو"],
   message: ["Message", "پیام"],
   vehicle: ["Vehicle", "خودرو"],
@@ -345,9 +350,9 @@ const SECTION_FA: Record<string, [string, string]> = {
 
 const EVENT_ABOUT: Record<string, [string, string]> = {
   ...EVENT_FA,
-  "task.assigned": ["To-do assigned", "کار ارجاع شد"],
-  "task.completed": ["To-do finished", "کار انجام شد"],
-  "case.created": ["Case opened", "پرونده باز شد"],
+  "task.assigned": ["Task assigned", "کار ارجاع شد"],
+  "task.completed": ["Task finished", "کار انجام شد"],
+  "case.created": ["Follow-up opened", "پیگیری باز شد"],
   "message.created": ["New message", "پیام جدید"],
   "approval.requested": ["Approval requested", "درخواست تأیید"],
 };
@@ -362,13 +367,13 @@ function entityHref(row: {
   const id = row.entity_id || null;
   if (row.conversation_id) return `/communication?c=${row.conversation_id}`;
   if (type === "conversation" && id) return `/communication?c=${id}`;
-  if (type === "work_item" && id) return `/work-items/${id}`;
-  if ((type === "task" || type === "case") && row.work_item_id) return `/work-items/${row.work_item_id}`;
-  if (type === "case" && id) return `/cases?c=${id}`;
+  if (type === "work_item" && id) return `/projects`;
+  if ((type === "task" || type === "case") && row.work_item_id) return `/projects`;
+  if (type === "case" && id) return `/`;
   if (type === "vehicle" && id) return `/vehicles/${id}`;
-  if (type === "approval") return "/approvals";
+  if (type === "approval") return "/my-work";
   if (type === "user" && id) return "/people";
-  if (row.work_item_id) return `/work-items/${row.work_item_id}`;
+  if (row.work_item_id) return `/projects`;
   return null;
 }
 
@@ -455,18 +460,21 @@ export function AdminPage() {
             onChange={setTab}
             items={[
               { key: "overview", label: <Bi en="Overview" fa="نمای کلی" />, icon: "layers" },
-              { key: "analytics", label: <Bi en="Analytics" fa="تحلیل‌ها" />, icon: "activity" },
+              { key: "advanced", label: <Bi en="Advanced" fa="پیشرفته" />, icon: "activity" },
               { key: "people", label: <Bi en="People & roles" fa="کاربران و نقش‌ها" />, icon: "users" },
-              { key: "monitoring", label: <Bi en="Monitoring" fa="مانیتورینگ" />, icon: "circleCheck" },
               { key: "audit", label: <Bi en="Audit" fa="ممیزی" />, icon: "check" },
             ]}
           />
         }
       />
       {tab === "overview" ? <OverviewTab /> : null}
-      {tab === "analytics" ? <AnalyticsTab /> : null}
+      {tab === "advanced" ? (
+        <>
+          <AnalyticsTab />
+          <MonitoringTab />
+        </>
+      ) : null}
       {tab === "people" ? <PeopleTab /> : null}
-      {tab === "monitoring" ? <MonitoringTab /> : null}
       {tab === "audit" ? <AuditTab /> : null}
     </>
   );
@@ -859,7 +867,7 @@ function OverviewTab() {
   }
   if (d.approvals_pending > 0) {
     guide.push({
-      to: "/approvals",
+      to: "/my-work",
       text: (
         <Bi
           en={`${d.approvals_pending} approvals waiting`}
@@ -870,11 +878,11 @@ function OverviewTab() {
   }
   if (d.cases.sla_breached > 0) {
     guide.push({
-      to: "/cases",
+      to: "/my-work",
       text: (
         <Bi
-          en={`${d.cases.sla_breached} cases missed their deadline`}
-          fa={`${d.cases.sla_breached} پرونده از مهلت گذشته`}
+          en={`${d.cases.sla_breached} follow-ups missed their deadline`}
+          fa={`${d.cases.sla_breached} پیگیری از مهلت گذشته`}
         />
       ),
     });
@@ -946,17 +954,18 @@ function OverviewTab() {
         />
       </div>
 
+      <Disclosure label={<Bi en="More indicators" fa="شاخص‌های بیشتر" />}>
       <div className="kpi-row kpi-row--4 kpi-row--even">
         <StatCard
           icon="briefcase"
           tone="accent"
-          label={<Bi en="Open cases" fa="پرونده‌های باز" />}
+          label={<Bi en="Open follow-ups" fa="پیگیری‌های باز" />}
           value={`${d.cases.open}`}
           onMore={() =>
             setRecordPop({
               kind: "cases_open",
               groupBy: "case_status",
-              title: <Bi en="Open cases" fa="پرونده‌های باز" />,
+              title: <Bi en="Open follow-ups" fa="پیگیری‌های باز" />,
             })
           }
           moreLabel={<Bi en="Show more" fa="نمایش بیشتر" />}
@@ -1125,7 +1134,7 @@ function OverviewTab() {
             count={d.top_users.length}
             hint={
               <Bi
-                en="Who is carrying the most open to-dos right now."
+                en="Who is carrying the most open tasks right now."
                 fa="چه کسی همین حالا بیشترین کار باز را دارد."
               />
             }
@@ -1209,6 +1218,7 @@ function OverviewTab() {
           <Bi en={`Weekly worker snapshot · ${d.as_of_jalali}`} fa={`اسنپ‌شات هفتگی worker · ${d.as_of_jalali}`} />
         </Muted>
       </Card>
+      </Disclosure>
       {messagesOpen ? (
         <MessageDetail
           days={7}
@@ -1574,9 +1584,9 @@ function TrendDetail({
   const bi = useBi();
   const [week, setWeek] = useState("");
   const metricLabel: Record<string, [string, string]> = {
-    open_tasks: ["Open to-dos", "کارهای باز"],
+    open_tasks: ["Open tasks", "کارهای باز"],
     vehicles: ["Vehicles", "خودروها"],
-    cases: ["Cases", "پرونده‌ها"],
+    cases: ["Follow-ups", "پیگیری‌ها"],
     work_items: ["Projects", "پروژه‌ها"],
   };
   const rows = trend.flatMap((snapshot) =>
@@ -1737,7 +1747,7 @@ function AnalyticsTab() {
                   to: "/my-work",
                   text: (
                     <Bi
-                      en="Close overdue to-dos from My Work"
+                      en="Close overdue tasks from My Work"
                       fa="کارهای عقب‌افتاده را از «کارهای من» ببندید"
                     />
                   ),
@@ -1805,10 +1815,10 @@ function AnalyticsTab() {
         <StatCard
           icon="check"
           tone="accent"
-          label={<Bi en="Avg case resolution · 90d" fa="میانگین حل پرونده · ۹۰ روز" />}
+          label={<Bi en="Avg follow-up resolution · 90d" fa="میانگین حل پیگیری · ۹۰ روز" />}
           hint={
             d.avg_case_resolution_hours == null ? (
-              <Bi en="No case was closed in 90 days" fa="در ۹۰ روز اخیر پرونده‌ای بسته نشده" />
+              <Bi en="No follow-up was closed in 90 days" fa="در ۹۰ روز اخیر پیگیری بسته نشده" />
             ) : (
               <Bi en="From opened to closed" fa="از باز شدن تا بسته شدن" />
             )
@@ -1823,7 +1833,7 @@ function AnalyticsTab() {
               kind: "cases_closed",
               days: 90,
               groupBy: "case_type",
-              title: <Bi en="Avg case resolution · 90d" fa="میانگین حل پرونده · ۹۰ روز" />,
+              title: <Bi en="Avg follow-up resolution · 90d" fa="میانگین حل پیگیری · ۹۰ روز" />,
             })
           }
           moreLabel={<Bi en="Show more" fa="نمایش بیشتر" />}
@@ -1963,13 +1973,13 @@ function AnalyticsTab() {
         <Card>
           <SectionHeader
             icon="chat"
-            title={<Bi en="Cases by status" fa="پرونده‌ها به تفکیک وضعیت" />}
-            hint={<Bi en="Where follow-ups sit in their lifecycle." fa="پرونده‌ها الان در کدام مرحله‌اند." />}
+            title={<Bi en="Follow-ups by status" fa="پیگیری‌ها به تفکیک وضعیت" />}
+            hint={<Bi en="Where follow-ups sit in their lifecycle." fa="پیگیری‌ها الان در کدام مرحله‌اند." />}
             action={
               <MoreButton
                 onClick={() =>
                   setRefs({
-                    title: <Bi en="Cases by status" fa="پرونده‌ها به تفکیک وضعیت" />,
+                    title: <Bi en="Follow-ups by status" fa="پیگیری‌ها به تفکیک وضعیت" />,
                     groups: refGroups(d.drilldown?.case_status, (key) => named(bi, CASE_STATUS_FA, key)),
                   })
                 }
@@ -1977,7 +1987,7 @@ function AnalyticsTab() {
             }
           />
           {caseStatuses.length === 0 ? (
-            <Muted><Bi en="No cases yet." fa="هنوز پرونده‌ای نیست." /></Muted>
+            <Muted><Bi en="No follow-ups yet." fa="هنوز پیگیری نیست." /></Muted>
           ) : (
             <HBars data={caseStatuses} />
           )}
@@ -1985,13 +1995,13 @@ function AnalyticsTab() {
         <Card>
           <SectionHeader
             icon="chat"
-            title={<Bi en="Cases by type" fa="پرونده‌ها به تفکیک نوع" />}
+            title={<Bi en="Follow-ups by type" fa="پیگیری‌ها به تفکیک نوع" />}
             hint={<Bi en="What kind of request people opened." fa="مردم چه نوع درخواستی باز کرده‌اند." />}
             action={
               <MoreButton
                 onClick={() =>
                   setRefs({
-                    title: <Bi en="Cases by type" fa="پرونده‌ها به تفکیک نوع" />,
+                    title: <Bi en="Follow-ups by type" fa="پیگیری‌ها به تفکیک نوع" />,
                     groups: refGroups(d.drilldown?.case_type, (key) => named(bi, CASE_TYPE_FA, key)),
                   })
                 }
@@ -1999,7 +2009,7 @@ function AnalyticsTab() {
             }
           />
           {caseTypes.length === 0 ? (
-            <Muted><Bi en="No cases yet." fa="هنوز پرونده‌ای نیست." /></Muted>
+            <Muted><Bi en="No follow-ups yet." fa="هنوز پیگیری نیست." /></Muted>
           ) : (
             <HBars data={caseTypes} color="var(--ok)" />
           )}
@@ -2247,12 +2257,9 @@ function MonitoringTab() {
           hint={
             journalOk ? (
               <Bi en="Saving is stable" fa="ذخیره پایدار است" />
-            ) : d.database.journal_mode ? (
-              <Bi
-                en={`Save mode: ${d.database.journal_mode}`}
-                fa={`حالت ذخیره: ${d.database.journal_mode}`}
-              />
-            ) : undefined
+            ) : (
+              <Bi en="Database save mode needs a look" fa="روش ذخیرهٔ پایگاه را بررسی کنید" />
+            )
           }
         />
         <StatCard
@@ -2664,8 +2671,8 @@ function MonitoringTab() {
 const AUDIT_ENTITIES: Array<[string, string, string]> = [
   ["", "All", "همه"],
   ["work_item", "Project", "پروژه"],
-  ["task", "To-do", "کار"],
-  ["case", "Case", "پرونده"],
+  ["task", "Task", "کار"],
+  ["case", "Follow-up", "پیگیری"],
   ["conversation", "Conversation", "گفتگو"],
   ["customer", "Customer", "مشتری"],
   ["approval", "Approval", "تأیید"],

@@ -129,6 +129,8 @@ def report_from_parts(
     else:
         other_cost = 0
     cost = sms_cost + story_cost + other_cost
+    budget = campaign.budget_toman or 0
+    budget_over = budget > 0 and cost > budget
     views = sum(row.views or 0 for row in live)
     clicks = sum(row.link_clicks or 0 for row in live) + sum(row.calls or 0 for row in sends)
 
@@ -190,6 +192,12 @@ def report_from_parts(
         "starts_on": iso(campaign.starts_on),
         "ends_on": iso(campaign.ends_on),
         "budget_toman": campaign.budget_toman,
+        "budget_over": budget_over,
+        "budget_warning": (
+            f"هزینهٔ شیت ({fa_num(cost)} تومان) از بودجه ({fa_num(budget)} تومان) بیشتر است — فقط هشدار."
+            if budget_over
+            else ""
+        ),
         "cost_toman": cost,
         "sms_cost_toman": sms_cost,
         "story_cost_toman": story_cost,
@@ -312,3 +320,96 @@ def rule_notes(cost: int, leads: int, views: int, channels: list[dict], pages: l
     if not notes:
         notes.append("با ثبت ارسال یا سوشال، شاخص‌های این کمپین اینجا محاسبه می‌شود.")
     return notes
+
+
+async def campaign_board(
+    db: AsyncSession,
+    organization_id: UUID,
+    *,
+    user_id: UUID | None = None,
+    scope: str = "org",
+    project_ids: set[UUID] | None = None,
+) -> list[dict]:
+    """گزارش کمپین‌ها از دفتر؛ با scope=me فقط کمپین‌های مرتبط با پروژه‌های کاربر."""
+    query = select(PmCampaign).where(PmCampaign.organization_id == organization_id)
+    if scope == "me" and project_ids is not None:
+        if not project_ids:
+            return []
+        query = query.where(PmCampaign.project_id.in_(project_ids))
+    elif scope == "me" and user_id is not None:
+        from app.requests.models import WorkProject, WorkRequest
+
+        req_ids = {
+            row.id
+            for row in (
+                await db.scalars(
+                    select(WorkRequest).where(
+                        WorkRequest.organization_id == organization_id,
+                        WorkRequest.requested_by == user_id,
+                    )
+                )
+            ).all()
+        }
+        projects = list(
+            (await db.scalars(select(WorkProject).where(WorkProject.organization_id == organization_id))).all()
+        )
+        proj_ids = {
+            row.id
+            for row in projects
+            if row.lead_user_id == user_id or (row.request_id and row.request_id in req_ids)
+        }
+        if not proj_ids:
+            return []
+        query = query.where(PmCampaign.project_id.in_(proj_ids))
+    campaigns = list((await db.scalars(query.order_by(PmCampaign.code))).all())
+    if not campaigns:
+        return []
+    sends = list((await db.scalars(select(PmSmsSend).where(PmSmsSend.organization_id == organization_id))).all())
+    stories = list((await db.scalars(select(PmStory).where(PmStory.organization_id == organization_id))).all())
+    leads = list((await db.scalars(select(PmLead).where(PmLead.organization_id == organization_id))).all())
+    pages = {
+        row.id: row
+        for row in (await db.scalars(select(PmPage).where(PmPage.organization_id == organization_id))).all()
+    }
+    costs = list((await db.scalars(select(PmCost).where(PmCost.organization_id == organization_id))).all())
+    paid_ids, linked_ids = await load_settlement(db, organization_id)
+    by_send: dict[UUID, list] = defaultdict(list)
+    by_story: dict[UUID, list] = defaultdict(list)
+    by_lead: dict[UUID, list] = defaultdict(list)
+    for row in sends:
+        if row.campaign_id:
+            by_send[row.campaign_id].append(row)
+    for row in stories:
+        if row.campaign_id:
+            by_story[row.campaign_id].append(row)
+    for row in leads:
+        if row.campaign_id:
+            by_lead[row.campaign_id].append(row)
+    out = []
+    for campaign in campaigns:
+        report = report_from_parts(
+            campaign,
+            by_send.get(campaign.id, []),
+            by_story.get(campaign.id, []),
+            by_lead.get(campaign.id, []),
+            pages,
+            paid_ids,
+            linked_ids,
+            costs,
+        )
+        out.append(
+            {
+                "id": report["campaign_id"],
+                "code": report["code"],
+                "title": report["title"],
+                "brand": report["brand"],
+                "status": campaign.status,
+                "cost_toman": report["cost_toman"],
+                "leads": report["leads"],
+                "views": report["views"],
+                "cpl": report["cpl"],
+                "cpv": report["cpv"],
+            }
+        )
+    out.sort(key=lambda row: (-int(row["cost_toman"] or 0), row["code"]))
+    return out

@@ -14,10 +14,8 @@ const python = existsSync(venvPython) ? `"${venvPython}"` : "python";
 
 export default defineConfig({
   testDir: "./e2e",
-  // همهٔ تست‌ها یک سرور و یک فایل SQLite (`e2e.db`) را به اشتراک می‌گذارند،
-  // پس اجرای موازی با چند worker باعث قفل‌شدن DB و در نتیجه flake می‌شود —
-  // نه در تست‌ها، بلکه در زمان‌بندی. یک worker تنها راه درست برای این مجموعه است.
-  // روی ۶ هسته پیش‌فرض ۳ worker بود و همین ریشهٔ flakeهای تکرارشونده بود.
+  // همهٔ تست‌ها یک دیتابیس Postgres (`cm_e2e`) را به اشتراک می‌گذارند؛
+  // یک worker از تداخل bootstrap جلوگیری می‌کند.
   workers: 1,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
@@ -33,12 +31,12 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `${python} -m alembic upgrade head && ${python} -m uvicorn app.main:app --host 127.0.0.1 --port ${apiPort}`,
+      command: `${python} -m scripts.ensure_pg_db && ${python} -m alembic upgrade head && ${python} -m uvicorn app.main:app --host 127.0.0.1 --port ${apiPort}`,
       cwd: "../backend",
       port: Number(apiPort),
       reuseExistingServer: false,
       env: {
-        DATABASE_URL: "sqlite+aiosqlite:///./e2e.db",
+        DATABASE_URL: "postgresql+asyncpg://cm:cm@localhost:5432/cm_e2e",
         APP_ENV: "development",
         TELEGRAM_MODE: "off",
         TELEGRAM_BOT_TOKEN: "",

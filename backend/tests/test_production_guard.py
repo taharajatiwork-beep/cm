@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.config import Settings
-from app.core.startup import assert_production_safe
+from app.core.startup import assert_postgres_url, assert_production_safe
 
 
 def _prod(**overrides) -> Settings:
@@ -66,6 +66,11 @@ def test_placeholder_secrets_are_rejected():
 def test_sqlite_is_rejected_in_production():
     with pytest.raises(RuntimeError, match="PostgreSQL"):
         assert_production_safe(_prod(database_url="sqlite+aiosqlite:///./cm.db"))
+
+
+def test_sqlite_is_rejected_in_any_env():
+    with pytest.raises(RuntimeError, match="PostgreSQL"):
+        assert_postgres_url(Settings(database_url="sqlite+aiosqlite:///./cm_dev.db"))
 
 
 def test_all_problems_are_reported_at_once():

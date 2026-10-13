@@ -97,7 +97,7 @@ async def test_linked_expense_needs_manager(client, seeded, db):
         "lead-u@autoco.example",
         [PermissionCode.REQUEST_TRIAGE, PermissionCode.EXPENSE_APPROVE, PermissionCode.PERF_READ],
     )
-    await _user(db, seeded, "fin-u@autoco.example", [PermissionCode.PRICE_WRITE, PermissionCode.PERF_READ])
+    await _user(db, seeded, "fin-u@autoco.example", [PermissionCode.EXPENSE_PAY, PermissionCode.PRICE_APPROVE, PermissionCode.PERF_READ])
     perf = auth(await login(client, "perf-u@autoco.example"))
     lead = auth(await login(client, "lead-u@autoco.example"))
     fin = auth(await login(client, "fin-u@autoco.example"))
@@ -168,3 +168,14 @@ async def test_task_from_message_needs_confirm(client, seeded, db):
     assert made.json()["created"] is True
     ghost = await client.post(f"/conversations/{conv_id}/approve-payment", headers=headers, json={})
     assert ghost.status_code == 404
+
+
+async def test_sheet_sync_lock_blocks_a_second_run(db, seeded):
+    import pytest
+
+    from app.perf.services.sync_lock import SyncBusy, begin_sync
+
+    await begin_sync(db, seeded["org"].id, seeded["ali"].id, "علی")
+    with pytest.raises(SyncBusy) as caught:
+        await begin_sync(db, seeded["org"].id, seeded["ali"].id, "علی")
+    assert "علی" in str(caught.value.name)

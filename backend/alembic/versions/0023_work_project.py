@@ -3,7 +3,7 @@
 import sqlalchemy as sa
 
 from alembic import op
-from app.db.migration_guard import table_exists
+from app.db.migration_guard import column_exists, table_exists
 
 revision = "0023_work_project"
 down_revision = "0022_work_request"
@@ -30,25 +30,17 @@ def upgrade() -> None:
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
             sa.UniqueConstraint("organization_id", "code", name="uq_work_project_code"),
         )
-    if not table_exists(bind, "teams"):
-        return
-    cols = [row[1] for row in bind.execute(sa.text("PRAGMA table_info(teams)")).fetchall()]
-    if "parent_team_id" not in cols:
+    if table_exists(bind, "teams") and not column_exists(bind, "teams", "parent_team_id"):
         op.add_column("teams", sa.Column("parent_team_id", sa.Uuid(), nullable=True))
-    camp_cols = [row[1] for row in bind.execute(sa.text("PRAGMA table_info(pm_campaign)")).fetchall()]
-    if "project_id" not in camp_cols:
+    if table_exists(bind, "pm_campaign") and not column_exists(bind, "pm_campaign", "project_id"):
         op.add_column("pm_campaign", sa.Column("project_id", sa.Uuid(), nullable=True))
 
 
 def downgrade() -> None:
     bind = op.get_bind()
-    if table_exists(bind, "pm_campaign"):
-        cols = [row[1] for row in bind.execute(sa.text("PRAGMA table_info(pm_campaign)")).fetchall()]
-        if "project_id" in cols:
-            op.drop_column("pm_campaign", "project_id")
-    if table_exists(bind, "teams"):
-        cols = [row[1] for row in bind.execute(sa.text("PRAGMA table_info(teams)")).fetchall()]
-        if "parent_team_id" in cols:
-            op.drop_column("teams", "parent_team_id")
+    if column_exists(bind, "pm_campaign", "project_id"):
+        op.drop_column("pm_campaign", "project_id")
+    if column_exists(bind, "teams", "parent_team_id"):
+        op.drop_column("teams", "parent_team_id")
     if table_exists(bind, "work_project"):
         op.drop_table("work_project")

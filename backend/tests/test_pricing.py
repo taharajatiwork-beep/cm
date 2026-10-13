@@ -76,7 +76,7 @@ async def test_marketing_cannot_confirm_and_price_change_rechecks(client, seeded
         seeded["org"].id,
         "Finance",
         "finance",
-        [PermissionCode.PRICE_WRITE, PermissionCode.INVENTORY_READ, PermissionCode.NOTIFICATION_READ],
+        [PermissionCode.PRICE_APPROVE, PermissionCode.INVENTORY_READ, PermissionCode.NOTIFICATION_READ],
         "organization",
     )
     await svc.create_user(

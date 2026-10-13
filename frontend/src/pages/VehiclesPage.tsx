@@ -8,6 +8,7 @@ import { useConfirm } from "../components/ui/ConfirmDialog";
 import {
   Button,
   Card,
+  MoreMenu,
   Dialog,
   EmptyState,
   ErrorMessage,
@@ -255,7 +256,7 @@ export function VehiclesPage() {
   const qc = useQueryClient();
   const canRead = has("inventory.read");
   const canWrite = has("inventory.write");
-  const canPrice = has("price.write");
+  const canPrice = has("price.approve") || has("price.write");
 
   // Filter text is part of the key: every search is its own cache entry.
   const listQuery = useInfiniteQuery({
@@ -469,23 +470,25 @@ export function VehiclesPage() {
         actions={
           has("inventory.write") ? (
             <>
-              <Button variant="secondary" onClick={() => void copyStockMessage()}>
-                <Bi en="Copy stock message" fa="کپی پیام موجودی" />
-              </Button>
-              <Button variant="secondary" onClick={() => setQuick(true)}>
-                <Bi en="Quick edit" fa="ویرایش سریع" />
-              </Button>
-              <Button variant="secondary" onClick={() => { setPreview(null); setShowPaste(true); }}>
-                <Bi en="Paste stock message" fa="چسباندن پیام موجودی" />
-              </Button>
-              <Button variant="secondary" onClick={() => setShowImport(true)}>
-                <Icon name="upload" size={14} />
-                <Bi en="Add from Excel" fa="افزودن از اکسل" />
-              </Button>
               <Button onClick={openAdd}>
                 <Icon name="plus" size={14} />
                 <Bi en="Add vehicle" fa="افزودن خودرو" />
               </Button>
+              <MoreMenu label={<Bi en="More" fa="بیشتر" />}>
+                <Button variant="ghost" onClick={() => void copyStockMessage()}>
+                  <Bi en="Copy stock message" fa="کپی پیام موجودی" />
+                </Button>
+                <Button variant="ghost" onClick={() => setQuick(true)}>
+                  <Bi en="Quick edit" fa="ویرایش سریع" />
+                </Button>
+                <Button variant="ghost" onClick={() => { setPreview(null); setShowPaste(true); }}>
+                  <Bi en="Paste stock message" fa="چسباندن پیام موجودی" />
+                </Button>
+                <Button variant="ghost" onClick={() => setShowImport(true)}>
+                  <Icon name="upload" size={14} />
+                  <Bi en="Add from Excel" fa="افزودن از اکسل" />
+                </Button>
+              </MoreMenu>
             </>
           ) : undefined
         }
@@ -637,7 +640,7 @@ export function VehiclesPage() {
         )}
       </Card>
 
-      {quick && has("inventory.write") ? <QuickEditPop rows={visible.slice(0, 30)} canPrice={has("price.write")} saving={quickSave.isPending} onClose={() => setQuick(false)} onSave={(id, fields) => quickSave.mutate({ id, fields })} /> : null}
+      {quick && has("inventory.write") ? <QuickEditPop rows={visible.slice(0, 30)} canPrice={has("price.approve") || has("price.write")} saving={quickSave.isPending} onClose={() => setQuick(false)} onSave={(id, fields) => quickSave.mutate({ id, fields })} /> : null}
 
       <Sheet
         open={showPaste}

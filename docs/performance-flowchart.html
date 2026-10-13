@@ -134,15 +134,15 @@
 
 <!-- 1 -->
 <h2 class="section"><span class="num">۱</span> نقشهٔ کلی صفحات</h2>
-<p class="section-sub">منوی «پرفورمنس» در کنار سامانه؛ همه از یک هدر به هم لینک دارند (RelatedLinks).</p>
+<p class="section-sub">گروه مارکتینگ در منوی کناری؛ بین صفحات یک کمپین با RelatedLinks جابه‌جا می‌شوید. «اتصالات» فقط از داخل پرفورمنس (<code>/perf/connections</code>) است، نه منوی اصلی.</p>
 <div class="navmap">
   <div class="navcard"><h4>خانه پرفورمنس</h4><p>صف گام بعدی هر کمپین فعال: بودجه، پیج، انتشار، اینسایت، پیامک، تحویل. کلیک فقط باز می‌کند، چیزی نمی‌فرستد.</p></div>
   <div class="navcard"><h4>کمپین‌ها</h4><p>فهرست کمپین‌ها + صندوق «درخواست‌های جدید از میزیتو»، کدهای بی‌کارت، تریاژ کارت‌ها.</p></div>
   <div class="navcard"><h4>پیامک</h4><p>نوشتن متن، چک قوانین، نمونهٔ LLM، ثبت ارسال با گیرندهٔ انسانی.</p></div>
   <div class="navcard"><h4>سوشال</h4><p>بودجه، چیدن پیج‌ها، قرارداد استوری، انتشار و اینسایت.</p></div>
   <div class="navcard"><h4>هزینه‌ها</h4><p>درخواست شارژ پنل و هزینهٔ سوشال؛ تأیید و پرداخت با مالی؛ لیست کارت‌های میزیتو.</p></div>
-  <div class="navcard"><h4>شیت</h4><p>نمای فقط‌خواندنی از شیت‌های گوگل بعد از همگام‌سازی.</p></div>
-  <div class="navcard"><h4>اتصالات</h4><p>وضعیت زندهٔ گوگل‌شیت، میزیتو، پنل‌های پیامک، اینسایت و تلگرام با خطای دقیق.</p></div>
+  <div class="navcard"><h4>شیت</h4><p>ردیف کمپین، اکسل هزینه/گزارش، و دکمهٔ «بفرست به گوگل‌شیت» (نوشتن واقعی). باز کردن فهرست کمپین فقط داده را محلی تازه می‌کند.</p></div>
+  <div class="navcard"><h4>اتصالات</h4><p>توکن میزیتو، وضعیت گوگل و پنل‌ها؛ بررسی زنده. از خانهٔ پرفورمنس یا هزینه‌ها لینک دارد.</p></div>
 </div>
 
 <!-- 2 -->
@@ -151,7 +151,7 @@
 <div class="vflow">
   <div class="vrow"><div class="vstep violet">
     <h4>ساخت کمپین</h4>
-    <p>دسترسی <code>perf.write</code>. فرم «کمپین تازه» با حرف برند و کد خودکار از دفتر ثبت (S94، S95، …)، یا از درخواست میزیتو با کد صریح. تا تأیید فرم هیچ کمپینی ساخته نمی‌شود. کد تکراری ← ۴۰۹.</p>
+    <p>دسترسی <code>perf.write</code> / سرپرست مارکتینگ. فرم «کمپین تازه» با حرف برند و کد خودکار از دفتر ثبت (S94، S95، …)، یا از درخواست میزیتو / پروژه با کد صریح. گفتگوی کمپین با <code>POST …/thread</code> به spine درخواست وصل می‌شود. کد تکراری ← ۴۰۹.</p>
   </div></div>
   <div class="vdown">▼</div>
   <div class="vrow"><div class="vstep warn">
@@ -187,32 +187,41 @@
 
 <!-- 3 -->
 <h2 class="section"><span class="num">۳</span> جریان پول و پرداخت</h2>
-<p class="section-sub">درخواست‌دهنده هرگز نمی‌تواند درخواست خودش را تأیید کند؛ تأیید فقط با مالی (<code>price.write</code>). پول یک مسیر موازی است: شارژ پنل قبل از ارسال پیامک لازم می‌شود و هزینهٔ سوشال قبل از انتشار. تأیید مالی به مبلغی که روی صفحه دیده گره خورده — اگر درخواست‌دهنده مبلغ را عوض کرده باشد، سرور تأیید را رد می‌کند (۴۰۹) و می‌گوید صفحه را تازه کنید.</p>
+<p class="section-sub">درخواست‌دهنده هرگز نمی‌تواند درخواست خودش را تأیید کند؛ پرداخت فقط با مالی (<code>expense.pay</code>؛ سازگاری: <code>price.write</code>). اگر درخواست به <code>project_id</code> یا <code>request_id</code> وصل باشد، قبل از مالی سرپرست تیم با اقدام <code>manager</code> به <code>manager_ok</code> می‌رسد (<code>expense.approve</code> / <code>request.triage</code> — <code>finance_perms.can_team_expense_approve</code>). در UI هزینه‌ها دکمهٔ «تأیید سرپرست تیم» برای این موارد است. همان شخص نمی‌تواند هر دو گام سرپرست و مالی را بزند. پول مسیر موازی است: شارژ پنل قبل از پیامک، هزینهٔ سوشال قبل از انتشار. مالی <code>seen_amount_toman</code> می‌فرستد — عوض شدن مبلغ ← ۴۰۹.</p>
 <div class="flow">
   <div class="node">
     <h4>۱. درخواست تازه <span class="tag info">requested</span></h4>
     <ul>
       <li>شارژ پنل یا هزینهٔ سوشال یا سایر</li>
       <li>مبلغ، ذی‌نفع، شبا، مرکز هزینه</li>
-      <li>درخواست‌دهنده می‌تواند فقط مبلغ خودش را قبل از تأیید عوض کند</li>
+      <li>درخواست‌دهنده فقط وضعیت <code>requested</code> و فقط درخواست خودش را می‌تواند مبلغ عوض کند</li>
     </ul>
   </div>
   <div class="arrow">←</div>
   <div class="node">
-    <h4>۲. تأیید و پرداخت <span class="tag ok">paid</span></h4>
+    <h4>۲. تأیید سرپرست تیم (اختیاری) <span class="tag warn">manager_ok</span></h4>
     <ul>
-      <li>فقط مالی و نه درخواست‌دهنده</li>
-      <li>هم‌زمان ردیف هزینه ساخته می‌شود (شمارهٔ هزینهٔ خودکار)</li>
+      <li>فقط وقتی به پروژه/درخواست وصل است</li>
+      <li>بدون این گام مالی با ۴۰۳ «اول سرپرست تیم» می‌خورد</li>
+      <li>یادداشت در spine درخواست/پروژه</li>
+    </ul>
+  </div>
+  <div class="arrow">←</div>
+  <div class="node">
+    <h4>۳. تأیید و پرداخت مالی <span class="tag ok">paid → recorded</span></h4>
+    <ul>
+      <li>یک اقدام <code>finance</code> / <code>pay</code> — نه درخواست‌دهنده</li>
+      <li>هم‌زمان ردیف هزینه (شمارهٔ خودکار) و <code>recorded</code></li>
       <li>شارژ پنل موجودی پنل پیامک را بالا می‌برد</li>
     </ul>
   </div>
   <div class="arrow">←</div>
   <div class="node">
-    <h4>۳. ثبت شد <span class="tag ok">recorded</span></h4>
+    <h4>۴. در شیت و گزارش</h4>
     <ul>
-      <li>هزینه در شیت و گزارش می‌نشیند</li>
       <li>هزینهٔ ثبت‌شده حذف نمی‌شود (۴۰۹)</li>
-      <li>درخواست ردشده دیگر قابل تأیید نیست</li>
+      <li>ردشده دیگر قابل تأیید نیست</li>
+      <li>وضعیت <code>finance_ok</code> در دادهٔ قدیمی ممکن است بماند؛ مسیر جدید مستقیم به recorded می‌رود</li>
     </ul>
   </div>
   <div class="arrow">←</div>
@@ -260,13 +269,13 @@
 <div class="flow">
   <div class="node"><h4>ماخذ داخل پنل</h4><ul><li>کمپین‌های بعد از ورود آرشیو</li><li>هزینه‌های ثبت‌شده</li><li>ارسال پیامک</li><li>استوری منتشرشده</li></ul></div>
   <div class="arrow">←</div>
-  <div class="node"><h4>همگام‌سازی (refresh_sheet)</h4><ul><li>وقتی گوگل وصل است و شیت باز می‌شود</li><li>ردیف‌های تازه فقط اضافه می‌شوند؛ قدیمی‌ها دست نمی‌خورند</li><li>ردیف‌های پیش از ساعت ورود آرشیو دوباره نوشته نمی‌شوند</li></ul></div>
+  <div class="node"><h4>همگام‌سازی (refresh_sheet)</h4><ul><li>نوشتن گوگل: <code>POST /perf/integrations/sheets</code> یا دکمهٔ شیت</li><li>قفل سازمانی: دو نفر هم‌زمان ← ۴۰۹ با نام همکار</li><li>شیت‌های منبع فقط append؛ ردیف‌های پیش از آرشیو دوباره نوشته نمی‌شوند</li></ul></div>
   <div class="arrow">←</div>
   <div class="node"><h4>شیت‌های مقصد</h4><ul><li>Campaign Number ← دفتر شمارهٔ کمپین</li><li>Sheet3 + Log ← هزینه</li><li>SMS ریپورتر ← پیامک</li><li>Instagram-S ← استوری (مگر پیج فقط بله/روبیکا)</li></ul></div>
   <div class="arrow">←</div>
   <div class="node"><h4>شیت گزارش خود پنل</h4><ul><li>تب‌های SMS، Social، Leads، Costs، Report</li><li>دکمهٔ «بفرست به گوگل‌شیت» بازنویسی کامل می‌کند</li><li>نمای «شیت» فقط می‌خواند</li></ul></div>
 </div>
-<p class="section-sub" style="margin-top:10px">احتیاط: بازکردن فهرست کمپین‌ها یا صفحهٔ یک کمپین همین همگام‌سازی را اجرا می‌کند (نوشتن گوگل). صفحهٔ اتصالات فقط عنوان می‌خواند و نمی‌نویسد.</p>
+<p class="section-sub" style="margin-top:10px">فهرست کمپین و صفحهٔ یک کمپین <code>refresh_sheet(..., push=False)</code> می‌زنند — جدول محلی و آمار، بدون نوشتن گوگل. نوشتن شیت‌های منبع فقط بعد از push موفق است. اتصالات در بررسی زنده فقط می‌خواند.</p>
 
 <!-- 6 -->
 <h2 class="section"><span class="num">۶</span> اتصالات و خطاها</h2>
@@ -283,9 +292,10 @@
 <h2 class="section"><span class="num">۷</span> دسترسی‌ها و خطوط قرمز</h2>
 <div class="flow">
   <div class="node"><h4>نقش‌ها</h4><ul>
-    <li><span class="tag info">perf.write</span> نادیا / مدیر سازمان: ساخت، درخواست، ثبت ارسال</li>
-    <li><span class="tag ok">price.write</span> مالی: تأیید و پرداخت و رد</li>
-    <li>همه با <span class="tag violet">perf.read</span> می‌بینند</li>
+    <li><span class="tag violet">marketing_manager</span> مینا: تریاژ و پروژه، کمپین و شیت؛ منوی پرفورمنس فقط کمپین‌ها + شیت؛ <code>request.create</code> ندارد</li>
+    <li><span class="tag info">performance_marketing</span> نادیا: خانه پرفورمنس، پیامک، سوشال، هزینه، شیت — بدون تریاژ، ساخت پروژه و منوی <code>/projects</code></li>
+    <li><span class="tag ok">finance</span> ندا: <code>price.approve</code> + <code>expense.pay</code>؛ فقط <code>/perf/money</code> در مارکتینگ</li>
+    <li><span class="tag danger">org.admin</span> عبور کامل + همهٔ مسیرها</li>
   </ul></div>
   <div class="arrow">←</div>
   <div class="decision" style="max-width:340px">
@@ -513,8 +523,8 @@
 <h2 class="section"><span class="num">۱۰</span> نکته‌های طراحی باز</h2>
 <div class="navmap">
   <div class="navcard">
-    <h4>خواندن با اثر جانبی <span class="tag warn">در انتظار تصمیم</span></h4>
-    <p>بازکردن فهرست کمپین‌ها یا صفحهٔ یک کمپین، همگام‌سازی و نوشتن گوگل را اجرا می‌کند. ریسک: ردیف تکراری با دو کاربر هم‌زمان و سقف نرخ API. گزینه‌ها: همگام‌سازی فقط با دکمهٔ «بفرست به گوگل‌شیت»، یا کلید پایدار برای هر ردیف به‌جای ساعت ورود آرشیو. هنوز تصمیمی گرفته نشده و رفتار فعلی دست نخورده است.</p>
+    <h4>خواندن با اثر جانبی <span class="tag ok">کاهش یافت</span></h4>
+    <p>فهرست و جزئیات کمپین دیگر خودکار در گوگل نمی‌نویسند (<code>push=False</code>). نوشتن با دکمهٔ شیت یا API است و قفل <code>perf_sync_state</code> هم‌زمانی را ۴۰۹ می‌کند. هنوز می‌توان کلید پایدار ردیف به‌جای ساعت آرشیو را برای append منبع بهبود داد.</p>
   </div>
   <div class="navcard">
     <h4>تأیید به مبلغ دیده‌شده <span class="tag ok">انجام شد</span></h4>
@@ -535,7 +545,8 @@
 </div>
 
 <footer>
-  ساخته‌شده از روی کد مخزن CM Ops — مسیرها: <code>backend/app/perf</code> و <code>frontend/src/perf</code>. این فایل مستند است و به سرویس وصل نمی‌شود.
+  ساخته‌شده از روی کد مخزن CM Ops — <code>backend/app/perf</code>، <code>core/finance_perms.py</code>، <code>frontend/src/perf</code>، <code>lib/access.ts</code>، <code>lib/permissions.ts</code>.
+  نمای کلی سامانه: <code>docs/cm-flowchart.html</code> · درخت تیم دمو: <code>docs/team-tree.html</code>.
 </footer>
 
 </div>

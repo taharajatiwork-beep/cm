@@ -1,4 +1,4 @@
-import { useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { faNum } from "../../fa";
 import { nextTabIndex } from "../../lib/tabs";
@@ -206,6 +206,72 @@ export function SectionHeader({
         {hint ? <p className="section-hint">{hint}</p> : null}
       </div>
       {action ? <div className="section-action">{action}</div> : null}
+    </div>
+  );
+}
+
+/** Header overflow actions: opens below the trigger, closes on Esc or outside click. */
+export function MoreMenu({ label, children }: { label: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const onPointer = (event: MouseEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onPointer);
+    };
+  }, [open]);
+
+  return (
+    <div className="more-menu" ref={wrapRef}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm more-menu-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {label}
+      </button>
+      {open ? (
+        <div id={menuId} className="more-menu-panel" role="menu">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function Disclosure({ label, children }: { label: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  return (
+    <div className={`advanced${open ? " is-open" : ""}`}>
+      <button
+        type="button"
+        className="advanced-toggle"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {label}
+      </button>
+      {open ? (
+        <div id={panelId} className="advanced-body">
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Card, Field, Input, Muted, SectionHeader, TextArea } from "../components/ui";
+import { Button, Card, Field, Icon, Input, Muted, SectionHeader, TextArea } from "../components/ui";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 import { Bi } from "../i18n";
 import { perfApi, type BriefAdPhase, type CampaignBriefData, type CampaignRow } from "./api";
@@ -86,11 +87,12 @@ export function CampaignBriefSection({ campaign, brief }: { campaign: CampaignRo
         hint={<Bi en="Weekly plan of this campaign: goals, 7-day content, caption, ads, hashtags." fa="برنامهٔ هفتگی این کمپین: هدف‌ها، محتوای ۷ روزه، کپشن، تبلیغ و هشتگ." />}
         action={
           <div className="row no-print">
-            <Button type="button" variant="secondary" disabled={draft.isPending} onClick={() => draft.mutate()}>
-              <Bi en="Draft with AI" fa="پیش‌نویس با هوش مصنوعی" />
+            <Button type="button" className="btn-sm" disabled={draft.isPending} onClick={() => draft.mutate()}>
+              <Icon name="sparkles" size={14} />
+              <Bi en={draft.isPending ? "Drafting…" : "AI draft"} fa={draft.isPending ? "در حال ساخت…" : "پیش‌نویس"} />
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setEditing(asBrief(brief))}>
-              <Bi en="Edit brief" fa="ویرایش بریف" />
+            <Button type="button" variant="ghost" className="btn-sm" onClick={() => setEditing(asBrief(brief))}>
+              <Bi en="Edit" fa="ویرایش" />
             </Button>
           </div>
         }
@@ -98,7 +100,7 @@ export function CampaignBriefSection({ campaign, brief }: { campaign: CampaignRo
       {source ? <p className="muted brief-source no-print">آخرین پیش‌نویس: {source === "llm" ? "هوش مصنوعی" : "قالب آماده"}</p> : null}
       {present && brief ? <BriefView brief={asBrief(brief)} /> : (
         <Muted as="p">
-          هنوز بریفی ثبت نشده. با «پیش‌نویس با هوش مصنوعی» از مشخصات همین کمپین یک بریف هفتگی ساخته می‌شود و بعد قابل ویرایش است.
+          هنوز بریفی ثبت نشده. «پیش‌نویس» از مشخصات همین کمپین یک برنامهٔ هفتگی می‌سازد؛ بعد می‌توانید ویرایش و ذخیره کنید.
         </Muted>
       )}
       {editing ? <BriefEdit campaign={campaign} brief={editing} onClose={() => setEditing(null)} /> : null}
@@ -161,7 +163,7 @@ function BriefView({ brief }: { brief: CampaignBriefData }) {
       ) : null}
       {brief.ctas.length || brief.highlight || brief.hashtags.length || brief.pinned ? (
         <div className="brief-block">
-          <h4>CTA، هایلایت و هشتگ</h4>
+          <h4>دعوت به اقدام، هایلایت و هشتگ</h4>
           {brief.ctas.length ? <p className="brief-ctas">{brief.ctas.map((cta) => <span className="brief-chip" key={cta}>{cta}</span>)}</p> : null}
           {brief.highlight ? <p>هایلایت: <strong>{brief.highlight}</strong>{brief.pinned ? <> · پست پین‌شده: «{brief.pinned}»</> : null}</p> : brief.pinned ? <p>پست پین‌شده: «{brief.pinned}»</p> : null}
           {brief.hashtags.length ? <p className="brief-hashtags">{brief.hashtags.join(" ")}</p> : null}
@@ -188,6 +190,7 @@ function AdPhase({ phase }: { phase: BriefAdPhase }) {
 function BriefEdit({ campaign, brief, onClose }: { campaign: CampaignRow; brief: CampaignBriefData; onClose: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
+  const confirm = useConfirm();
   const [slogan, setSlogan] = useState(brief.slogan);
   const [goals, setGoals] = useState(lines(brief.goals));
   const [angle, setAngle] = useState(brief.angle);
@@ -229,44 +232,70 @@ function BriefEdit({ campaign, brief, onClose }: { campaign: CampaignRow; brief:
       .finally(() => setBusy(false));
   }
   return (
-    <EditPop title={<Bi en="Edit brief" fa="ویرایش بریف" />} onClose={onClose}>
+    <EditPop className="brief-pop" title={<Bi en="Edit brief" fa="ویرایش بریف" />} onClose={onClose}>
       <div className="brief-edit">
-        <Field label="شعار"><Input value={slogan} onChange={(event) => setSlogan(event.target.value)} /></Field>
-        <Field label="هدف‌های هفته (هر هدف یک خط)"><TextArea rows={3} value={goals} onChange={(event) => setGoals(event.target.value)} /></Field>
-        <Field label="زاویه محتوایی"><Input value={angle} onChange={(event) => setAngle(event.target.value)} /></Field>
-        <div className="brief-edit-plan">
-          <h5>برنامهٔ محتوایی ۷ روزه</h5>
+        <section className="brief-edit-block">
+          <h5>شعار و زاویه</h5>
+          <div className="brief-pair">
+            <Field label="شعار"><Input value={slogan} onChange={(event) => setSlogan(event.target.value)} /></Field>
+            <Field label="زاویه محتوایی"><Input value={angle} onChange={(event) => setAngle(event.target.value)} /></Field>
+          </div>
+          <Field label="هدف‌های هفته، هر هدف یک خط"><TextArea rows={3} value={goals} onChange={(event) => setGoals(event.target.value)} /></Field>
+        </section>
+        <section className="brief-edit-block">
+          <h5>برنامهٔ هفت روز</h5>
           {plan.map((row, index) => (
             <div className="brief-plan-row" key={index}>
               <span className="brief-plan-day">{row.day}</span>
-              <Input placeholder="نوع محتوا" value={row.kind} onChange={(event) => { const value = event.target.value; setPlan((rows) => rows.map((item, at) => (at === index ? { ...item, kind: value } : item))); }} />
+              <Input placeholder="نوع" value={row.kind} onChange={(event) => { const value = event.target.value; setPlan((rows) => rows.map((item, at) => (at === index ? { ...item, kind: value } : item))); }} />
               <Input placeholder="جزئیات" value={row.details} onChange={(event) => { const value = event.target.value; setPlan((rows) => rows.map((item, at) => (at === index ? { ...item, details: value } : item))); }} />
-              <Input placeholder="محل انتشار" value={row.place} onChange={(event) => { const value = event.target.value; setPlan((rows) => rows.map((item, at) => (at === index ? { ...item, place: value } : item))); }} />
+              <Input placeholder="محل" value={row.place} onChange={(event) => { const value = event.target.value; setPlan((rows) => rows.map((item, at) => (at === index ? { ...item, place: value } : item))); }} />
             </div>
           ))}
-        </div>
-        <Field label="کپشن آماده"><TextArea rows={4} value={caption} onChange={(event) => setCaption(event.target.value)} /></Field>
-        <Field label="ایده‌های ریلز (هر ایده یک خط)"><TextArea rows={3} value={reels} onChange={(event) => setReels(event.target.value)} /></Field>
-        <div className="brief-edit-phases">
-          <h5>فازهای تبلیغ</h5>
+        </section>
+        <section className="brief-edit-block">
+          <h5>کپشن و ریلز</h5>
+          <Field label="کپشن آماده"><TextArea rows={3} value={caption} onChange={(event) => setCaption(event.target.value)} /></Field>
+          <Field label="ایده‌های ریلز، هر ایده یک خط"><TextArea rows={2} value={reels} onChange={(event) => setReels(event.target.value)} /></Field>
+        </section>
+        <section className="brief-edit-block">
+          <h5>تبلیغ</h5>
           {phases.map((phase, index) => (
             <div className="brief-phase-edit" key={index}>
               <Input placeholder="نام فاز" value={phase.name} onChange={(event) => setPhase(index, "name", event.target.value)} />
-              <Input placeholder="هدف فاز" value={phase.goal} onChange={(event) => setPhase(index, "goal", event.target.value)} />
-              <Input placeholder="مخاطب" value={phase.audience} onChange={(event) => setPhase(index, "audience", event.target.value)} />
               <Input type="number" placeholder="٪ بودجه" value={phase.budget_share ?? ""} onChange={(event) => setPhase(index, "budget_share", event.target.value)} />
-              <Input placeholder="متن تبلیغ" value={phase.text} onChange={(event) => setPhase(index, "text", event.target.value)} />
-              <Button type="button" variant="danger-quiet" className="btn-sm" onClick={() => setPhases((rows) => rows.filter((_row, at) => at !== index))}>حذف</Button>
+              <Input placeholder="هدف" value={phase.goal} onChange={(event) => setPhase(index, "goal", event.target.value)} />
+              <Input placeholder="مخاطب" value={phase.audience} onChange={(event) => setPhase(index, "audience", event.target.value)} />
+              <Input className="span-all" placeholder="متن تبلیغ" value={phase.text} onChange={(event) => setPhase(index, "text", event.target.value)} />
+              <Button
+                type="button"
+                variant="danger-quiet"
+                className="btn-sm"
+                onClick={() => {
+                  void confirm("حذف فاز", "این فاز تبلیغ از بریف حذف شود؟", "بله، حذف کن", { danger: true }).then((ok) => {
+                    if (ok) setPhases((rows) => rows.filter((_row, at) => at !== index));
+                  });
+                }}
+              >
+                حذف
+              </Button>
             </div>
           ))}
-          <Button type="button" variant="secondary" className="btn-sm" onClick={() => setPhases((rows) => [...rows, { name: "", goal: "", audience: "", budget_share: null, text: "" }])}>افزودن فاز</Button>
-        </div>
-        <Field label="CTAها (هر CTA یک خط)"><TextArea rows={2} value={ctas} onChange={(event) => setCtas(event.target.value)} /></Field>
-        <Field label="هشتگ‌ها (با فاصله جدا کنید)"><Input value={hashtags} onChange={(event) => setHashtags(event.target.value)} /></Field>
-        <Field label="نام هایلایت"><Input value={highlight} onChange={(event) => setHighlight(event.target.value)} /></Field>
-        <Field label="متن پست پین‌شده"><Input value={pinned} onChange={(event) => setPinned(event.target.value)} /></Field>
+          <Button type="button" variant="ghost" className="btn-sm" onClick={() => setPhases((rows) => [...rows, { name: "", goal: "", audience: "", budget_share: null, text: "" }])}>افزودن فاز</Button>
+        </section>
+        <section className="brief-edit-block">
+          <h5>انتشار</h5>
+          <div className="brief-pair">
+            <Field label="هایلایت"><Input value={highlight} onChange={(event) => setHighlight(event.target.value)} /></Field>
+            <Field label="پست پین‌شده"><Input value={pinned} onChange={(event) => setPinned(event.target.value)} /></Field>
+          </div>
+          <Field label="دعوت به اقدام، هر کدام یک خط"><TextArea rows={2} value={ctas} onChange={(event) => setCtas(event.target.value)} /></Field>
+          <Field label="هشتگ‌ها با فاصله"><Input value={hashtags} onChange={(event) => setHashtags(event.target.value)} /></Field>
+        </section>
       </div>
-      <Button type="button" disabled={busy} onClick={save}><Bi en="Save" fa="ذخیره" /></Button>
+      <div className="brief-save">
+        <Button type="button" className="btn-sm" disabled={busy} onClick={save}><Bi en="Save" fa="ذخیره" /></Button>
+      </div>
     </EditPop>
   );
 }

@@ -103,6 +103,6 @@ async def test_work_progress_workload_delegate_deps(db: AsyncSession, seeded):
     cases = await work.list_cases(ali.organization_id, owner_id=ali.id)
     assert any(c.id == case.id for c in cases)
 
-    await work.complete_task(t2.id, ali.id)
+    await work.complete_task(t2.id, reza.id)
     await work._refresh_work_item_status(wi.id)
     await db.refresh(wi)

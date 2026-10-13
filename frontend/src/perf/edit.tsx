@@ -24,7 +24,7 @@ export function RowActions({ onEdit, onDelete, onDelivery }: { onEdit?: () => vo
     <div className="row-actions" onClick={(event) => event.stopPropagation()}>
       {onDelivery ? (
         <Button type="button" variant="secondary" className="btn-sm" onClick={onDelivery}>
-          <Bi en="Delivery" fa="دلیوری" />
+          <Bi en="Delivery" fa="تحویل" />
         </Button>
       ) : null}
       {onEdit ? (
@@ -56,11 +56,11 @@ export function useRemove() {
   };
 }
 
-export function EditPop({ title, onClose, children }: { title: ReactNode; onClose: () => void; children: ReactNode }) {
+export function EditPop({ title, onClose, children, className = "" }: { title: ReactNode; onClose: () => void; children: ReactNode; className?: string }) {
   const bi = useBi();
   const titleId = useId();
   return (
-    <Dialog onClose={onClose} className="form-pop" labelledBy={titleId} closeLabel={bi("Close", "بستن")}>
+    <Dialog onClose={onClose} className={`form-pop ${className}`.trim()} labelledBy={titleId} closeLabel={bi("Close", "بستن")}>
       <SectionHeader
         title={<span id={titleId}>{title}</span>}
         action={<button type="button" className="kpi-more" onClick={onClose}><Bi en="Close" fa="بستن" /></button>}
@@ -162,7 +162,7 @@ export function SmsDelivery({ row, onClose }: { row: SmsSend; onClose: () => voi
       .finally(() => setSavingId(false));
   }
   return (
-    <EditPop title={<Bi en="Delivery status" fa="بررسی دلیوری پیشگام" />} onClose={onClose}>
+    <EditPop title={<Bi en="Delivery status" fa="بررسی وضعیت تحویل پیشگام" />} onClose={onClose}>
       <p className="muted">
         شناسهٔ ارسال را از صف ارسال یا صندوق ارسال پنل پیشگام بردارید و حداکثر ۱۰۰ شمارهٔ گیرنده بنویسید. تعداد «رسیده به گوشی» روی همین رکورد ارسال و شیت پیامک می‌نشیند.
       </p>

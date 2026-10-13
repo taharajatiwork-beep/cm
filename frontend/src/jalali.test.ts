@@ -7,6 +7,8 @@ import {
   formatJalaliShort,
   formatJalaliText,
   gregorianToJalali,
+  jalaliMonthGrid,
+  jalaliMonthLength,
   parseJalaliText,
 } from "./jalali";
 
@@ -71,6 +73,15 @@ describe("jalali", () => {
     expect(formatJalaliText("1405/07/13")).toBe("۱۳ مهر ۱۴۰۵");
     expect(formatJalaliText("4 ادز")).toBe("۴ ادز");
     expect(formatJalaliText("")).toBe("");
+  });
+
+  it("builds Aban 1405 from Saturday, with day 1 on Friday", () => {
+    expect(jalaliMonthLength(1405, 8)).toBe(30);
+    const weeks = jalaliMonthGrid(1405, 8);
+    expect(weeks[0]).toHaveLength(7);
+    expect(weeks[0][6]).toMatchObject({ day: 1, inMonth: true, iso: "2026-10-23" });
+    expect(weeks.flat().filter((cell) => cell.inMonth)).toHaveLength(30);
+    expect(weeks.at(-1)?.find((cell) => cell.day === 30 && cell.inMonth)?.iso).toBe("2026-11-21");
   });
 
   it("pads the hour and returns null for empty input", () => {

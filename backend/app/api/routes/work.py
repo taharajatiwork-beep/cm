@@ -397,7 +397,17 @@ async def list_tasks(
         overdue_only=overdue_only,
         scope=ctx.scope,
     )
-    return tasks
+    from app.models.enums import TaskRole
+    from app.schemas import TaskOut
+
+    listed = []
+    for task in tasks:
+        row = TaskOut.model_validate(task).model_dump(mode="json")
+        row["assignee_ids"] = [
+            str(link.user_id) for link in task.assignees if link.role == TaskRole.ASSIGNEE
+        ]
+        listed.append(row)
+    return listed
 
 
 @router.post("/tasks/{task_id}/participants")
@@ -648,10 +658,6 @@ async def complete_task(
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        require_permission(ctx.permissions, PermissionCode.TASK_WRITE)
-    except AuthorizationError as e:
-        raise handle_authz(e) from e
     from app.models import Task
 
     task = await db.get(Task, task_id)
@@ -659,6 +665,8 @@ async def complete_task(
         raise HTTPException(404, "Task not found")
     try:
         return await WorkService(db).complete_task(task_id, ctx.user.id)
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 

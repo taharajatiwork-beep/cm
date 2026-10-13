@@ -51,26 +51,26 @@ function PageCatalog() {
   const [name, setName] = useState("");
   const [topic, setTopic] = useState("");
   const [contact, setContact] = useState("");
-  const [price, setPrice] = useState(0);
+  const [price, setPrice] = useState("");
   const [editId, setEditId] = useState("");
-  const [nextPrice, setNextPrice] = useState(0);
+  const [nextPrice, setNextPrice] = useState("");
   const [adding, setAdding] = useState(false);
   const [pricing, setPricing] = useState(false);
   const [priceQuery, setPriceQuery] = useState("");
   const add = useMutation({
-    mutationFn: () => perfApi.createPage({ name, topic, contact, price_toman: price }),
+    mutationFn: () => perfApi.createPage({ name, topic, contact, price_toman: price === "" ? 0 : Number(price) }),
     onSuccess: () => {
       toast("پیج به فهرست اضافه شد");
       setName("");
       setTopic("");
       setContact("");
-      setPrice(0);
+      setPrice("");
       qc.invalidateQueries({ queryKey: ["perf", "pages"] });
     },
     onError: (error: Error) => toast(error.message),
   });
   const savePrice = useMutation({
-    mutationFn: () => perfApi.updatePage(editId, { price_toman: nextPrice }),
+    mutationFn: () => perfApi.updatePage(editId, { price_toman: nextPrice === "" ? 0 : Number(nextPrice) }),
     onSuccess: () => {
       toast("قیمت پیج عوض شد");
       qc.invalidateQueries({ queryKey: ["perf", "pages"] });
@@ -133,7 +133,7 @@ function PageCatalog() {
           <Field label={<Bi en="Name" fa="اسم" />}><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label={<Bi en="Topic" fa="موضوع" />}><Input value={topic} onChange={(e) => setTopic(e.target.value)} /></Field>
           <Field label={<Bi en="Contact" fa="مخاطب" />}><Input value={contact} onChange={(e) => setContact(e.target.value)} /></Field>
-          <Field label={<Bi en="Price (toman)" fa="قیمت (تومان)" />}><Input type="number" value={price || ""} onChange={(e) => setPrice(Number(e.target.value))} /></Field>
+          <Field label={<Bi en="Price (toman)" fa="قیمت (تومان)" />}><Input inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ""))} /></Field>
           <Button type="button" disabled={!name.trim() || add.isPending} onClick={() => add.mutate(undefined, { onSuccess: () => setAdding(false) })}>
             <Bi en="Add page" fa="افزودن" />
           </Button>
@@ -147,14 +147,14 @@ function PageCatalog() {
               const id = e.target.value;
               setEditId(id);
               const row = (pages.data ?? []).find((item) => item.id === id);
-              setNextPrice(row?.price_toman || 0);
+              setNextPrice(row?.price_toman ? String(row.price_toman) : "");
             }}>
               <option value="">—</option>
               {(pages.data ?? []).filter((row) => hit(priceQuery, row.name)).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
             </Select>
           </Field>
           <Field label={<Bi en="New price" fa="قیمت جدید" />}>
-            <Input type="number" value={nextPrice || ""} onChange={(e) => setNextPrice(Number(e.target.value))} />
+            <Input inputMode="numeric" value={nextPrice} onChange={(e) => setNextPrice(e.target.value.replace(/[^\d]/g, ""))} />
           </Field>
           <Button type="button" variant="secondary" disabled={!editId || savePrice.isPending} onClick={() => savePrice.mutate(undefined, { onSuccess: () => setPricing(false) })}>
             <Bi en="Save price" fa="ذخیره" />
@@ -337,7 +337,7 @@ function PlacementTable({ rows, readonly, focus, candidates }: { rows: Story[]; 
             header: "وضعیت",
             render: (row) => row.status === "published"
               ? <Badge tone="ok">منتشر شده</Badge>
-              : <Badge tone="warn">{row.payment_status ? (PAY[row.payment_status] || row.payment_status) : "قرار"}</Badge>,
+              : <Badge tone="warn">{row.payment_status ? (PAY[row.payment_status] || "وضعیت نامشخص") : "قرار"}</Badge>,
           },
           {
             key: "actions",
@@ -612,7 +612,7 @@ function SocialSteps({ campaignId, budgetToman, step }: { campaignId: string; bu
         ) : null}
       </Card>
       <Card>
-        <SectionHeader title={`${label.fa}‌های این کمپین`} hint={<Bi en="Publish and the insight numbers stay here." fa="انتشار و عدد اینسایت همین‌جا ثبت می‌شود." />} />
+        <SectionHeader title={`${label.fa}‌های این کمپین`} hint={<Bi en="Publish and post stats stay here." fa="انتشار و آمار پست همین‌جا ثبت می‌شود." />} />
         <KindPane campaignId={campaignId} kind={kind} label={label.fa} focus={step} />
       </Card>
       <Card>

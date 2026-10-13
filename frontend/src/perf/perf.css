@@ -177,6 +177,15 @@
   margin-top: var(--space-3);
 }
 
+.perf-check--inline {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-3) 55%, var(--surface));
+  width: 100%;
+}
+
 .perf-report {
   display: flex;
   flex-direction: column;
@@ -801,14 +810,356 @@
 
 .conn-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-3);
+  align-items: start;
+  width: 100%;
+  margin-top: var(--space-3);
+}
+
+/* جریان واحد پیامک */
+.sms-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  gap: var(--space-4);
+  align-items: start;
+  margin-top: var(--space-3);
+}
+
+.sms-flow-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.sms-flow-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sms-flow-step {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.sms-flow-step.is-active {
+  border-color: var(--accent, #3b6fd8);
+  font-weight: 600;
+}
+
+.sms-flow-summary {
+  position: sticky;
+  top: var(--space-3);
+}
+
+.sms-flow-summary-card {
+  margin: 0;
+}
+
+.sms-flow-summary-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+}
+
+.sms-flow-missing ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sms-flow-missing-link {
+  background: none;
+  border: none;
+  color: var(--accent, #3b6fd8);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.sms-flow-audience-panel {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
 
-@media (min-width: 860px) {
-  .conn-grid {
-    grid-template-columns: 1fr 1fr;
+.sms-flow-target {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.sms-flow-target-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-3) 30%, var(--surface));
+}
+
+.sms-flow-target-conditions-grid {
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  max-width: 52rem;
+}
+
+.sms-flow-target-conditions-hint {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.sms-flow-target-table-wrap {
+  flex: 1;
+  min-height: 12rem;
+  max-height: 26rem;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.sms-flow-target-table-wrap .ui-table-wrap {
+  margin: 0;
+}
+
+.sms-flow-target-table th,
+.sms-flow-target-table td {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.84rem;
+  vertical-align: middle;
+}
+
+.sms-flow-target-table .cell-check {
+  width: 2.25rem;
+  text-align: center;
+}
+
+.sms-flow-target-check {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent, #3b6fd8);
+  cursor: pointer;
+}
+
+.sms-flow-target-table tr.is-active {
+  background: color-mix(in srgb, var(--accent, #3b6fd8) 8%, var(--surface));
+}
+
+.sms-flow-target-table tr.is-clickable {
+  cursor: pointer;
+}
+
+.sms-flow-target-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-3);
+}
+
+.sms-flow-target-bar .perf-actions {
+  margin: 0;
+}
+
+.sms-flow-target-bar .sms-flow-progress {
+  flex: 1 1 14rem;
+  min-width: min(100%, 16rem);
+  margin: 0;
+}
+
+.sms-flow-progress {
+  overflow: hidden;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  padding: var(--space-2);
+}
+
+.sms-flow-progress-bar {
+  height: 4px;
+  margin-bottom: var(--space-2);
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent, #3b6fd8), color-mix(in srgb, var(--accent, #3b6fd8) 40%, transparent));
+  animation: sms-flow-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes sms-flow-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.sms-flow-postal {
+  margin-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (max-width: 56rem) {
+  .sms-flow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sms-flow-summary {
+    position: static;
+    order: -1;
+  }
+
+}
+
+/* هدف‌گیری محله — legacy aliases */
+.perf-target {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.perf-target-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.perf-target-step {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.perf-target-step strong {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-2);
+  margin-bottom: 0.15rem;
+}
+
+.perf-target-step.is-done {
+  border-color: color-mix(in srgb, var(--ok) 55%, var(--line));
+  color: var(--ink);
+}
+
+.perf-target-step.is-active {
+  border-color: var(--accent, #3b6fd8);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #3b6fd8) 25%, transparent);
+  color: var(--ink);
+}
+
+.perf-target-step.is-locked {
+  opacity: 0.72;
+}
+
+.perf-target-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.perf-target-table {
+  max-height: 20rem;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.perf-target-table .ui-table-wrap {
+  margin: 0;
+}
+
+.perf-target-aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-3) 35%, var(--surface));
+}
+
+.perf-target-aside .field label {
+  font-size: 0.78rem;
+}
+
+.perf-target-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.perf-target-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.perf-target-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-3);
+}
+
+.perf-target-bar .perf-actions {
+  margin: 0;
+  justify-content: flex-end;
+}
+
+.perf-target-bar-hint {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+
+.perf-target-preview {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  background: color-mix(in srgb, var(--ok) 5%, var(--surface));
+}
+
+@media (max-width: 56rem) {
+  .perf-target-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .perf-target-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -989,28 +1340,52 @@
 
 .brief-edit {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  min-height: 0;
+  overflow: auto;
 }
 
-.brief-edit-plan,
-.brief-edit-phases {
+.brief-edit .field,
+.brief-edit .field textarea {
+  width: 100%;
+  max-width: none;
+}
+
+.brief-edit-block {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  align-items: stretch;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
 }
 
 .brief-edit h5 {
   margin: 0;
-  font-size: 0.8rem;
-  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+
+.brief-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.brief-save {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .brief-plan-row {
   display: grid;
-  grid-template-columns: 4.5rem repeat(3, minmax(0, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: 4.2rem repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
   align-items: center;
 }
 
@@ -1022,9 +1397,16 @@
 
 .brief-phase-edit {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
-  gap: 0.5rem;
+  grid-template-columns: 1.4fr 0.6fr 1fr 1fr auto;
+  gap: 0.4rem;
   align-items: center;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.brief-phase-edit .span-all {
+  grid-column: 1 / -1;
 }
 
 .panel-probe-form {
@@ -1044,8 +1426,13 @@
 }
 
 @media (max-width: 720px) {
+  .brief-pair,
   .brief-plan-row,
   .brief-phase-edit {
     grid-template-columns: 1fr;
+  }
+
+  .brief-phase-edit .span-all {
+    grid-column: auto;
   }
 }

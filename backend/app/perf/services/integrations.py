@@ -207,6 +207,12 @@ def pishgam_delivered_count(statuses: list[object]) -> int:
 
 async def read_insight_image(data: bytes, content_type: str) -> dict:
     settings = get_settings()
+    if not settings.llm_external_enabled:
+        return {
+            "ok": False,
+            "reason": "ارسال تصویر به مدل بیرونی خاموش است (LLM_EXTERNAL_ENABLED=false).",
+            "fields": {},
+        }
     if not settings.llm_api_key or settings.llm_provider in ("", "off", "rules", "fake"):
         return {
             "ok": False,

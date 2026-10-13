@@ -225,9 +225,13 @@ export const api = {
       email: string;
       organization_id: string;
       role_id: string | null;
+      role_code?: string | null;
+      role_name?: string | null;
       branch_id: string | null;
       department_id: string | null;
       team_id: string | null;
+      team_home_team_id?: string | null;
+      branch_name?: string | null;
       permissions: string[];
     }>("/auth/me"),
   roles: () => request<Array<{ id: string; name: string; code: string }>>("/org/roles"),
@@ -841,6 +845,10 @@ export const api = {
         }>;
         skipped: Array<{ key: string; env: string; reason: string }>;
       }>("/perf/sheets/sync", { method: "POST" }),
+    status: () =>
+      request<{ running: boolean; actor_name: string; finished_at: string | null; result: string; error: string }>(
+        "/perf/sheets/status",
+      ),
   },
   reports: {
     kpis: () =>

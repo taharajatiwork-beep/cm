@@ -24,6 +24,7 @@ from app.api.routes import (
     telegram,
     work,
 )
+from app.calendar.routes import router as calendar_router
 from app.perf.routes import router as perf_router
 from app.requests.routes import router as requests_router
 from app.requests.teams import router as teams_router
@@ -32,7 +33,7 @@ from app.core.logging import setup_logging
 from app.core.metrics import async_timed_request, record_request, render_metrics
 from app.core.permissions import AuthorizationError
 from app.core.startup import assert_production_safe
-from app.db.session import WorkerSessionLocal, _tune_sqlite, get_db
+from app.db.session import WorkerSessionLocal, get_db
 from app.worker import start_background, stop_background
 
 
@@ -40,8 +41,6 @@ from app.worker import start_background, stop_background
 async def lifespan(_app: FastAPI):
     settings = get_settings()
     assert_production_safe(settings)
-    # SQLite (توسعه و تست) برای کار هم‌زمان به WAL و busy_timeout نیاز دارد
-    await _tune_sqlite()
     if settings.worker_mode == "embedded" and (
         settings.telegram_mode != "off" or settings.bale_mode != "off"
     ):
@@ -97,6 +96,7 @@ def create_app() -> FastAPI:
         campaigns.router,
         enterprise.router,
         perf_router,
+        calendar_router,
         requests_router,
         teams_router,
         perf_sheets.router,

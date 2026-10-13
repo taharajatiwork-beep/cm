@@ -1,11 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { Avatar, Icon, type IconName } from "./components/ui";
 import { Bi, LangSwitch, useBi, useLocale } from "./i18n";
-import { isPerformanceUser, orderNavGroups } from "./lib/navigation";
+import { canSeeMarketingHome, canSeeNavPath, marketingHomePath } from "./lib/access";
+import { dailyPaths, groupDailyNav, partitionMarketingNav } from "./lib/focus";
+import { isPerformanceUser } from "./lib/navigation";
+import { roleTitle } from "./lib/roles";
+import symbolUrl from "../../assets/sotoodeh-brand-kit/assets/sotoodeh-symbol-96.png";
+
+type NavGroupKey = "" | "Marketing" | "More";
 
 type NavItem = {
   to: string;
@@ -19,49 +25,29 @@ type NavItem = {
   permAny?: string[];
   adminOnly?: boolean;
   managerOnly?: boolean;
+  group: NavGroupKey;
 };
 
-const navGroups: Array<{ en: string; fa: string; items: NavItem[] }> = [
-  {
-    en: "",
-    fa: "",
-    items: [
-      { to: "/", icon: "home", labelEn: "Home", labelFa: "خانه", hintEn: "What needs you today", hintFa: "امروز چه چیزی به شما نیاز دارد", end: true },
-      { to: "/my-work", icon: "check", labelEn: "My Work", labelFa: "کارهای من", hintEn: "Things you need to do", hintFa: "کارهایی که باید انجام دهید" },
-      { to: "/requests", icon: "megaphone", labelEn: "Requests", labelFa: "درخواست‌ها", hintEn: "Manager asks, team builds projects", hintFa: "درخواست مدیر به تیم", end: true, permAny: ["request.create", "request.triage", "request.manage", "org.admin"] },
-      { to: "/projects", icon: "layers", labelEn: "Projects", labelFa: "پروژه‌ها", hintEn: "One request, one or more projects", hintFa: "از هر درخواست یک یا چند پروژه", permAny: ["request.triage", "request.manage", "task.read", "org.admin"] },
-      { to: "/pricing", icon: "megaphone", labelEn: "Price and posts", labelFa: "قیمت و پست‌ها", hintEn: "Confirm the price before a post goes out", hintFa: "قیمت را قبل از پست تأیید کنید", permAny: ["price.write", "campaign.read"] },
-      { to: "/communication", icon: "message", labelEn: "Messages", labelFa: "پیام‌ها", hintEn: "Talk with colleagues", hintFa: "گفتگو با همکاران", perm: "conversation.read" },
-      { to: "/vehicles", icon: "car", labelEn: "Vehicles", labelFa: "خودروها", hintEn: "Cars in stock and their details", hintFa: "خودروهای موجود و مشخصاتشان", perm: "inventory.read" },
-      { to: "/approvals", icon: "check", labelEn: "Approvals", labelFa: "تأییدها", hintEn: "Requests waiting for a decision", hintFa: "درخواست‌هایی که منتظر تصمیم‌اند", perm: "price.write" },
-      { to: "/customers", icon: "user", labelEn: "Customers", labelFa: "مشتریان", hintEn: "Buyers and sellers", hintFa: "خریداران و فروشندگان", adminOnly: true },
-      { to: "/agent", icon: "sparkles", labelEn: "Assistant", labelFa: "دستیار", hintEn: "Ask about your own work", hintFa: "درباره کار خودتان بپرسید" },
-    ],
-  },
-  {
-    en: "Marketing",
-    fa: "مارکتینگ",
-    items: [
-      { to: "/perf", icon: "activity", labelEn: "Performance", labelFa: "پرفورمنس", hintEn: "Campaigns, costs and results", hintFa: "کمپین‌ها، هزینه و نتیجه", end: true, permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
-      { to: "/perf/campaigns", icon: "megaphone", labelEn: "Campaigns", labelFa: "کمپین‌ها", hintEn: "Cost, leads and CPL", hintFa: "هزینه، ورودی و هزینه هر ورودی", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
-      { to: "/perf/sms", icon: "message", labelEn: "SMS", labelFa: "پیامک", hintEn: "Write, lists and sends", hintFa: "نوشتن، لیست و ثبت ارسال", permAny: ["perf.read", "perf.write"] },
-      { to: "/perf/social", icon: "flag", labelEn: "Social", labelFa: "سوشال", hintEn: "Cars, budget, then pages", hintFa: "ماشین، بودجه، بعد پیج", permAny: ["perf.read", "perf.write"] },
-      { to: "/perf/money", icon: "briefcase", labelEn: "Costs", labelFa: "هزینه‌ها", hintEn: "Charges and payments", hintFa: "شارژ و پرداخت", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
-      { to: "/perf/sheet", icon: "book", labelEn: "Sheet", labelFa: "شیت", hintEn: "The live cost and result sheet", hintFa: "شیت زنده هزینه و نتیجه", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
-      { to: "/perf/connections", icon: "settings", labelEn: "Connections", labelFa: "اتصالات", hintEn: "Sheets, Mizito and the rest", hintFa: "شیت، میزیتو و بقیه", permAny: ["perf.read", "perf.write", "perf.approve", "price.write"] },
-    ],
-  },
-  {
-    en: "More",
-    fa: "بیشتر",
-    items: [
-      { to: "/people", icon: "users", labelEn: "Colleagues", labelFa: "همکاران", hintEn: "Who does what", hintFa: "چه کسی چه کاری می‌کند", perm: "user.read", managerOnly: true },
-      { to: "/knowledge", icon: "book", labelEn: "Rules & guides", labelFa: "قوانین و راهنماها", hintEn: "Company rules and how-tos", hintFa: "قوانین شرکت و روش انجام کارها", adminOnly: true },
-      { to: "/cases", icon: "briefcase", labelEn: "Cases", labelFa: "پرونده‌ها", hintEn: "Track one subject in your section", hintFa: "پیگیری یک موضوع در بخش شما", perm: "case.read", adminOnly: true },
-      { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "Your own numbers, or your team's", hintFa: "عددهای خودتان یا تیمتان", permAny: ["event.read", "request.create", "request.triage", "org.admin"] },
-      { to: "/admin", icon: "settings", labelEn: "Admin", labelFa: "مدیریت", hintEn: "Overview, users, audit", hintFa: "نمای کلی، کاربران، ممیزی", perm: "org.admin" },
-    ],
-  },
+const navCatalog: NavItem[] = [
+  { to: "/", icon: "home", labelEn: "Home", labelFa: "خانه", hintEn: "What needs you today", hintFa: "امروز چه چیزی به شما نیاز دارد", end: true, group: "" },
+  { to: "/my-work", icon: "check", labelEn: "My Work", labelFa: "کارهای من", hintEn: "Things you need to do", hintFa: "کارهایی که باید انجام دهید", group: "" },
+  { to: "/requests", icon: "send", labelEn: "Work requests", labelFa: "درخواست‌های کار", hintEn: "Manager work request → team projects", hintFa: "درخواست کار مدیر به تیم", end: true, permAny: ["request.create", "request.triage", "request.manage", "org.admin"], group: "" },
+  { to: "/projects", icon: "layers", labelEn: "Projects", labelFa: "پروژه‌ها", hintEn: "One request, one or more projects", hintFa: "از هر درخواست یک یا چند پروژه", permAny: ["request.create", "request.triage", "request.manage", "task.read", "org.admin"], group: "" },
+  { to: "/calendar", icon: "clock", labelEn: "Calendar", labelFa: "تقویم", hintEn: "Content and everyone's work", hintFa: "محتوا و کار همه", group: "" },
+  { to: "/pricing", icon: "upload", labelEn: "Price and posts", labelFa: "قیمت و پست‌ها", hintEn: "Confirm the price before a post goes out", hintFa: "قیمت را قبل از پست تأیید کنید", group: "" },
+  { to: "/communication", icon: "message", labelEn: "Messages", labelFa: "پیام‌ها", hintEn: "Talk with colleagues", hintFa: "گفتگو با همکاران", perm: "conversation.read", group: "" },
+  { to: "/vehicles", icon: "car", labelEn: "Vehicles", labelFa: "خودروها", hintEn: "Cars in stock and their details", hintFa: "خودروهای موجود و مشخصاتشان", perm: "inventory.read", group: "" },
+  { to: "/customers", icon: "user", labelEn: "Customers", labelFa: "مشتریان", hintEn: "Buyers and sellers", hintFa: "خریداران و فروشندگان", group: "" },
+  { to: "/perf", icon: "activity", labelEn: "Performance", labelFa: "پرفورمنس", hintEn: "Perf campaigns, costs and results", hintFa: "کمپین پرفورمنس، هزینه و نتیجه", end: true, permAny: ["perf.read", "perf.write", "perf.approve", "price.approve"], group: "Marketing" },
+  { to: "/perf/campaigns", icon: "megaphone", labelEn: "Perf campaigns", labelFa: "کمپین پرفورمنس", hintEn: "Cost, leads and CPL", hintFa: "هزینه، ورودی و هزینه هر ورودی", permAny: ["perf.read", "perf.write", "perf.approve", "price.approve"], group: "Marketing" },
+  { to: "/perf/sms", icon: "message", labelEn: "SMS", labelFa: "پیامک", hintEn: "Write, lists and sends", hintFa: "نوشتن، لیست و ثبت ارسال", permAny: ["perf.read", "perf.write"], group: "Marketing" },
+  { to: "/perf/social", icon: "flag", labelEn: "Social", labelFa: "سوشال", hintEn: "Cars, budget, then pages", hintFa: "ماشین، بودجه، بعد پیج", permAny: ["perf.read", "perf.write"], group: "Marketing" },
+  { to: "/perf/sheet", icon: "layers", labelEn: "Sheet", labelFa: "شیت", hintEn: "Campaign rows and sync", hintFa: "ردیف کمپین و همگام‌سازی", group: "Marketing" },
+  { to: "/perf/money", icon: "briefcase", labelEn: "Costs", labelFa: "هزینه‌ها", hintEn: "Charges and payments", hintFa: "شارژ و پرداخت", group: "Marketing" },
+  { to: "/people", icon: "users", labelEn: "Colleagues", labelFa: "همکاران", hintEn: "Who does what", hintFa: "چه کسی چه کاری می‌کند", perm: "user.read", group: "More" },
+  { to: "/knowledge", icon: "book", labelEn: "Rules & guides", labelFa: "قوانین و راهنماها", hintEn: "Company rules and how-tos", hintFa: "قوانین شرکت و روش انجام کارها", perm: "kb.read", group: "More" },
+  { to: "/reports", icon: "activity", labelEn: "Reports", labelFa: "گزارش‌ها", hintEn: "Your own numbers, or your team's", hintFa: "عددهای خودتان یا تیمتان", group: "More" },
+  { to: "/admin", icon: "settings", labelEn: "Admin", labelFa: "مدیریت", hintEn: "Overview, users, audit", hintFa: "نمای کلی، کاربران، ممیزی", perm: "org.admin", group: "More" },
 ];
 
 const roleFa: Record<string, string> = {
@@ -72,13 +58,30 @@ const roleFa: Record<string, string> = {
   manager: "مدیر شعبه",
   seller: "فروشنده",
   marketing: "مارکتینگ",
-  marketing_manager: "مدیر مارکتینگ",
+  marketing_manager: "سرپرست مارکتینگ",
   performance_marketing: "پرفورمنس مارکتینگ",
   finance: "مالی",
   designer: "طراح",
   filmmaker: "فیلم‌بردار",
+  reporter: "گزارش‌گیر",
   viewer: "بازدیدکننده",
 };
+
+function sortByDaily<T extends { to: string }>(items: T[], daily: string[]): T[] {
+  const order = new Map(daily.map((path, index) => [path, index]));
+  return [...items].sort((a, b) => (order.get(a.to) ?? 999) - (order.get(b.to) ?? 999));
+}
+
+function NavLinks({ items, closeDrawer, bi }: { items: NavItem[]; closeDrawer: () => void; bi: (en: string, fa: string) => string }) {
+  return items.map((l) => (
+    <NavLink key={l.to} to={l.to} end={l.end} title={bi(l.hintEn, l.hintFa)} onClick={closeDrawer}>
+      <Icon name={l.icon} />
+      <span>
+        <Bi en={l.labelEn} fa={l.labelFa} />
+      </span>
+    </NavLink>
+  ));
+}
 
 export function Shell() {
   const { user, logout, roleHint, has } = useAuth();
@@ -88,7 +91,6 @@ export function Shell() {
   const { pathname } = useLocation();
   const searchRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
-  // منوی کشویی موبایل: مسیری که منو در آن باز شد. با عوض شدن مسیر، منو خودبه‌خود بسته است.
   const [drawerAt, setDrawerAt] = useState<string | null>(null);
   if (drawerAt !== null && drawerAt !== pathname) setDrawerAt(null);
   const drawer = drawerAt === pathname;
@@ -101,27 +103,91 @@ export function Shell() {
     queryFn: () => api.notifications(),
     refetchInterval: 30_000,
   });
-  const departments = useQuery({
-    queryKey: ["departments"],
-    queryFn: () => api.departments.list(),
-    enabled: Boolean(user?.id),
-  });
-  const sectionName = String(
-    (departments.data ?? []).find((row) => String(row.id) === String(user?.department_id))?.name ?? "",
-  );
   const noteCount = (notes.data ?? []).filter((row) => !row.is_read).length;
   const roleLabel =
-    locale === "fa"
-      ? roleFa[user?.roleCode || ""] || roleFa[roleHint] || roleHint
-      : user?.roleCode || roleHint;
-  // گروه پرفورمنس در منو «Marketing» نام دارد؛ مقایسهٔ قبلی با «Performance» هیچ‌وقت درست درنمی‌آمد
-  const orderedGroups = orderNavGroups(navGroups, isPerformanceUser(user));
+    locale === "fa" ? roleTitle(user?.roleCode, user?.branch_name) || roleFa[roleHint] || roleHint : user?.roleCode || roleHint;
+  const isSiteAdmin = user?.roleCode === "admin" || has("org.admin");
+  const isBranchManager = user?.roleCode === "manager" || isSiteAdmin;
+
+  const accessUser = useMemo(
+    () => ({
+      roleCode: user?.roleCode,
+      permissions: user?.permissions ?? [],
+      teamId: user?.team_id,
+      teamHomeTeamId: user?.team_home_team_id,
+    }),
+    [user?.roleCode, user?.permissions, user?.team_id, user?.team_home_team_id],
+  );
+
+  const visibleItems = useMemo(() => {
+    const seen = new Set<string>();
+    const homePath = marketingHomePath(accessUser);
+    const injected: NavItem[] =
+      homePath && canSeeMarketingHome(accessUser)
+        ? [
+            {
+              to: homePath,
+              icon: "flag",
+              labelEn: "Marketing home",
+              labelFa: "خانه مارکتینگ",
+              hintEn: "How marketing is doing",
+              hintFa: "وضعیت کلی مارکتینگ",
+              group: "Marketing",
+            },
+          ]
+        : [];
+    const items = [...injected, ...navCatalog].filter((item) => {
+      if (seen.has(item.to)) return false;
+      if (item.adminOnly && !isSiteAdmin) return false;
+      if (item.managerOnly && !isBranchManager) return false;
+      const visible = canSeeNavPath(item.to, accessUser, has);
+      if (visible) seen.add(item.to);
+      return visible;
+    });
+    return items;
+  }, [accessUser, has, isSiteAdmin, isBranchManager]);
+
+  const focusUser = useMemo(
+    () => ({
+      roleHint,
+      roleCode: user?.roleCode,
+      permissions: user?.permissions ?? [],
+      teamId: user?.team_id,
+      teamHomeTeamId: user?.team_home_team_id,
+    }),
+    [roleHint, user?.roleCode, user?.permissions, user?.team_id, user?.team_home_team_id],
+  );
+
+  const daily = useMemo(() => dailyPaths(focusUser), [focusUser]);
+  const marketingHomeTo = marketingHomePath(accessUser);
+  const navForGeneral = useMemo(
+    () =>
+      visibleItems.filter(
+        (item) => item.group !== "Marketing" && (!marketingHomeTo || item.to !== marketingHomeTo),
+      ),
+    [visibleItems, marketingHomeTo],
+  );
+  const placed = useMemo(() => groupDailyNav(navForGeneral, daily), [navForGeneral, daily]);
+  const mainNav = useMemo(() => sortByDaily(placed.main, daily), [placed.main, daily]);
+  const otherMore = placed.more;
+
+  const marketingNav = useMemo(
+    () => partitionMarketingNav(visibleItems, marketingHomeTo),
+    [visibleItems, marketingHomeTo],
+  );
+
+  const perfFocused =
+    isPerformanceUser({ roleCode: user?.roleCode, permissions: user?.permissions ?? [] }) || roleHint === "marketing";
+
+  const perfToolsPathActive = marketingNav.perfTools.some(
+    (item) => pathname === item.to || pathname.startsWith(`${item.to}/`),
+  );
+  const morePathActive = otherMore.some((item) => pathname === item.to || pathname.startsWith(`${item.to}/`));
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
 
-  // باز: فوکوس داخل منو، اسکرول صفحه قفل، Esc می‌بندد. بسته: فوکوس به دکمهٔ منو برمی‌گردد.
   useEffect(() => {
     if (!drawer) {
       if (wasOpen.current) toggleRef.current?.focus();
@@ -135,7 +201,6 @@ export function Shell() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setDrawerAt(null);
     };
-    // اگر صفحه پهن شود منوی کناری عادی دیده می‌شود؛ کشو و قفل اسکرول نباید بماند
     const wide = window.matchMedia("(min-width: 861px)");
     const onWide = () => {
       if (wide.matches) setDrawerAt(null);
@@ -179,13 +244,13 @@ export function Shell() {
       >
         <div className="brand-row">
           <Link to="/" className="brand">
-            <span className="brand-mark">CM</span>
+            <img className="brand-mark" src={symbolUrl} alt="" width={96} height={69} />
             <span className="brand-text">
               <strong>
-                <Bi en="CM Ops" fa="عملیات CM" />
+                <Bi en="Sotoodeh" fa="ستوده" />
               </strong>
               <span>
-                <Bi en="Automotive workspace" fa="فضای کار خودرو" />
+                <Bi en="Operations" fa="سامانه عملیاتی" />
               </span>
             </span>
           </Link>
@@ -202,38 +267,46 @@ export function Shell() {
         </div>
 
         <nav className="nav-primary">
-          {orderedGroups.map((g) => {
-            const items = g.items.filter((l) => {
-              if (l.adminOnly && roleHint !== "admin") return false;
-              if (l.managerOnly && roleHint !== "manager" && roleHint !== "admin") return false;
-              if (l.permAny) return l.permAny.some((code) => has(code));
-              return !l.perm || has(l.perm);
-            });
-            if (items.length === 0) return null;
-            return (
-              <div className="nav-group" key={g.en || "main"}>
-                {g.en ? (
-                  <div className="nav-group-label">
-                    <Bi en={g.en} fa={g.fa} />
-                  </div>
-                ) : null}
-                {g.en === "" && user?.team_id && (has("request.triage") || has("task.read") || has("org.admin")) ? (
-                  <NavLink to={`/teams/${user.team_id}`} title={bi("Your section's home", "خانهٔ بخش شما")} onClick={closeDrawer}>
-                    <Icon name="layers" />
-                    <span><Bi en="Section home" fa="خانهٔ بخش" /></span>
-                  </NavLink>
-                ) : null}
-                {items.map((l) => (
-                  <NavLink key={l.to} to={l.to} end={l.end} title={bi(l.hintEn, l.hintFa)} onClick={closeDrawer}>
-                    <Icon name={l.icon} />
-                    <span>
-                      <Bi en={l.labelEn} fa={l.labelFa} />
-                    </span>
-                  </NavLink>
-                ))}
+          {mainNav.length > 0 ? (
+            <div className="nav-group">
+              <div className="nav-group-label">
+                <Bi en="General" fa="عمومی" />
               </div>
-            );
-          })}
+              <NavLinks items={mainNav} closeDrawer={closeDrawer} bi={bi} />
+            </div>
+          ) : null}
+
+          {marketingNav.head.length > 0 || marketingNav.perfTools.length > 0 ? (
+            <div className="nav-group">
+              <div className="nav-group-label">
+                <Bi en="Marketing" fa="مارکتینگ" />
+              </div>
+              {marketingNav.head.length > 0 ? (
+                <NavLinks items={marketingNav.head} closeDrawer={closeDrawer} bi={bi} />
+              ) : null}
+              {marketingNav.perfTools.length > 0 ? (
+                <details className="advanced nav-advanced" open={perfFocused || perfToolsPathActive || undefined}>
+                  <summary>
+                    <Bi en="Performance tools" fa="ابزارهای پرفورمنس" />
+                  </summary>
+                  <div className="nav-group nav-group--nested">
+                    <NavLinks items={marketingNav.perfTools} closeDrawer={closeDrawer} bi={bi} />
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
+
+          {otherMore.length > 0 ? (
+            <details className="advanced nav-advanced" open={morePathActive || undefined}>
+              <summary>
+                <Bi en="More" fa="بیشتر" />
+              </summary>
+              <div className="nav-group nav-group--nested">
+                <NavLinks items={otherMore} closeDrawer={closeDrawer} bi={bi} />
+              </div>
+            </details>
+          ) : null}
         </nav>
 
         <div className="nav-footer">
@@ -243,11 +316,19 @@ export function Shell() {
               <Bi en="Settings" fa="تنظیمات" />
             </span>
           </NavLink>
+          {(has("campaign.read") || has("perf.read") || has("perf.write") || has("perf.approve") || has("price.approve") || has("price.write")) ? (
+            <NavLink to="/perf/connections" className="nav-settings" onClick={closeDrawer} title={bi("The tools you use", "ابزارهای خودتان")}>
+              <Icon name="plug" />
+              <span>
+                <Bi en="Connections" fa="اتصالات" />
+              </span>
+            </NavLink>
+          ) : null}
           <div className="user-chip">
             <Avatar name={user?.full_name || user?.email || "?"} size={30} />
             <div className="user-chip-text">
               <strong>{user?.full_name}</strong>
-              <span>{sectionName ? `${sectionName} · ${roleLabel}` : roleLabel}</span>
+              <span>{roleLabel}</span>
             </div>
             <button
               type="button"

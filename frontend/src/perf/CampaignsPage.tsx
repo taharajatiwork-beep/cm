@@ -92,8 +92,8 @@ export function CampaignsPage() {
   return (
     <>
       <PageHeader
-        title={<Bi en="Campaigns" fa="کمپین‌ها" />}
-        description={<Bi en="Each row is one campaign. SMS and social stay inside it." fa="هر ردیف یک کمپین است. پیامک و سوشال داخل همان می‌مانند." />}
+        title={<Bi en="Performance campaigns" fa="کمپین پرفورمنس" />}
+        description={<Bi en="Each row is one perf campaign (not a conversation topic). SMS and social stay inside it." fa="هر ردیف یک کمپین پرفورمنس است (نه «موضوع گفتگو» در پیام‌ها). پیامک و سوشال داخل همان می‌مانند." />}
         actions={
           <div className="row">
             <Button type="button" variant="secondary" onClick={() => setBook(true)}>
@@ -111,13 +111,13 @@ export function CampaignsPage() {
         value={tab}
         onChange={pickTab}
         items={[
-          { key: "campaigns", label: <Bi en="Campaigns" fa="کمپین‌ها" />, count: rows.data?.length },
+          { key: "campaigns", label: <Bi en="Campaign list" fa="فهرست کمپین" />, count: rows.data?.length },
           {
             key: "requests",
-            label: <Bi en="Requests" fa="درخواست‌ها" />,
+            label: <Bi en="Mizito ads" fa="درخواست تبلیغ (میزیتو)" />,
             count: requests.data ? undecided : undefined,
             attention: undecided > 0,
-            attentionLabel: bi("undecided requests", "درخواست تصمیم‌نگرفته"),
+            attentionLabel: bi("undecided Mizito requests", "درخواست میزیتو تصمیم‌نگرفته"),
           },
           { key: "missing", label: <Bi en="Missing codes" fa="کدهای جاافتاده" />, count: missing.data?.codes.length },
           { key: "triage", label: <Bi en="Needs attention" fa="رسیدگی" />, count: triage.data?.read_at ? triage.data.total : undefined },
@@ -430,7 +430,7 @@ function CampaignTable({ rows, listedOn, datesReady }: { rows: CampaignRow[]; li
         { key: "channels", header: "کانال", className: "hide-sm", render: (row) => <ChannelChips channels={row.channels} /> },
         { key: "cost", header: "هزینه", render: (row) => toman(row.cost_toman) },
         { key: "leads", header: "ورودی", render: (row) => leadsLabel(row.leads) },
-        { key: "cpl", header: "CPL", className: "hide-sm", render: (row) => toman(row.cpl) },
+        { key: "cpl", header: "هزینه هر ورودی", className: "hide-sm", render: (row) => toman(row.cpl) },
         {
           key: "actions",
           header: "",

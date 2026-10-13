@@ -30,7 +30,41 @@ export function gregorianToJalali(gy: number, gm: number, gd: number): [number, 
   return [jy, jm, jDayNo + 1];
 }
 
-const PERSIAN_MONTHS = [
+/** برعکس gregorianToJalali؛ خروجی [سال میلادی، ماه، روز]. */
+export function jalaliToGregorian(jy: number, jm: number, jd: number): [number, number, number] {
+  const jDays = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
+  jy -= 979;
+  jm -= 1;
+  jd -= 1;
+  let jDayNo = 365 * jy + Math.floor(jy / 33) * 8 + Math.floor(((jy % 33) + 3) / 4);
+  for (let i = 0; i < jm; i += 1) jDayNo += jDays[i];
+  jDayNo += jd;
+  let gDayNo = jDayNo + 79;
+  let gy = 1600 + 400 * Math.floor(gDayNo / 146097);
+  gDayNo %= 146097;
+  let leap = true;
+  if (gDayNo >= 36525) {
+    gDayNo -= 1;
+    gy += 100 * Math.floor(gDayNo / 36524);
+    gDayNo %= 36524;
+    if (gDayNo >= 365) gDayNo += 1;
+    else leap = false;
+  }
+  gy += 4 * Math.floor(gDayNo / 1461);
+  gDayNo %= 1461;
+  if (gDayNo >= 366) {
+    leap = false;
+    gDayNo -= 1;
+    gy += Math.floor(gDayNo / 365);
+    gDayNo %= 365;
+  }
+  const gDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  let gm = 0;
+  for (; gm < 11 && gDayNo >= gDays[gm]; gm += 1) gDayNo -= gDays[gm];
+  return [gy, gm + 1, gDayNo + 1];
+}
+
+export const PERSIAN_MONTHS = [
   "فروردین",
   "اردیبهشت",
   "خرداد",
@@ -173,6 +207,52 @@ export function formatJalaliDateTime(value: unknown): string | null {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return faDigits(`${date} ${hh}:${mm}`);
+}
+
+export function jalaliMonthLength(year: number, month: number): number {
+  if (month < 12) return month <= 6 ? 31 : 30;
+  const [gy, gm, gd] = jalaliToGregorian(year, 12, 30);
+  const back = gregorianToJalali(gy, gm, gd);
+  return back[0] === year && back[1] === 12 && back[2] === 30 ? 30 : 29;
+}
+
+export type JalaliCell = {
+  year: number;
+  month: number;
+  day: number;
+  iso: string;
+  inMonth: boolean;
+};
+
+function jalaliCell(year: number, month: number, day: number, inMonth: boolean): JalaliCell {
+  const [gy, gm, gd] = jalaliToGregorian(year, month, day);
+  const iso = `${gy}-${String(gm).padStart(2, "0")}-${String(gd).padStart(2, "0")}`;
+  return { year, month, day, iso, inMonth };
+}
+
+/** هفته‌ها از شنبه. خانه‌های بیرون ماه هم برای پر شدن ردیف هستند. */
+export function jalaliMonthGrid(year: number, month: number): JalaliCell[][] {
+  const length = jalaliMonthLength(year, month);
+  const [gy, gm, gd] = jalaliToGregorian(year, month, 1);
+  const lead = (new Date(Date.UTC(gy, gm - 1, gd)).getUTCDay() + 1) % 7;
+  const cells: JalaliCell[] = [];
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  const prevLength = jalaliMonthLength(prevYear, prevMonth);
+  for (let offset = lead; offset > 0; offset -= 1) {
+    cells.push(jalaliCell(prevYear, prevMonth, prevLength - offset + 1, false));
+  }
+  for (let day = 1; day <= length; day += 1) cells.push(jalaliCell(year, month, day, true));
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  let nextDay = 1;
+  while (cells.length % 7 !== 0) {
+    cells.push(jalaliCell(nextYear, nextMonth, nextDay, false));
+    nextDay += 1;
+  }
+  const weeks: JalaliCell[][] = [];
+  for (let index = 0; index < cells.length; index += 7) weeks.push(cells.slice(index, index + 7));
+  return weeks;
 }
 
 /** تاریخ همیشه شمسی است. زبان رابط تقویم را عوض نمی‌کند. */

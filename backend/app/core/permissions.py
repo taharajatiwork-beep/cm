@@ -34,6 +34,9 @@ class PermissionCode(StrEnum):
     CAMPAIGN_READ = "campaign.read"
     CAMPAIGN_WRITE = "campaign.write"
     PRICE_WRITE = "price.write"
+    PRICE_APPROVE = "price.approve"
+    EXPENSE_PAY = "expense.pay"
+    REPORT_READ = "report.read"
     PERF_READ = "perf.read"
     PERF_WRITE = "perf.write"
     PERF_APPROVE = "perf.approve"
@@ -45,6 +48,11 @@ class PermissionCode(StrEnum):
     EXPENSE_APPROVE = "expense.approve"
 
 
+def admin_role_permission_codes() -> list[str]:
+    """همهٔ مجوزها به‌جز alias منسوخ price.write — org.admin همچنان همهٔ چک‌ها را دور می‌زند."""
+    return [code.value for code in PermissionCode if code != PermissionCode.PRICE_WRITE]
+
+
 class DataScopeLevel(StrEnum):
     ORGANIZATION = "organization"
     BRANCH = "branch"
@@ -54,6 +62,13 @@ class DataScopeLevel(StrEnum):
     SELF = "self"
 
 
+# فهرست‌های مشترک شرکت. هر نقش واردشده این‌ها را می‌بیند؛ ساخت و ویرایش جدا می‌ماند.
+SHARED_READ: tuple[str, ...] = (
+    PermissionCode.INVENTORY_READ,
+    PermissionCode.USER_READ,
+    PermissionCode.KB_READ,
+)
+
 # چهار قالب. قابلیت‌های اضافه (تأیید هزینه، قیمت، پرفورمنس) روی خود کاربر می‌نشینند، نه نقش جدا.
 ROLE_TEMPLATES: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "requester": (
@@ -61,9 +76,11 @@ ROLE_TEMPLATES: dict[str, tuple[str, str, tuple[str, ...]]] = {
         DataScopeLevel.SELF,
         (
             PermissionCode.REQUEST_CREATE,
+            PermissionCode.CAMPAIGN_READ,
             PermissionCode.CONVERSATION_READ,
             PermissionCode.CONVERSATION_WRITE,
             PermissionCode.NOTIFICATION_READ,
+            *SHARED_READ,
         ),
     ),
     "lead": (
@@ -82,8 +99,8 @@ ROLE_TEMPLATES: dict[str, tuple[str, str, tuple[str, ...]]] = {
             PermissionCode.EVENT_READ,
             PermissionCode.EXPENSE_REQUEST,
             PermissionCode.SEARCH,
-            PermissionCode.KB_READ,
             PermissionCode.CAMPAIGN_READ,
+            *SHARED_READ,
         ),
     ),
     "member": (
@@ -96,6 +113,17 @@ ROLE_TEMPLATES: dict[str, tuple[str, str, tuple[str, ...]]] = {
             PermissionCode.CONVERSATION_WRITE,
             PermissionCode.NOTIFICATION_READ,
             PermissionCode.EXPENSE_REQUEST,
+            *SHARED_READ,
+        ),
+    ),
+    "reporter": (
+        "گزارش‌گیر",
+        DataScopeLevel.TEAM,
+        (
+            PermissionCode.REPORT_READ,
+            PermissionCode.NOTIFICATION_READ,
+            PermissionCode.USER_READ,
+            PermissionCode.KB_READ,
         ),
     ),
 }
@@ -120,3 +148,19 @@ def require_any_permission(user_permissions: set[str], *codes: str) -> None:
     if any(c in user_permissions for c in codes):
         return
     raise AuthorizationError(f"Missing one of permissions: {', '.join(codes)}")
+
+
+def require_price_approve(user_permissions: set[str]) -> None:
+    require_any_permission(
+        user_permissions,
+        PermissionCode.PRICE_APPROVE,
+        PermissionCode.PRICE_WRITE,
+    )
+
+
+def require_expense_pay(user_permissions: set[str]) -> None:
+    require_any_permission(
+        user_permissions,
+        PermissionCode.EXPENSE_PAY,
+        PermissionCode.PRICE_WRITE,
+    )

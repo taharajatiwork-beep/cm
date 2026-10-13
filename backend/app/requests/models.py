@@ -67,6 +67,8 @@ class WorkProject(Base):
     due_date: Mapped[date | None] = mapped_column(Date)
     planned_budget: Mapped[int | None] = mapped_column(BigInteger)
     lead_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    requester_acceptance: Mapped[str | None] = mapped_column(String(20))
+    requester_acceptance_note: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

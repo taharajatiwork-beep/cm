@@ -31,11 +31,3 @@ export function isPerformanceUser(user: PerfUserLike): boolean {
   return perms.includes("perf.write") && !perms.includes("perf.approve") && !perms.includes("org.admin");
 }
 
-/** نام انگلیسی گروه منوی پرفورمنس در Shell. */
-export const PERF_NAV_GROUP = "Marketing";
-
-/** برای کاربر پرفورمنس گروه مارکتینگ/پرفورمنس اول منو می‌آید؛ ترتیب بقیه همان می‌ماند. */
-export function orderNavGroups<G extends { en: string }>(groups: G[], perfFirst: boolean): G[] {
-  if (!perfFirst) return groups;
-  return [...groups].sort((a, b) => Number(b.en === PERF_NAV_GROUP) - Number(a.en === PERF_NAV_GROUP));
-}

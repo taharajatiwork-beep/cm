@@ -91,10 +91,12 @@ export function CustomersPage() {
           />
         }
         actions={
-          <Button onClick={() => setShowAdd(true)}>
-            <Icon name="plus" size={14} />
-            <Bi en="Add customer" fa="افزودن مشتری" />
-          </Button>
+          has("customer.write") || has("org.admin") ? (
+            <Button onClick={() => setShowAdd(true)}>
+              <Icon name="plus" size={14} />
+              <Bi en="Add customer" fa="افزودن مشتری" />
+            </Button>
+          ) : undefined
         }
       />
       <SheetsSyncCard />

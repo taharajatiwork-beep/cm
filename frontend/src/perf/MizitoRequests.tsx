@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api";
 import { Button, Card, ErrorMessage, Muted, SectionHeader, Segmented } from "../components/ui";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 import { DateText } from "../components/DateText";
 import { Bi } from "../i18n";
 import { MIZITO_CHANNEL, MIZITO_REQUEST_KIND, perfApi, toman, type MizitoRequest } from "./api";
@@ -28,7 +29,7 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
 ];
 
 function requestStatus(status: string) {
-  return REQUEST_STATUS[status] || { label: status, hint: `وضعیت ناشناخته: ${status}`, tone: "warn" as const };
+  return REQUEST_STATUS[status] || { label: "وضعیت نامشخص", hint: status, tone: "warn" as const };
 }
 
 const SHOWN = 6;
@@ -78,6 +79,7 @@ export function MizitoRequestsBlock({ onCreate }: { onCreate: (row: MizitoReques
       setOutcome({ ok: false, title: "بررسی درخواست‌ها ناموفق بود", detail });
     },
   });
+  const confirm = useConfirm();
   const reject = useMutation({
     mutationFn: (id: string) => perfApi.rejectMizitoRequest(id),
     onSuccess: () => {
@@ -156,7 +158,11 @@ export function MizitoRequestsBlock({ onCreate }: { onCreate: (row: MizitoReques
               row={row}
               busy={reject.isPending}
               onCreate={() => onCreate(row)}
-              onReject={() => reject.mutate(row.id)}
+              onReject={async () => {
+                const label = row.kind === "stop" ? "این درخواست توقف کنار گذاشته شود؟" : "این درخواست رد شود؟";
+                const ok = await confirm("رد درخواست", label, "بله، رد کن", { danger: true });
+                if (ok) reject.mutate(row.id);
+              }}
             />
           ))}
         </ul>

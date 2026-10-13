@@ -80,7 +80,7 @@ async def notify(
                 ]
         elif event == "branch":
             text = notify_branch(body or title, lang=lang)
-            buttons = [[{"text": btn_open(lang=lang), "url": f"{web}/cases"}]]
+            buttons = [[{"text": btn_open(lang=lang), "url": f"{web}/my-work"}]]
         elif event == "message":
             text = notify_message(title, (body or "")[:200], "", lang=lang)
             buttons = [

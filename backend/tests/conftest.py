@@ -26,11 +26,53 @@ for _name in (
 ):
     os.environ[_name] = ""
 
+
+def _test_database_url() -> str:
+    raw = (
+        os.environ.get("POSTGRES_TEST_URL")
+        or os.environ.get("TEST_DATABASE_URL")
+        or "postgresql+asyncpg://cm:cm@localhost:5432/cm_test"
+    )
+    if raw.startswith("postgresql://"):
+        raw = raw.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if raw.startswith("sqlite"):
+        raise RuntimeError("Tests require PostgreSQL. Start docker compose postgres.")
+    return raw
+
+
+os.environ["DATABASE_URL"] = _test_database_url()
+
+from scripts.ensure_pg_db import ensure_database  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.ext.asyncio import create_async_engine as _create_engine  # noqa: E402
+
+ensure_database(os.environ["DATABASE_URL"])
+
+
+def _bootstrap_schema() -> None:
+    import asyncio
+
+    from app import models as _models  # noqa: F401
+    from app.db.base import Base as _Base
+
+    async def _run() -> None:
+        engine = _create_engine(os.environ["DATABASE_URL"], echo=False)
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await conn.run_sync(_Base.metadata.drop_all)
+            await conn.run_sync(_Base.metadata.create_all)
+        await engine.dispose()
+
+    asyncio.run(_run())
+
+
+_bootstrap_schema()
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool
 
 from app import models  # noqa: F401
 from app.core.config import get_settings
@@ -54,22 +96,30 @@ def _reset_settings_cache():
     get_settings.cache_clear()
 
 
+async def _truncate_public(engine) -> None:
+    names = [table.fullname for table in reversed(Base.metadata.sorted_tables)]
+    if not names:
+        return
+    quoted = ", ".join(f'"{n}"' if "." not in n else n for n in names)
+    async with engine.begin() as conn:
+        await conn.execute(text(f"TRUNCATE {quoted} RESTART IDENTITY CASCADE"))
+
+
 @pytest_asyncio.fixture
 async def db_engine():
-    engine = create_async_engine(
-        "sqlite+aiosqlite://",
-        echo=False,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = create_async_engine(os.environ["DATABASE_URL"], echo=False, poolclass=NullPool)
     yield engine
     await engine.dispose()
 
 
 @pytest_asyncio.fixture
-async def db(db_engine) -> AsyncGenerator[AsyncSession, None]:
+async def clean_db(db_engine):
+    await _truncate_public(db_engine)
+    yield
+
+
+@pytest_asyncio.fixture
+async def db(clean_db, db_engine) -> AsyncGenerator[AsyncSession, None]:
     session_factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
     async with session_factory() as session:
         yield session
@@ -77,7 +127,7 @@ async def db(db_engine) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture
-async def client(db_engine) -> AsyncGenerator[AsyncClient, None]:
+async def client(clean_db, db_engine) -> AsyncGenerator[AsyncClient, None]:
     session_factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
 
     async def override_get_db():
@@ -107,8 +157,10 @@ async def seeded(db: AsyncSession):
     sales_team = await svc.create_team(org.id, "Sales Team", "SALES_T", sales_dept.id)
     mkt_team = await svc.create_team(org.id, "Marketing Team", "MKT_T", mkt_dept.id)
 
+    from app.core.permissions import admin_role_permission_codes
+
     admin_role = await svc.create_role(
-        org.id, "Admin", "admin", [p.value for p in PermissionCode], "organization"
+        org.id, "Admin", "admin", admin_role_permission_codes(), "organization"
     )
     manager_role = await svc.create_role(
         org.id,

@@ -3,7 +3,7 @@
 import sqlalchemy as sa
 
 from alembic import op
-from app.db.migration_guard import table_exists
+from app.db.migration_guard import column_exists, table_exists
 
 revision = "0026_work_types"
 down_revision = "0025_expense_link"
@@ -14,9 +14,8 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     if table_exists(bind, "post_slots"):
-        cols = [row[1] for row in bind.execute(sa.text("PRAGMA table_info(post_slots)")).fetchall()]
         for name in ("project_id", "request_id"):
-            if name not in cols:
+            if not column_exists(bind, "post_slots", name):
                 op.add_column("post_slots", sa.Column(name, sa.Uuid(), nullable=True))
     if not table_exists(bind, "design_deliverable"):
         op.create_table(
@@ -56,7 +55,6 @@ def downgrade() -> None:
     if table_exists(bind, "design_deliverable"):
         op.drop_table("design_deliverable")
     if table_exists(bind, "post_slots"):
-        cols = [row[1] for row in bind.execute(sa.text("PRAGMA table_info(post_slots)")).fetchall()]
         for name in ("project_id", "request_id"):
-            if name in cols:
+            if column_exists(bind, "post_slots", name):
                 op.drop_column("post_slots", name)
