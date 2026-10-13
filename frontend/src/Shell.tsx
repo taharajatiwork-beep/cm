@@ -9,7 +9,7 @@ import { canSeeMarketingHome, canSeeNavPath, marketingHomePath } from "./lib/acc
 import { dailyPaths, groupDailyNav, partitionMarketingNav } from "./lib/focus";
 import { isPerformanceUser } from "./lib/navigation";
 import { roleTitle } from "./lib/roles";
-import symbolUrl from "../../assets/sotoodeh-brand-kit/assets/sotoodeh-symbol-96.png";
+import symbolUrl from "../../assets/sotoodeh-brand-kit/assets/sotoodeh-symbol.png";
 
 type NavGroupKey = "" | "Marketing" | "More";
 

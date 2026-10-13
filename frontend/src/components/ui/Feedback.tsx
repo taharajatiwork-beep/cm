@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Bi } from "../../i18n";
-import symbolUrl from "../../../../assets/sotoodeh-brand-kit/assets/sotoodeh-symbol-96.png";
+import symbolUrl from "../../../../assets/sotoodeh-brand-kit/assets/sotoodeh-symbol.png";
 import { ErrorMessage } from "./ErrorMessage";
 import { LoadingState } from "./LoadingState";
 
