@@ -133,7 +133,7 @@ export function ConnectionsPage() {
   }
   if (!saved.data && !live.data) {
     const error = live.error || saved.error;
-    return <ErrorMessage error={error instanceof Error ? error.message : "اتصالات خوانده نشد"} />;
+    return <ErrorMessage error={error ?? "اتصالات خوانده نشد"} />;
   }
   const data: Connections = live.data ?? saved.data!;
   const liveReady = Boolean(live.data);

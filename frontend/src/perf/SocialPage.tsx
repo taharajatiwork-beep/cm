@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Badge, Button, Card, Dialog, Field, Input, Muted, PageHeader, SectionHeader, Segmented, Select, Table, TextArea } from "../components/ui";
+import { Badge, Button, Card, Dialog, ErrorMessage, Field, ForbiddenState, Input, Muted, PageHeader, SectionHeader, Segmented, Select, Table, TextArea } from "../components/ui";
+import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { useToast } from "../components/ui/Toast";
 import { Bi, useBi } from "../i18n";
@@ -428,9 +429,26 @@ export function SocialFlowPage() {
   const fromUrl = params.get("campaign") || "";
   const step = params.get("step") || "";
   const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
+  const campaignsForbidden = campaigns.isError && isForbiddenError(campaigns.error);
   const campaign = (campaigns.data ?? []).find((row) => row.id === fromUrl || row.code === fromUrl);
   const campaignId = campaign?.id || "";
   const [query, setQuery] = useState("");
+  if (campaignsForbidden) {
+    return (
+      <div className="perf-social">
+        <PageHeader
+          title={<Bi en="Social" fa="سوشال" />}
+          description={
+            <Bi
+              en="The manager lists the cars. Performance sets a budget. Pages and cost follow from that budget."
+              fa="مدیر ماشین‌ها را می‌دهد. بودجه را اینجا می‌گذارید. پیج و هزینه از همان بودجه درمی‌آید."
+            />
+          }
+        />
+        <ForbiddenState />
+      </div>
+    );
+  }
   return (
     <div className="perf-social">
       <PageHeader
@@ -438,6 +456,7 @@ export function SocialFlowPage() {
         description={<Bi en="The manager lists the cars. Performance sets a budget. Pages and cost follow from that budget." fa="مدیر ماشین‌ها را می‌دهد. بودجه را اینجا می‌گذارید. پیج و هزینه از همان بودجه درمی‌آید." />}
         actions={campaign ? <RelatedLinks id={campaign.id} code={campaign.code} here="social" /> : null}
       />
+      <ErrorMessage error={campaigns.isError ? campaigns.error : null} />
       <Card>
         <div className="perf-pick">
           <Field label={<Bi en="Find" fa="جستجو" />}>

@@ -4,10 +4,24 @@ import { canSeeCalendar, canSeeNavPath, canSeePricing, canSeeProjects, marketing
 const has = (perms: string[]) => (code: string) => perms.includes(code) || perms.includes("org.admin");
 
 describe("access", () => {
-  it("pricing for manager and marketing, not finance", () => {
-    expect(canSeePricing({ roleCode: "requester", permissions: ["request.create", "campaign.read"] }, has([]))).toBe(true);
-    expect(canSeePricing({ roleCode: "designer", permissions: ["task.read"] }, has([]))).toBe(true);
-    expect(canSeePricing({ roleCode: "lead", permissions: ["price.write", "campaign.read"] }, has([]))).toBe(false);
+  it("pricing only when board API permissions match", () => {
+    const requester = { roleCode: "requester", permissions: ["request.create", "campaign.read"] };
+    expect(canSeePricing(requester, has(requester.permissions))).toBe(true);
+    const designer = { roleCode: "designer", permissions: ["task.read"] };
+    expect(canSeePricing(designer, has(designer.permissions))).toBe(false);
+    const lead = { roleCode: "lead", permissions: ["price.write", "campaign.read"] };
+    expect(canSeePricing(lead, has(lead.permissions))).toBe(true);
+    const finance = { roleCode: "finance", permissions: ["price.approve"] };
+    expect(canSeePricing(finance, has(finance.permissions))).toBe(true);
+  });
+
+  it("my-work only for task.read, request.create, or org.admin", () => {
+    const reporter = { roleCode: "reporter", permissions: ["report.read"] };
+    expect(canSeeNavPath("/my-work", reporter, has(reporter.permissions))).toBe(false);
+    const member = { roleCode: "member", permissions: ["task.read"] };
+    expect(canSeeNavPath("/my-work", member, has(member.permissions))).toBe(true);
+    const requester = { roleCode: "requester", permissions: ["request.create"] };
+    expect(canSeeNavPath("/my-work", requester, has(requester.permissions))).toBe(true);
   });
 
   it("calendar for perf.write; projects hidden from performance", () => {

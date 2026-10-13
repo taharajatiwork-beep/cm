@@ -8,14 +8,6 @@ export type AccessUser = {
   teamHomeTeamId?: string | null;
 };
 
-const MARKETING_ROLE_CODES = new Set([
-  "marketing_manager",
-  "performance_marketing",
-  "marketing",
-  "designer",
-  "filmmaker",
-]);
-
 export function isSiteAdmin(user: AccessUser | null | undefined, has: (perm: string) => boolean): boolean {
   return has("org.admin") || user?.roleCode === "admin";
 }
@@ -43,12 +35,7 @@ export function canSeeProjects(user: AccessUser | null | undefined, has: (perm: 
 export function canSeePricing(user: AccessUser | null | undefined, has: (perm: string) => boolean): boolean {
   if (!user) return false;
   if (isSiteAdmin(user, has)) return true;
-  const code = user.roleCode ?? "";
-  if (code === "finance") return hasPriceApprove(has);
-  if (code === "lead" && hasPriceApprove(has) && !MARKETING_ROLE_CODES.has(code)) return false;
-  if (code === "requester" || code === "manager") return true;
-  if (MARKETING_ROLE_CODES.has(code)) return true;
-  return false;
+  return has("price.approve") || has("price.write") || has("campaign.read");
 }
 
 export function isMarketingManager(user: AccessUser | null | undefined): boolean {
@@ -100,7 +87,10 @@ export function canSeeNavPath(
     if (path === "/vehicles") return has("inventory.read");
     if (path === "/communication") return has("conversation.read");
     if (path === "/admin") return has("org.admin");
-    if (path === "/" || path === "/my-work") return true;
+    if (path === "/") return true;
+    if (path === "/my-work") {
+      return has("task.read") || has("request.create") || has("org.admin");
+    }
     return true;
   }
 

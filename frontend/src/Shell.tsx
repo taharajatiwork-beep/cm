@@ -212,7 +212,10 @@ export function Shell() {
     };
   }, [drawer]);
 
+  const canSearch = has("search.run");
+
   useEffect(() => {
+    if (!canSearch) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -221,7 +224,7 @@ export function Shell() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [canSearch]);
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -314,7 +317,7 @@ export function Shell() {
               <Bi en="Settings" fa="تنظیمات" />
             </span>
           </NavLink>
-          {(has("campaign.read") || has("perf.read") || has("perf.write") || has("perf.approve") || has("price.approve") || has("price.write")) ? (
+          {(has("perf.read") || has("perf.write") || has("perf.approve") || has("price.approve")) ? (
             <NavLink to="/perf/connections" className="nav-settings" onClick={closeDrawer} title={bi("The tools you use", "ابزارهای خودتان")}>
               <Icon name="plug" />
               <span>
@@ -355,17 +358,19 @@ export function Shell() {
           >
             <Icon name="menu" size={18} />
           </button>
-          <form className="global-search" onSubmit={onSearch} role="search">
-            <Icon name="search" className="global-search-icon" />
-            <input
-              ref={searchRef}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={bi("Find a car, customer, colleague…", "پیدا کردن خودرو، مشتری، همکار…")}
-              aria-label={bi("Search", "جستجو")}
-            />
-            <kbd>Ctrl K</kbd>
-          </form>
+          {canSearch ? (
+            <form className="global-search" onSubmit={onSearch} role="search">
+              <Icon name="search" className="global-search-icon" />
+              <input
+                ref={searchRef}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder={bi("Find a car, customer, colleague…", "پیدا کردن خودرو، مشتری، همکار…")}
+                aria-label={bi("Search", "جستجو")}
+              />
+              <kbd>Ctrl K</kbd>
+            </form>
+          ) : null}
           <div className="shell-top-actions">
             <Link to="/agent" className="top-ai">
               <Icon name="sparkles" />

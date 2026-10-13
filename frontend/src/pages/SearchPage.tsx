@@ -6,6 +6,7 @@ import {
   Card,
   EmptyState,
   ErrorMessage,
+  ForbiddenState,
   Input,
   List,
   ListItem,
@@ -15,6 +16,7 @@ import {
   Toolbar,
 } from "../components/ui";
 import { Bi, useBi } from "../i18n";
+import { isForbiddenError } from "../lib/apiError";
 
 export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
   const bi = useBi();
@@ -26,7 +28,7 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
     queryFn: () => api.search(submitted),
   });
   const hits = searchQuery.data?.hits ?? [];
-  const error = searchQuery.isError ? String((searchQuery.error as Error).message) : "";
+  const searchForbidden = searchQuery.isError && isForbiddenError(searchQuery.error);
   const ran = submitted.trim().length > 0;
   const fetching = ran && searchQuery.isFetching;
 
@@ -80,7 +82,12 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
           </Button>
         </Toolbar>
       </Card>
-      <ErrorMessage error={error} />
+      {searchForbidden ? (
+        <ForbiddenState />
+      ) : (
+        <ErrorMessage error={searchQuery.isError ? searchQuery.error : null} />
+      )}
+      {searchForbidden ? null : (
       <Card>
         {!ran ? (
           <EmptyState
@@ -121,6 +128,7 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
           </List>
         )}
       </Card>
+      )}
     </>
   );
 }

@@ -155,8 +155,13 @@ export function MyWorkPage() {
   });
   const canPrice = has("price.approve") || has("price.write");
   const canPost = has("campaign.write");
+  const canUseWorkBuckets = has("task.read") || has("request.create") || has("org.admin");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
-  const buckets = useQuery({ queryKey: ["requests", "my-work"], queryFn: () => requestsApi.myWork() });
+  const buckets = useQuery({
+    queryKey: ["requests", "my-work"],
+    queryFn: () => requestsApi.myWork(),
+    enabled: canUseWorkBuckets,
+  });
   const parentLookups = useWorkParentLookups(has("task.read"));
   const workQuery = useQuery({
     queryKey: ["my-work", user?.id, roleHint],
@@ -301,7 +306,7 @@ export function MyWorkPage() {
     <>
       <PageHeader title={<Bi en="My Work" fa="کارهای من" />} description={description} />
       <ErrorMessage error={error} />
-      <ErrorMessage error={buckets.isError ? String((buckets.error as Error).message) : ""} />
+      <ErrorMessage error={canUseWorkBuckets && buckets.isError ? buckets.error : null} />
 
       <div className="split">
         <section>

@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   ErrorMessage,
+  ForbiddenState,
   Icon,
   Input,
   LoadingState,
@@ -13,6 +14,7 @@ import {
   PageHeader,
   SectionHeader,
 } from "../components/ui";
+import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { Bi, useBi } from "../i18n";
 import { queryKeys } from "../lib/queryKeys";
@@ -33,7 +35,7 @@ export function PeoplePage() {
     queryFn: () => api.people.list(q || undefined),
   });
   const rows = listQuery.data ?? [];
-  const error = listQuery.isError ? String((listQuery.error as Error).message) : "";
+  const listError = listQuery.isError ? listQuery.error : null;
 
   // انتخاب اولین همکار به‌صورت مشتق‌شده — پنل هیچ‌وقت خالی نمی‌ماند و effect نمی‌خواهد
   const activeId = selectedId ?? (rows[0] ? String(rows[0].id) : "");
@@ -73,8 +75,7 @@ export function PeoplePage() {
           />
         }
       />
-      <ErrorMessage error={error} />
-      <ErrorMessage error={detailQuery.isError ? String((detailQuery.error as Error).message) : ""} />
+      <ErrorMessage error={listError} />
 
       <div className="split split--left">
         <Card padded={false} className="side-stack side-stack--flush">
@@ -135,8 +136,14 @@ export function PeoplePage() {
                 </Button>
               </div>
 
-              {detailQuery.isLoading && !workload ? (
+              {detailQuery.isLoading && !workload && !detailQuery.isError ? (
                 <LoadingState />
+              ) : detailQuery.isError ? (
+                isForbiddenError(detailQuery.error) ? (
+                  <ForbiddenState />
+                ) : (
+                  <ErrorMessage error={detailQuery.error} />
+                )
               ) : (
                 <>
                   {workload && (

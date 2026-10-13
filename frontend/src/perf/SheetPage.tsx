@@ -29,7 +29,7 @@ export function SheetPage() {
   const [pushing, setPushing] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   if (sheet.isLoading) return <LoadingState />;
-  if (sheet.error || !sheet.data) return <ErrorMessage error={sheet.error instanceof Error ? sheet.error.message : "شیت خوانده نشد"} />;
+  if (sheet.error || !sheet.data) return <ErrorMessage error={sheet.error ?? "شیت خوانده نشد"} />;
   const data = sheet.data;
   const campaigns = focus ? data.campaigns.filter((row) => row.code === focus) : data.campaigns;
   const sms = focus ? data.sms.filter((row) => row.campaign_code === focus) : data.sms;

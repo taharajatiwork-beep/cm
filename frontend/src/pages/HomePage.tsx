@@ -74,7 +74,7 @@ export function HomePage() {
             : Promise.resolve([]),
           canSeeProjects ? requestsApi.projects().catch(fail) : Promise.resolve([]),
           !isRequester && has("campaign.read") ? api.campaigns.list().catch(fail) : Promise.resolve([]),
-          api.conversations.list().catch(fail),
+          has("conversation.read") ? api.conversations.list().catch(fail) : Promise.resolve([]),
         ]);
         const openMine = myTasks.filter((t) => t.status !== "COMPLETED");
         const projectById = new Map(projects.map((p) => [String(p.id), p]));

@@ -254,10 +254,7 @@ export function PricingPage() {
       />
       <SheetsSyncCard />
       <ErrorMessage
-        error={[board.error, request.error, confirm.error, posted.error]
-          .filter(Boolean)
-          .map((err) => (err instanceof Error ? err.message : String(err)))
-          .join(" · ")}
+        error={board.error ?? request.error ?? confirm.error ?? posted.error ?? null}
       />
       {board.isLoading ? (
         <LoadingState />

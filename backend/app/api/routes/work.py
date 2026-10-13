@@ -436,7 +436,6 @@ async def get_task(
     is_participant = ctx.user.id == task.owner_id or ctx.user.id in assignee_ids
     if not is_participant and PermissionCode.ORG_ADMIN.value not in ctx.permissions:
         from app.core.scope import apply_scope
-        from sqlalchemy import select
 
         scoped = apply_scope(
             select(Task.id).where(Task.id == task_id, Task.organization_id == ctx.organization_id),

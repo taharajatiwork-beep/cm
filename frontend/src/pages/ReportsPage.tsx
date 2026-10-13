@@ -451,13 +451,9 @@ function WorkDetail({
               <Bi en="No projects yet — the team has not split this request into work packages." fa="هنوز پروژه‌ای نیست — تیم این درخواست را به بستهٔ کار تبدیل نکرده." />
             </Muted>
           )}
-          {!focused && request.id ? (
+          {!focused && request.id && canOpenRequest ? (
             <div className="record-actions">
-              <Button
-                variant="ghost"
-                className="btn-sm"
-                to={canOpenRequest ? `/requests/${request.id}` : `/reports?request=${request.id}`}
-              >
+              <Button variant="ghost" className="btn-sm" to={`/requests/${request.id}`}>
                 <Bi en="How this request moved" fa="روند این درخواست" />
               </Button>
             </div>

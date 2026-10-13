@@ -198,7 +198,7 @@ export function MoneyPage() {
       <MizitoList campaigns={campaigns.data ?? []} />
       <MizitoFinanceBlock campaigns={campaigns.data ?? []} />
       {payments.isLoading ? <LoadingState /> : null}
-      {payments.error ? <ErrorMessage error={payments.error instanceof Error ? payments.error.message : String(payments.error)} /> : null}
+      {payments.error ? <ErrorMessage error={payments.error} /> : null}
       {payments.data ? (
         payments.data.length === 0 ? (
           <EmptyState

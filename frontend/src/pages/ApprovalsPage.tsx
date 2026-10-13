@@ -43,7 +43,7 @@ export function ApprovalsPage() {
   return (
     <>
       <PageHeader title={<Bi en="Approvals" fa="تأییدها" />} />
-      <ErrorMessage error={q.isError ? String((q.error as Error).message) : ""} />
+      <ErrorMessage error={q.isError ? q.error : null} />
       <Card>
         <h2>{bi("Waiting for me", "منتظر تصمیم من")}</h2>
         {waiting.length === 0 ? (

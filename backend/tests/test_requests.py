@@ -275,6 +275,14 @@ async def test_only_the_assignee_can_tick(client, seeded, db):
     assert detail.json()["tasks"][0]["assignee_ids"] == [str(maker_user.id)]
     assert detail.json()["status"] == "done"
 
+    assignee_get = await client.get(f"/tasks/{task_id}", headers=maker)
+    assert assignee_get.status_code == 200, assignee_get.text
+    assert assignee_get.json()["assignees"][0]["id"] == str(maker_user.id)
+
+    lead_get = await client.get(f"/tasks/{task_id}", headers=lead)
+    assert lead_get.status_code == 200, lead_get.text
+    assert lead_get.json()["id"] == task_id
+
 
 async def test_static_request_paths_not_captured_as_uuid(client, seeded, db):
     """Regression: GET /{request_id} must not shadow /my-work, /projects, /team-load."""

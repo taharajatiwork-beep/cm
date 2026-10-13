@@ -104,7 +104,7 @@ export function RequestsPage() {
           />
         }
         actions={
-          has("request.create") ? (
+          has("request.create") && !creating ? (
             <Button type="button" onClick={() => setCreating(true)}>
               <Bi en="New work request" fa="درخواست کار جدید" />
             </Button>

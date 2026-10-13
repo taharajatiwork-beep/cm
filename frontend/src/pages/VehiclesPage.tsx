@@ -549,8 +549,8 @@ export function VehiclesPage() {
               <EmptyState
                 titleEn="No vehicles match"
                 titleFa="خودرویی پیدا نشد"
-                bodyEn="Change the filter, or add / import vehicles."
-                bodyFa="فیلتر را تغییر دهید یا خودرو اضافه / وارد کنید."
+                bodyEn={canWrite ? "Change the filter, or add / import vehicles." : "Change the filter or ask someone who can edit inventory."}
+                bodyFa={canWrite ? "فیلتر را تغییر دهید یا خودرو اضافه / وارد کنید." : "فیلتر را عوض کنید یا از کسی که به موجودی دسترسی دارد بخواهید."}
                 action={
                   has("inventory.write") ? (
                     <Button variant="secondary" onClick={openAdd}>
