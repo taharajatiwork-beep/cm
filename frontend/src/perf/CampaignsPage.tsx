@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Card, Dialog, ErrorMessage, Field, Input, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, Table } from "../components/ui";
+import { Button, Card, Dialog, ErrorMessage, Field, ForbiddenState, Input, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, Table } from "../components/ui";
+import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { Bi, useBi } from "../i18n";
 import { formatJalaliLong, formatJalaliText } from "../jalali";
@@ -51,11 +52,16 @@ export function CampaignsPage() {
   const filtered = list.ordered;
 
   // محتوای تب کمپین‌ها (همان جدول قبلی). متغیر است نه کامپوننت تو در تو تا فیلتر و جستجو با هر رندر از نو ساخته نشوند.
+  const campaignsForbidden = rows.isError && isForbiddenError(rows.error);
+
   const campaignsTab = (
     <>
-      {rows.isLoading ? <LoadingState /> : null}
-      {rows.error ? <ErrorMessage error={rows.error instanceof Error ? rows.error.message : String(rows.error)} /> : null}
-      {rows.data ? (
+      {campaignsForbidden ? <ForbiddenState /> : null}
+      {!campaignsForbidden && rows.isLoading ? <LoadingState /> : null}
+      {!campaignsForbidden && rows.error ? (
+        <ErrorMessage error={rows.error instanceof Error ? rows.error.message : String(rows.error)} />
+      ) : null}
+      {!campaignsForbidden && rows.data ? (
         <Card>
           <SectionHeader icon="megaphone" title={<Bi en="All campaigns" fa="همهٔ کمپین‌ها" />} count={filtered.length} />
           <ArrangeBar

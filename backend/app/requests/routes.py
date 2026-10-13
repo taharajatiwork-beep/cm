@@ -352,70 +352,6 @@ async def patch_request(
     return _request_out(row)
 
 
-@router.get("/{request_id}")
-async def get_request(
-    request_id: UUID,
-    ctx: AuthContext = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """جزئیات یک درخواست با پروژه‌ها و کارهای مستقیم."""
-    _need(
-        ctx,
-        PermissionCode.REQUEST_CREATE,
-        PermissionCode.REQUEST_TRIAGE,
-        PermissionCode.REQUEST_MANAGE,
-        PermissionCode.TASK_READ,
-        PermissionCode.ORG_ADMIN,
-    )
-    row = await _ensure_request_visible(db, ctx, request_id)
-    requester_name = ""
-    if row.requested_by:
-        user = await db.get(User, row.requested_by)
-        requester_name = user.full_name if user else ""
-    team_name = ""
-    if row.team_id:
-        team = await db.get(Team, row.team_id)
-        team_name = team.name if team else ""
-    projects = list(
-        (await db.scalars(select(WorkProject).where(WorkProject.request_id == request_id))).all()
-    )
-    task_counts = await _task_counts_for_projects(db, ctx.organization_id, {p.id for p in projects})
-    teams: dict[UUID, str] = {}
-    team_ids = {p.team_id for p in projects if p.team_id}
-    if team_ids:
-        for team in (await db.scalars(select(Team).where(Team.id.in_(team_ids)))).all():
-            teams[team.id] = team.name
-    from app.requests.spine import build_spine_timeline, tasks_for
-
-    direct_tasks = await tasks_for(db, ctx.organization_id, request_id=request_id)
-    spine = await build_spine_timeline(db, ctx.organization_id, request_id=request_id)
-    return {
-        "request": _request_out(row, requester_name, team_name),
-        "projects": [
-            _project_out(
-                project,
-                request_code=row.code,
-                request_title=row.title,
-                team_name=teams.get(project.team_id, "") if project.team_id else "",
-                task_total=task_counts.get(project.id, (0, 0))[0],
-                task_done=task_counts.get(project.id, (0, 0))[1],
-            )
-            for project in projects
-        ],
-        "tasks": [
-            {
-                "id": str(task.id),
-                "title": task.title,
-                "status": task.status.value if hasattr(task.status, "value") else str(task.status),
-                "project_id": str(task.project_id) if task.project_id else None,
-            }
-            for task in direct_tasks
-            if not task.project_id
-        ],
-        "spine": spine,
-    }
-
-
 @router.get("/{request_id}/spine")
 async def request_spine(
     request_id: UUID,
@@ -693,6 +629,70 @@ async def team_load_view(ctx: AuthContext = Depends(get_current_user), db: Async
     if _is_triage(ctx) and ctx.user.team_id:
         root = await child_team_ids(db, root)
     return await team_load(db, ctx.organization_id, root)
+
+
+@router.get("/{request_id}")
+async def get_request(
+    request_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """جزئیات یک درخواست با پروژه‌ها و کارهای مستقیم."""
+    _need(
+        ctx,
+        PermissionCode.REQUEST_CREATE,
+        PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
+        PermissionCode.TASK_READ,
+        PermissionCode.ORG_ADMIN,
+    )
+    row = await _ensure_request_visible(db, ctx, request_id)
+    requester_name = ""
+    if row.requested_by:
+        user = await db.get(User, row.requested_by)
+        requester_name = user.full_name if user else ""
+    team_name = ""
+    if row.team_id:
+        team = await db.get(Team, row.team_id)
+        team_name = team.name if team else ""
+    projects = list(
+        (await db.scalars(select(WorkProject).where(WorkProject.request_id == request_id))).all()
+    )
+    task_counts = await _task_counts_for_projects(db, ctx.organization_id, {p.id for p in projects})
+    teams: dict[UUID, str] = {}
+    team_ids = {p.team_id for p in projects if p.team_id}
+    if team_ids:
+        for team in (await db.scalars(select(Team).where(Team.id.in_(team_ids)))).all():
+            teams[team.id] = team.name
+    from app.requests.spine import build_spine_timeline, tasks_for
+
+    direct_tasks = await tasks_for(db, ctx.organization_id, request_id=request_id)
+    spine = await build_spine_timeline(db, ctx.organization_id, request_id=request_id)
+    return {
+        "request": _request_out(row, requester_name, team_name),
+        "projects": [
+            _project_out(
+                project,
+                request_code=row.code,
+                request_title=row.title,
+                team_name=teams.get(project.team_id, "") if project.team_id else "",
+                task_total=task_counts.get(project.id, (0, 0))[0],
+                task_done=task_counts.get(project.id, (0, 0))[1],
+            )
+            for project in projects
+        ],
+        "tasks": [
+            {
+                "id": str(task.id),
+                "title": task.title,
+                "status": task.status.value if hasattr(task.status, "value") else str(task.status),
+                "project_id": str(task.project_id) if task.project_id else None,
+            }
+            for task in direct_tasks
+            if not task.project_id
+        ],
+        "spine": spine,
+    }
 
 
 @router.get("/projects/{project_id}")

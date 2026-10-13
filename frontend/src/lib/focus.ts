@@ -156,11 +156,14 @@ export function isPerfToolPath(to: string): boolean {
 }
 
 /** مارکتینگ: اول خانهٔ بخش و پرفورمنس، بقیهٔ مسیرهای /perf در ابزارهای تو در تو. */
-export function partitionMarketingNav<T extends { to: string }>(
+export function partitionMarketingNav<T extends { to: string; group?: string }>(
   items: T[],
   marketingHomeTo: string | null,
 ): { head: T[]; perfTools: T[] } {
   const seen = new Set<string>();
+  for (const item of items) {
+    if (item.group === "") seen.add(item.to);
+  }
   const head: T[] = [];
   const push = (item: T | undefined) => {
     if (!item || seen.has(item.to)) return;

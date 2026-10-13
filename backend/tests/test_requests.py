@@ -274,3 +274,23 @@ async def test_only_the_assignee_can_tick(client, seeded, db):
     detail = await client.get(f"/requests/projects/{project_id}", headers=lead)
     assert detail.json()["tasks"][0]["assignee_ids"] == [str(maker_user.id)]
     assert detail.json()["status"] == "done"
+
+
+async def test_static_request_paths_not_captured_as_uuid(client, seeded, db):
+    """Regression: GET /{request_id} must not shadow /my-work, /projects, /team-load."""
+    await _request_user(db, seeded, "route-mgr@autoco.example", "مدیر مسیر", [PermissionCode.REQUEST_CREATE])
+    await _request_user(db, seeded, "route-lead@autoco.example", "سرپرست مسیر", [PermissionCode.REQUEST_TRIAGE, PermissionCode.TASK_READ])
+    manager = auth(await login(client, "route-mgr@autoco.example"))
+    lead = auth(await login(client, "route-lead@autoco.example"))
+
+    created = await client.post("/requests", headers=manager, json={"title": "تست مسیر"})
+    assert created.status_code == 201
+    request_id = created.json()["id"]
+
+    for path in ("/requests/my-work", "/requests/projects", "/requests/team-load"):
+        res = await client.get(path, headers=lead)
+        assert res.status_code != 422, f"{path} returned 422: {res.text}"
+
+    one = await client.get(f"/requests/{request_id}", headers=manager)
+    assert one.status_code == 200, one.text
+    assert one.json()["request"]["id"] == request_id

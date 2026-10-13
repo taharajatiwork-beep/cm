@@ -87,6 +87,16 @@ describe("partitionMarketingNav", () => {
     expect(head.map((row) => row.to)).toEqual(["/teams/parent", PERF_HUB_PATH]);
     expect(perfTools.map((row) => row.to)).toEqual(["/perf/campaigns", "/perf/sms"]);
   });
+
+  it("drops perf tools already in the main nav (group empty)", () => {
+    const items = [
+      { to: PERF_HUB_PATH, group: "Marketing" },
+      { to: "/perf/money", group: "" },
+      { to: "/perf/campaigns", group: "Marketing" },
+    ];
+    const { perfTools } = partitionMarketingNav(items, null);
+    expect(perfTools.map((row) => row.to)).toEqual(["/perf/campaigns"]);
+  });
 });
 
 describe("groupDailyNav", () => {

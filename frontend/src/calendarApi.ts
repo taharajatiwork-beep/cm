@@ -1,4 +1,5 @@
 import { ApiError, getToken, setToken } from "./api";
+import { apiErrorDetail } from "./lib/httpErrorDetail";
 
 export type CalendarEntry = {
   id: string;
@@ -67,7 +68,7 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail?.message || body.detail || detail;
+      detail = apiErrorDetail(body.detail, detail);
     } catch {
       /* ignore */
     }

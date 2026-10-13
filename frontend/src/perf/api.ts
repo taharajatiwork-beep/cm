@@ -1,4 +1,5 @@
 import { ApiError, getToken, setToken } from "../api";
+import { apiErrorDetail } from "../lib/httpErrorDetail";
 import { toman } from "../fa";
 
 export { toman };
@@ -29,7 +30,7 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
         const msg = raw.pishgam_message || raw.message || JSON.stringify(raw);
         detail = `${msg}${code}`;
       } else {
-        detail = raw?.message || raw || detail;
+        detail = apiErrorDetail(raw, detail);
       }
     } catch {
       /* ignore */

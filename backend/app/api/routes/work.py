@@ -445,8 +445,29 @@ async def get_task(
         )
         if not await db.scalar(scoped):
             raise HTTPException(403, "Not authorized")
+    from app.models import User
+
     row = TaskOut.model_validate(task).model_dump(mode="json")
-    row["assignee_ids"] = [str(link.user_id) for link in task.assignees if link.role == TaskRole.ASSIGNEE]
+    assignee_ids_ordered = [link.user_id for link in task.assignees if link.role == TaskRole.ASSIGNEE]
+    row["assignee_ids"] = [str(uid) for uid in assignee_ids_ordered]
+    names: dict[UUID, str] = {}
+    if assignee_ids_ordered:
+        for user in (
+            await db.scalars(select(User).where(User.id.in_(assignee_ids_ordered)))
+        ).all():
+            names[user.id] = user.full_name
+    row["assignees"] = [{"id": str(uid), "full_name": names.get(uid, "")} for uid in assignee_ids_ordered]
+    if task.project_id:
+        from app.requests.models import WorkProject
+
+        project = await db.get(WorkProject, task.project_id)
+        if project and project.organization_id == ctx.organization_id:
+            row["project"] = {
+                "id": str(project.id),
+                "code": project.code,
+                "title": project.title,
+                "request_id": str(project.request_id) if project.request_id else None,
+            }
     return row
 
 

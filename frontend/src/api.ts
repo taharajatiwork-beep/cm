@@ -1,3 +1,5 @@
+import { apiErrorDetail } from "./lib/httpErrorDetail";
+
 let memoryToken: string | null = null;
 
 export function getToken(): string | null {
@@ -62,7 +64,7 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail?.message || body.detail || JSON.stringify(body.detail) || detail;
+      detail = apiErrorDetail(body.detail, detail);
     } catch {
       /* ignore */
     }
@@ -804,7 +806,7 @@ export const api = {
         let detail = res.statusText;
         try {
           const body = await res.json();
-          detail = body.detail?.message || body.detail || detail;
+          detail = apiErrorDetail(body.detail, detail);
         } catch {
           /* ignore */
         }
@@ -875,7 +877,7 @@ export const api = {
         let detail = res.statusText;
         try {
           const body = await res.json();
-          detail = body.detail?.message || body.detail || detail;
+          detail = apiErrorDetail(body.detail, detail);
         } catch {
           /* ignore */
         }

@@ -170,14 +170,7 @@ export function RequestsPage() {
                 titleEn="No requests yet"
                 titleFa="هنوز درخواستی نیست"
                 bodyEn="A request is the starting point. The team turns it into a project."
-                bodyFa="درخواست نقطهٔ شروع است. تیم آن را به پروژه تبدیل می‌کند."
-                action={
-                  has("request.create") ? (
-                    <Button type="button" onClick={() => setCreating(true)}>
-                      <Bi en="New work request" fa="درخواست کار جدید" />
-                    </Button>
-                  ) : undefined
-                }
+                bodyFa="درخواست نقطهٔ شروع است. تیم آن را به پروژه تبدیل می‌کند. از دکمهٔ بالای صفحه درخواست جدید بسازید."
               />
             )
           }

@@ -86,6 +86,7 @@ export default function App() {
           <Route path="money" element={<Navigate to="/perf/money" replace />} />
           <Route path="sheet" element={<Navigate to="/perf/sheet" replace />} />
           <Route path="stories" element={<Navigate to="/perf/social" replace />} />
+          <Route path="social" element={<Navigate to="/perf/social" replace />} />
           <Route path="perf/*" element={<PerfRoutes />} />
           <Route path="requests" element={<RequestsPage />} />
           <Route path="requests/:id" element={<RequestPage />} />

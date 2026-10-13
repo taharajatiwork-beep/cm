@@ -11,6 +11,7 @@ const VALUE_LABELS: Record<string, [string, string]> = {
   suv: ["SUV", "شاسی‌بلند"],
   hatchback: ["Hatchback", "هاچ‌بک"],
   white: ["White", "سفید"],
+  White: ["White", "سفید"],
   red: ["Red", "قرمز"],
   black: ["Black", "مشکی"],
   silver: ["Silver", "نقره‌ای"],

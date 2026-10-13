@@ -637,7 +637,7 @@ class ToolExecutor:
             self.ctx.db,
             organization_id=self.ctx.organization_id,
             user_id=owner_id,
-            title=f"Case {case.case_number} assigned",
+            title=f"پیگیری {case.case_number} به شما سپرده شد",
             body=case.subject,
             entity_type="case",
             entity_id=case.id,

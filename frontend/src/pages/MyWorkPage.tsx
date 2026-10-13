@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
@@ -153,20 +153,6 @@ export function MyWorkPage() {
     enabled: Boolean(detailTaskId),
     queryFn: () => api.tasks.get(detailTaskId!),
   });
-  const people = useQuery({
-    queryKey: ["people", "names"],
-    queryFn: () => api.people.list(),
-    enabled: Boolean(detailTaskId),
-  });
-  const nameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const row of people.data ?? []) {
-      const id = String(row.id ?? "");
-      const name = String(row.full_name ?? row.name ?? "");
-      if (id && name) map.set(id, name);
-    }
-    return map;
-  }, [people.data]);
   const canPrice = has("price.approve") || has("price.write");
   const canPost = has("campaign.write");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
@@ -584,16 +570,33 @@ export function MyWorkPage() {
             ) : null}
             <WorkParentContext
               kind="task"
-              {...parentLookups.resolve({
-                project_id: taskDetail.data.project_id as string | null,
-                request_id: taskDetail.data.request_id as string | null,
-              })}
+              {...(() => {
+                const project = taskDetail.data.project as
+                  | { id: string; code: string; title: string; request_id?: string | null }
+                  | undefined;
+                if (project?.id) {
+                  return {
+                    origin: "project" as const,
+                    projectId: project.id,
+                    projectCode: project.code,
+                    projectTitle: project.title,
+                    requestId: project.request_id ?? null,
+                  };
+                }
+                return parentLookups.resolve({
+                  project_id: taskDetail.data.project_id as string | null,
+                  request_id: taskDetail.data.request_id as string | null,
+                });
+              })()}
             />
-            {(taskDetail.data.assignee_ids as string[] | undefined)?.length ? (
+            {(
+              (taskDetail.data.assignees as Array<{ id: string; full_name: string }> | undefined) ??
+              []
+            ).length > 0 ? (
               <p className="row-meta">
                 <Bi en="Assignees" fa="مسئول‌ها" />:{" "}
-                {(taskDetail.data.assignee_ids as string[])
-                  .map((id) => nameById.get(id) || id)
+                {(taskDetail.data.assignees as Array<{ id: string; full_name: string }>)
+                  .map((row) => row.full_name || row.id)
                   .join("، ")}
               </p>
             ) : null}

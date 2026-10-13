@@ -22,6 +22,7 @@ import { SheetsSyncCard } from "../components/SheetsSyncCard";
 import { useAuth } from "../auth";
 import { faNum, tomanText } from "../fa";
 import { Bi, useBi } from "../i18n";
+import { canSeeNavPath } from "../lib/access";
 import { requestsApi } from "../requests/api";
 import { ConceptHint, StatusLabel } from "../ux";
 import { WorkChainLegend, WorkListKindBadge } from "../lib/workContext";
@@ -362,6 +363,12 @@ function WorkDetail({
   projectId: string;
   onBack: () => void;
 }) {
+  const { user, has } = useAuth();
+  const canOpenRequest = canSeeNavPath(
+    "/requests",
+    { roleCode: user?.roleCode, permissions: user?.permissions ?? [] },
+    has,
+  );
   let rows = asRequests(data);
   if (requestId) {
     rows = rows.filter((row) => row.id === requestId);
@@ -446,7 +453,11 @@ function WorkDetail({
           )}
           {!focused && request.id ? (
             <div className="record-actions">
-              <Button variant="ghost" className="btn-sm" to={`/reports?request=${request.id}`}>
+              <Button
+                variant="ghost"
+                className="btn-sm"
+                to={canOpenRequest ? `/requests/${request.id}` : `/reports?request=${request.id}`}
+              >
                 <Bi en="How this request moved" fa="روند این درخواست" />
               </Button>
             </div>

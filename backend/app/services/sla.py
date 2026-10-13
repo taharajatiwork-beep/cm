@@ -197,7 +197,7 @@ class SlaService:
                     self.db,
                     organization_id=case.organization_id,
                     user_id=case.owner_id,
-                    title=f"Case {case.case_number} escalated (SLA)",
+                    title=f"پیگیری {case.case_number} — مهلت SLA گذشت",
                     body=case.subject,
                     channel=NotificationChannel.SYSTEM,
                     entity_type="case",

@@ -51,6 +51,7 @@ secrets/
 
 # Company data (Sotoudeh exports, sheets, SMS panel dumps) - keep local only
 assets/
+!frontend/src/brand/fallback/assets/
 # Google service-account keys. Never commit these.
 secrets/
 **/perf-sheets.json
