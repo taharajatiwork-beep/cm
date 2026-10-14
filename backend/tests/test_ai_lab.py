@@ -218,7 +218,7 @@ async def test_inbound_signature(client, seeded, db, perf_user, ai_lab_on):
 
 @pytest.mark.asyncio
 async def test_webhook_includes_bearer(client, seeded, perf_user, ai_lab_on, monkeypatch):
-    from app.ai_lab import routes as ai_routes
+    from app.ai_lab import service as ai_service
 
     monkeypatch.setenv("AI_LAB_MODE", "webhook")
     monkeypatch.setenv("AI_LAB_OUTBOUND_URL", "http://127.0.0.1:9/capture")
@@ -241,7 +241,7 @@ async def test_webhook_includes_bearer(client, seeded, perf_user, ai_lab_on, mon
             captured["headers"] = kw.get("headers")
             return FakeResponse()
 
-    monkeypatch.setattr(ai_routes.httpx, "AsyncClient", lambda **_kw: FakeClient())
+    monkeypatch.setattr(ai_service.httpx, "AsyncClient", lambda **_kw: FakeClient())
     token = await login(client, perf_user.email)
     headers = auth(token)
     await client.post(
