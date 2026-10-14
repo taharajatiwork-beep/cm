@@ -2734,11 +2734,49 @@ html[dir="rtl"] .sheet {
   font-size: 0.78rem;
 }
 
-.work-parent-context {
+.row-head {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.row-head .row-title,
+.row-head .row-title-btn {
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+}
+
+.row-head .work-kind-badge {
+  flex-shrink: 0;
+}
+
+.work-parent-context {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 0.35rem 0.65rem;
+  align-items: start;
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.work-parent-context:not(:has(.work-kind-badge)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.work-parent-body {
+  min-width: 0;
+}
+
+.work-parent-sep {
+  display: block;
+}
+
+.work-parent-sep + .work-parent-sep {
+  margin-top: 0.2rem;
 }
 
 .work-parent-link {

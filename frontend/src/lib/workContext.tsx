@@ -60,6 +60,27 @@ export function resolveTaskParents(
   };
 }
 
+export function mergeTaskParentFields(
+  task: Record<string, unknown>,
+  resolved: Omit<WorkParentFields, "kind">,
+): WorkParentFields {
+  const pick = (key: string, fallback: string | null | undefined) => {
+    const raw = task[key];
+    if (raw != null && String(raw).trim()) return String(raw);
+    return fallback ?? null;
+  };
+  return {
+    kind: "task",
+    origin: pick("origin", resolved.origin ?? undefined),
+    projectId: pick("project_id", resolved.projectId ?? undefined),
+    requestId: pick("request_id", resolved.requestId ?? undefined),
+    projectCode: pick("project_code", resolved.projectCode ?? undefined),
+    projectTitle: pick("project_title", resolved.projectTitle ?? undefined),
+    requestCode: pick("request_code", resolved.requestCode ?? undefined),
+    requestTitle: pick("request_title", resolved.requestTitle ?? undefined),
+  };
+}
+
 export function WorkParentContext({
   kind,
   origin,
@@ -69,7 +90,8 @@ export function WorkParentContext({
   projectTitle,
   requestCode,
   requestTitle,
-}: WorkParentFields) {
+  showKindBadge = true,
+}: WorkParentFields & { showKindBadge?: boolean }) {
   const bi = useBi();
   const { user, has } = useAuth();
   const showProjectLink = canSeeProjects(
@@ -128,14 +150,16 @@ export function WorkParentContext({
   if (!parts.length) return null;
 
   return (
-    <span className="row-meta work-parent-context">
-      {listKind ? <WorkListKindBadge kind={listKind} /> : null}
-      {parts.map((node, i) => (
-        <span key={i} className="work-parent-sep">
-          {node}
-        </span>
-      ))}
-    </span>
+    <div className="work-parent-context">
+      {showKindBadge && listKind ? <WorkListKindBadge kind={listKind} /> : null}
+      <div className="work-parent-body">
+        {parts.map((node, i) => (
+          <span key={i} className="work-parent-sep">
+            {node}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 

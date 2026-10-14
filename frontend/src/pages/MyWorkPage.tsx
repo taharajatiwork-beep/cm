@@ -32,7 +32,12 @@ import { canFinishTask, formatDeadline, isOverdue } from "../lib/collaboration";
 import { DateText } from "../components/DateText";
 import { faNum } from "../fa";
 import { StatusLabel } from "../ux";
-import { useWorkParentLookups, WorkListKindBadge, WorkParentContext } from "../lib/workContext";
+import {
+  mergeTaskParentFields,
+  useWorkParentLookups,
+  WorkListKindBadge,
+  WorkParentContext,
+} from "../lib/workContext";
 import { TaskDetailSheet } from "./TaskDetailSheet";
 
 type QueueFilter = "all" | WorkBucket;
@@ -274,10 +279,13 @@ export function MyWorkPage() {
   function TaskRow({ t, late }: { t: Row; late?: boolean }) {
     const { locale } = useLocale();
     const deadline = formatDeadline(t.deadline, bi, locale);
-    const parents = parentLookups.resolve({
-      project_id: t.project_id as string | null | undefined,
-      request_id: t.request_id as string | null | undefined,
-    });
+    const parents = mergeTaskParentFields(
+      t,
+      parentLookups.resolve({
+        project_id: t.project_id as string | null | undefined,
+        request_id: t.request_id as string | null | undefined,
+      }),
+    );
     return (
       <li className={`row-item${late ? " is-danger" : ""}${justDone === String(t.id) ? " is-celebrate" : ""}`}>
         {canFinishTask(t, user?.id) ? (
@@ -294,18 +302,23 @@ export function MyWorkPage() {
           <span className="check-mark" aria-hidden>○</span>
         )}
         <div className="row-main">
-          <button type="button" className="row-title row-title-btn" onClick={() => openTask(String(t.id))}>
-            {String(t.title)}
-          </button>
-          <span className="row-meta">
-            {t.status !== "ASSIGNED" && t.status !== "OPEN" ? <StatusLabel status={String(t.status)} /> : null}
-            {deadline ? (
-              <span className={late ? "danger-text" : undefined}>
-                <Icon name="clock" size={11} /> {deadline}
-              </span>
-            ) : null}
-          </span>
-          <WorkParentContext kind="task" {...parents} />
+          <div className="row-head">
+            <button type="button" className="row-title row-title-btn" onClick={() => openTask(String(t.id))}>
+              {String(t.title)}
+            </button>
+            <WorkListKindBadge kind="task" />
+          </div>
+          {(t.status !== "ASSIGNED" && t.status !== "OPEN") || deadline ? (
+            <span className="row-meta">
+              {t.status !== "ASSIGNED" && t.status !== "OPEN" ? <StatusLabel status={String(t.status)} /> : null}
+              {deadline ? (
+                <span className={late ? "danger-text" : undefined}>
+                  <Icon name="clock" size={11} /> {deadline}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+          <WorkParentContext kind="task" showKindBadge={false} {...parents} />
         </div>
       </li>
     );
@@ -509,15 +522,19 @@ export function MyWorkPage() {
                   return (
                     <li key={`project-${row.id}`} className="row-item">
                       <div className="row-main">
-                        <span className="row-title">
-                          {projectId && showProjectLink ? (
-                            <Link to={`/projects/${projectId}`}>{title}</Link>
-                          ) : (
-                            title
-                          )}
-                        </span>
+                        <div className="row-head">
+                          <span className="row-title">
+                            {projectId && showProjectLink ? (
+                              <Link to={`/projects/${projectId}`}>{title}</Link>
+                            ) : (
+                              title
+                            )}
+                          </span>
+                          <WorkListKindBadge kind="project" />
+                        </div>
                         <WorkParentContext
                           kind="project"
+                          showKindBadge={false}
                           origin={row.origin}
                           projectId={projectId}
                           requestId={row.request_id}
@@ -541,11 +558,32 @@ export function MyWorkPage() {
                   return (
                     <li key={row.id} className="row-item">
                       <div className="row-main">
-                        <span className="row-title">
-                          {projectId && showProjectLink ? <Link to={`/projects/${projectId}`}>{title}</Link> : title}
-                        </span>
+                        <div className="row-head">
+                          <span className="row-title">
+                            {projectId && showProjectLink && isProject ? (
+                              <Link to={`/projects/${projectId}`}>{title}</Link>
+                            ) : !isProject ? (
+                              <button
+                                type="button"
+                                className="row-title row-title-btn"
+                                onClick={() => openTask(String(row.id))}
+                              >
+                                {title}
+                              </button>
+                            ) : (
+                              title
+                            )}
+                          </span>
+                          <WorkListKindBadge kind={isProject ? "project" : "task"} />
+                        </div>
+                        {!isProject && row.deadline ? (
+                          <span className="row-meta">
+                            <DateText value={row.deadline} withTime />
+                          </span>
+                        ) : null}
                         <WorkParentContext
                           kind={isProject ? "project" : "task"}
+                          showKindBadge={false}
                           origin={row.origin}
                           projectId={projectId}
                           requestId={row.request_id}
@@ -554,11 +592,6 @@ export function MyWorkPage() {
                           requestCode={row.request_code}
                           requestTitle={row.request_title}
                         />
-                        {!isProject && row.deadline ? (
-                          <span className="row-meta">
-                            <DateText value={row.deadline} withTime />
-                          </span>
-                        ) : null}
                       </div>
                     </li>
                   );
