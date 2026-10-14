@@ -416,6 +416,19 @@ async def run_telegram_setup() -> None:
         await setup_telegram(clients)
 
 
+async def run_ai_lab_github_poll(session_factory: async_sessionmaker[AsyncSession]) -> int:
+    """Poll GitHub for AI Lab task results (when AI_LAB_RESULT_SOURCE=github)."""
+    from app.ai_lab.service import poll_github_due_tasks
+
+    settings = get_settings()
+    if not settings.ai_lab_enabled or settings.ai_lab_result_source != "github":
+        return 0
+    async with session_factory() as db:
+        count = await poll_github_due_tasks(db)
+        await db.commit()
+    return count
+
+
 # ============================================================
 # High-level loops (used by lifespan when worker_mode=embedded)
 # ============================================================
@@ -492,6 +505,22 @@ class Worker:
                     log.warning("worker_kpi_snapshot_loop_error", error=str(e))
                 await asyncio.sleep(3600)
 
+        async def _ai_lab_github_loop():
+            while True:
+                try:
+                    if await acquire_job("ai_lab_github_poll", ttl_seconds=55):
+                        try:
+                            n = await run_ai_lab_github_poll(self.session_factory)
+                            if n:
+                                log.info("ai_lab_github_polled", count=n)
+                        finally:
+                            await release_job("ai_lab_github_poll")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    log.warning("worker_ai_lab_github_loop_error", error=str(e))
+                await asyncio.sleep(60)
+
         self._tasks.append(asyncio.create_task(_outbox_loop(), name="worker-outbox"))
         self._tasks.append(asyncio.create_task(_sla_loop(), name="worker-sla"))
         self._tasks.append(asyncio.create_task(_snapshot_loop(), name="worker-kpi-snapshot"))
@@ -504,6 +533,10 @@ class Worker:
         if settings.bale_mode == "polling" and "bale" in clients:
             self._tasks.append(
                 asyncio.create_task(_poll_loop("bale"), name="worker-poll-bale")
+            )
+        if settings.ai_lab_enabled and settings.ai_lab_result_source == "github":
+            self._tasks.append(
+                asyncio.create_task(_ai_lab_github_loop(), name="worker-ai-lab-github")
             )
 
         log.info("worker_started", tasks=[t.get_name() for t in self._tasks])

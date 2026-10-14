@@ -15,6 +15,16 @@ def sign(secret: str, timestamp: str, body: bytes) -> str:
     return f"sha256={digest}"
 
 
+def verify_github_result_signature(secret: str, timestamp: str | int, signature: str, body: str) -> bool:
+    """GitHub envelope: HMAC over str(timestamp) + '.' + body (body is JSON string)."""
+    if not secret or not signature:
+        return False
+    msg = f"{timestamp}.{body}".encode("utf-8")
+    digest = hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+    expected = f"sha256={digest}"
+    return hmac.compare_digest(expected, signature.strip())
+
+
 def verify(secret: str, timestamp: str, signature: str, body: bytes) -> bool:
     if not secret or not timestamp or not signature:
         return False

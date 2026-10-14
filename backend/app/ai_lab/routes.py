@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -24,7 +22,8 @@ from app.ai_lab.schemas import (
     SnapshotIn,
     TaskCreateIn,
 )
-from app.ai_lab.signing import sign, verify
+from app.ai_lab.service import apply_bot_payload, poll_github_for_task, send_outbound_webhook
+from app.ai_lab.signing import verify
 from app.ai_lab.snapshots import build_snapshot
 from app.api.deps import AuthContext, get_current_user, handle_authz
 from app.core.config import get_settings
@@ -57,20 +56,6 @@ def _require_perf(auth: AuthContext = Depends(get_current_user)) -> AuthContext:
     return auth
 
 
-def _callback_url() -> str:
-    settings = get_settings()
-    base = (settings.ai_lab_callback_base or "").strip().rstrip("/")
-    if not base:
-        for origin in settings.cors_origins.split(","):
-            origin = origin.strip().rstrip("/")
-            if origin.startswith("https://"):
-                base = f"{origin}/api"
-                break
-    if not base:
-        base = "http://localhost:8000"
-    return f"{base}/ai-lab/results"
-
-
 def _task_out(row: AiTask) -> dict:
     latency = None
     if row.completed_at and row.created_at:
@@ -100,88 +85,19 @@ def _task_out(row: AiTask) -> dict:
         "latency_seconds": latency,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+        "last_polled_at": row.last_polled_at.isoformat() if row.last_polled_at else None,
     }
 
 
 async def _expire_if_needed(db: AsyncSession, row: AiTask) -> None:
     settings = get_settings()
-    if row.status not in ("pending", "sent"):
+    if row.status not in ("pending", "sent", "waiting"):
         return
     ttl = timedelta(hours=settings.ai_lab_task_ttl_hours)
     if row.created_at and datetime.now(UTC) - row.created_at.replace(tzinfo=UTC) > ttl:
         row.status = "expired"
         row.error = "Task expired"
         await db.flush()
-
-
-def _apply_bot_payload(row: AiTask, payload: dict) -> None:
-    row.raw_result = json.dumps(payload, ensure_ascii=False)
-    try:
-        parsed = BotCallbackIn.model_validate(payload)
-    except ValidationError as exc:
-        row.status = "failed"
-        row.error = f"Invalid bot payload: {exc}"
-        row.completed_at = datetime.now(UTC)
-        return
-    if parsed.status == "failed":
-        row.status = "failed"
-        row.error = parsed.error or "Bot reported failure"
-        row.completed_at = datetime.now(UTC)
-        return
-    assert parsed.result is not None
-    row.result_json = parsed.result.model_dump_json()
-    row.status = "done"
-    row.error = None
-    row.completed_at = datetime.now(UTC)
-
-
-async def _send_webhook(row: AiTask) -> None:
-    settings = get_settings()
-    if settings.ai_lab_mode != "webhook":
-        return
-    if not settings.llm_external_enabled:
-        row.status = "failed"
-        row.error = "External LLM/webhook disabled (LLM_EXTERNAL_ENABLED=false)"
-        return
-    if not settings.ai_lab_outbound_url.strip():
-        row.status = "failed"
-        row.error = "AI_LAB_OUTBOUND_URL not configured"
-        return
-    body = {
-        "task_id": str(row.id),
-        "kind": row.kind,
-        "input": json.loads(row.input_json or "{}"),
-        "snapshot": json.loads(row.snapshot_json or "{}"),
-        "callback_url": _callback_url(),
-        "created_at": row.created_at.isoformat() if row.created_at else datetime.now(UTC).isoformat(),
-    }
-    raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    ts = str(int(time.time()))
-    signature = sign(settings.ai_lab_outbound_secret, ts, raw)
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            headers = {
-                "Content-Type": "application/json",
-                "X-CM-Timestamp": ts,
-                "X-CM-Signature": signature,
-            }
-            bearer = (settings.ai_lab_outbound_bearer or "").strip()
-            if bearer:
-                headers["Authorization"] = f"Bearer {bearer}"
-            res = await client.post(
-                settings.ai_lab_outbound_url,
-                content=raw,
-                headers=headers,
-            )
-        if res.status_code >= 400:
-            row.status = "failed"
-            row.error = f"Outbound webhook HTTP {res.status_code}"
-            return
-        row.status = "sent"
-        row.sent_at = datetime.now(UTC)
-    except httpx.HTTPError as exc:
-        row.status = "failed"
-        row.error = f"Outbound webhook error: {exc}"
 
 
 @router.get("/config")
@@ -200,6 +116,7 @@ async def lab_config(auth: AuthContext = Depends(get_current_user)) -> dict:
     return {
         "enabled": settings.ai_lab_enabled,
         "mode": settings.ai_lab_mode,
+        "result_source": settings.ai_lab_result_source,
     }
 
 
@@ -286,7 +203,7 @@ async def create_task(
     await db.flush()
     settings = get_settings()
     if settings.ai_lab_mode == "webhook":
-        await _send_webhook(row)
+        await send_outbound_webhook(row)
     await db.flush()
     return _task_out(row)
 
@@ -339,7 +256,26 @@ async def manual_result(
     payload = body.payload
     if "task_id" not in payload:
         payload = {"task_id": str(task_id), **payload}
-    _apply_bot_payload(row, payload)
+    apply_bot_payload(row, payload)
+    await db.flush()
+    return _task_out(row)
+
+
+@router.post("/tasks/{task_id}/poll")
+async def poll_task_now(
+    task_id: UUID,
+    auth: AuthContext = Depends(_require_perf),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    settings = get_settings()
+    if settings.ai_lab_result_source != "github":
+        raise HTTPException(status_code=400, detail="GitHub polling is not enabled")
+    row = await db.get(AiTask, task_id)
+    if not row or row.organization_id != auth.organization_id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if row.status not in ("waiting", "sent"):
+        return _task_out(row)
+    await poll_github_for_task(db, row)
     await db.flush()
     return _task_out(row)
 
@@ -406,6 +342,6 @@ async def inbound_results(request: Request, db: AsyncSession = Depends(get_db)) 
         raise HTTPException(status_code=404, detail="Task not found")
     if row.status == "done" and row.result_json:
         return {"ok": True, "idempotent": True}
-    _apply_bot_payload(row, payload)
+    apply_bot_payload(row, payload)
     await db.flush()
     return {"ok": True}
