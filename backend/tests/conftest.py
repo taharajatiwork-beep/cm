@@ -9,6 +9,7 @@ os.environ["APP_ENV"] = "development"
 os.environ["TELEGRAM_MODE"] = "off"
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["BALE_MODE"] = "off"
+os.environ.setdefault("AI_LAB_ENABLED", "false")
 # Never touch real outside systems from tests (Google Sheets, Mizito).
 # Without this, the repo-root .env is read and tests write to the live sheets.
 for _name in (

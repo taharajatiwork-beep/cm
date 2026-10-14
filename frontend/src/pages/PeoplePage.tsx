@@ -6,7 +6,6 @@ import {
   Button,
   Card,
   ErrorMessage,
-  ForbiddenState,
   Icon,
   Input,
   LoadingState,
@@ -14,19 +13,21 @@ import {
   PageHeader,
   SectionHeader,
 } from "../components/ui";
-import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { Bi, useBi } from "../i18n";
 import { queryKeys } from "../lib/queryKeys";
 import { StatusLabel } from "../ux";
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth";
 import { useWorkParentLookups, WorkParentContext } from "../lib/workContext";
 
 type Person = Record<string, unknown>;
 
 export function PeoplePage() {
   const bi = useBi();
-  const parentLookups = useWorkParentLookups(true);
+  const { has } = useAuth();
+  const canWorkload = has("task.read");
+  const parentLookups = useWorkParentLookups(canWorkload);
   const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -46,7 +47,7 @@ export function PeoplePage() {
     enabled: Boolean(activeId),
     queryFn: async () => {
       const id = String(activeId);
-      const workload = await api.people.workload(id);
+      const workload = canWorkload ? await api.people.workload(id) : null;
       let reports: Person[] = [];
       try {
         reports = await api.people.reports(id);
@@ -136,17 +137,13 @@ export function PeoplePage() {
                 </Button>
               </div>
 
-              {detailQuery.isLoading && !workload && !detailQuery.isError ? (
+              {detailQuery.isLoading && !detailQuery.data && !detailQuery.isError ? (
                 <LoadingState />
               ) : detailQuery.isError ? (
-                isForbiddenError(detailQuery.error) ? (
-                  <ForbiddenState />
-                ) : (
-                  <ErrorMessage error={detailQuery.error} />
-                )
+                <ErrorMessage error={detailQuery.error} />
               ) : (
                 <>
-                  {workload && (
+                  {canWorkload && workload && (
                     <div className="mini-stats">
                       <div className="mini-stat">
                         <span>
@@ -169,7 +166,8 @@ export function PeoplePage() {
                     </div>
                   )}
 
-                  <div className="grid grid-2">
+                  <div className={canWorkload ? "grid grid-2" : ""}>
+                    {canWorkload ? (
                     <div>
                       <SectionHeader
                         icon="check"
@@ -219,6 +217,7 @@ export function PeoplePage() {
                         </Muted>
                       )}
                     </div>
+                    ) : null}
 
                     <div>
                       <SectionHeader

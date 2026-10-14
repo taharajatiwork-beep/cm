@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { aiLabApi } from "./ai-lab/api";
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { Avatar, Icon, type IconName } from "./components/ui";
@@ -43,6 +44,7 @@ const navCatalog: NavItem[] = [
   { to: "/perf/sms", icon: "message", labelEn: "SMS", labelFa: "پیامک", hintEn: "Write, lists and sends", hintFa: "نوشتن، لیست و ثبت ارسال", permAny: ["perf.read", "perf.write"], group: "Marketing" },
   { to: "/perf/social", icon: "flag", labelEn: "Social", labelFa: "سوشال", hintEn: "Cars, budget, then pages", hintFa: "ماشین، بودجه، بعد پیج", permAny: ["perf.read", "perf.write"], group: "Marketing" },
   { to: "/perf/sheet", icon: "layers", labelEn: "Sheet", labelFa: "شیت", hintEn: "Campaign rows and sync", hintFa: "ردیف کمپین و همگام‌سازی", group: "Marketing" },
+  { to: "/ai-lab", icon: "activity", labelEn: "AI Lab", labelFa: "آزمایشگاه AI", hintEn: "Marketing analysis pilot (Grok Bot)", hintFa: "پایلوت تحلیل مارکتینگ (Grok Bot)", permAny: ["perf.read", "perf.write", "perf.approve", "org.admin"], group: "Marketing" },
   { to: "/perf/money", icon: "briefcase", labelEn: "Costs", labelFa: "هزینه‌ها", hintEn: "Charges and payments", hintFa: "شارژ و پرداخت", group: "" },
   { to: "/people", icon: "users", labelEn: "Colleagues", labelFa: "همکاران", hintEn: "Who does what", hintFa: "چه کسی چه کاری می‌کند", perm: "user.read", group: "More" },
   { to: "/knowledge", icon: "book", labelEn: "Rules & guides", labelFa: "قوانین و راهنماها", hintEn: "Company rules and how-tos", hintFa: "قوانین شرکت و روش انجام کارها", perm: "kb.read", group: "More" },
@@ -72,15 +74,44 @@ function sortByDaily<T extends { to: string }>(items: T[], daily: string[]): T[]
   return [...items].sort((a, b) => (order.get(a.to) ?? 999) - (order.get(b.to) ?? 999));
 }
 
-function NavLinks({ items, closeDrawer, bi }: { items: NavItem[]; closeDrawer: () => void; bi: (en: string, fa: string) => string }) {
+function NavLinks({
+  items,
+  closeDrawer,
+  bi,
+  highlightPath,
+}: {
+  items: NavItem[];
+  closeDrawer: () => void;
+  bi: (en: string, fa: string) => string;
+  highlightPath?: string | null;
+}) {
   return items.map((l) => (
-    <NavLink key={l.to} to={l.to} end={l.end} title={bi(l.hintEn, l.hintFa)} onClick={closeDrawer}>
+    <NavLink
+      key={l.to}
+      to={l.to}
+      end={l.end}
+      title={bi(l.hintEn, l.hintFa)}
+      onClick={closeDrawer}
+      className={highlightPath === l.to ? "nav-highlight" : undefined}
+    >
       <Icon name={l.icon} />
       <span>
         <Bi en={l.labelEn} fa={l.labelFa} />
       </span>
     </NavLink>
   ));
+}
+
+const PERF_RECENT_KEY = "cm-perf-recent";
+
+function readPerfRecent(): string[] {
+  try {
+    const raw = localStorage.getItem(PERF_RECENT_KEY);
+    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
+    return Array.isArray(parsed) ? parsed.slice(0, 3) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function Shell() {
@@ -91,6 +122,8 @@ export function Shell() {
   const { pathname } = useLocation();
   const searchRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
+  const [navHighlight, setNavHighlight] = useState<string | null>(null);
+  const [perfRecent, setPerfRecent] = useState<string[]>(() => readPerfRecent());
   const [drawerAt, setDrawerAt] = useState<string | null>(null);
   if (drawerAt !== null && drawerAt !== pathname) setDrawerAt(null);
   const drawer = drawerAt === pathname;
@@ -102,6 +135,12 @@ export function Shell() {
     queryKey: ["notifications", "badge"],
     queryFn: () => api.notifications(),
     refetchInterval: 30_000,
+  });
+  const aiLab = useQuery({
+    queryKey: ["ai-lab", "config"],
+    queryFn: () => aiLabApi.config(),
+    retry: false,
+    enabled: Boolean(user),
   });
   const noteCount = (notes.data ?? []).filter((row) => !row.is_read).length;
   const roleLabel =
@@ -138,6 +177,7 @@ export function Shell() {
         : [];
     const items = [...injected, ...navCatalog].filter((item) => {
       if (seen.has(item.to)) return false;
+      if (item.to === "/ai-lab" && !aiLab.data?.enabled) return false;
       if (item.adminOnly && !isSiteAdmin) return false;
       if (item.managerOnly && !isBranchManager) return false;
       const visible = canSeeNavPath(item.to, accessUser, has);
@@ -145,7 +185,7 @@ export function Shell() {
       return visible;
     });
     return items;
-  }, [accessUser, has, isSiteAdmin, isBranchManager]);
+  }, [accessUser, has, isSiteAdmin, isBranchManager, aiLab.data?.enabled]);
 
   const focusUser = useMemo(
     () => ({
@@ -176,14 +216,46 @@ export function Shell() {
     [visibleItems, marketingHomeTo],
   );
 
-  const perfFocused =
-    isPerformanceUser({ roleCode: user?.roleCode, permissions: user?.permissions ?? [] }) || roleHint === "marketing";
+  const perfFocused = isPerformanceUser({ roleCode: user?.roleCode, permissions: user?.permissions ?? [] });
 
   const perfToolsPathActive = marketingNav.perfTools.some(
     (item) => pathname === item.to || pathname.startsWith(`${item.to}/`),
   );
+  const perfToolsOrdered = useMemo(() => {
+    const order = new Map(perfRecent.map((path, index) => [path, index]));
+    return [...marketingNav.perfTools].sort((a, b) => (order.get(a.to) ?? 99) - (order.get(b.to) ?? 99));
+  }, [marketingNav.perfTools, perfRecent]);
+  const recentPerfItems = useMemo(
+    () => perfRecent.map((path) => marketingNav.perfTools.find((item) => item.to === path)).filter(Boolean) as NavItem[],
+    [perfRecent, marketingNav.perfTools],
+  );
   useEffect(() => {
     window.scrollTo(0, 0);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!pathname.startsWith("/perf") || pathname === "/perf") return;
+    setPerfRecent((prev) => {
+      const next = [pathname, ...prev.filter((path) => path !== pathname)].slice(0, 3);
+      try {
+        localStorage.setItem(PERF_RECENT_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, [pathname]);
+
+  useEffect(() => {
+    const onHighlight = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (!detail) return;
+      setNavHighlight(detail);
+      setDrawerAt(pathname);
+      window.setTimeout(() => setNavHighlight(null), 4000);
+    };
+    window.addEventListener("cm-nav-highlight", onHighlight);
+    return () => window.removeEventListener("cm-nav-highlight", onHighlight);
   }, [pathname]);
 
   useEffect(() => {
@@ -273,7 +345,7 @@ export function Shell() {
               <div className="nav-group-label">
                 <Bi en="General" fa="عمومی" />
               </div>
-              <NavLinks items={mainNav} closeDrawer={closeDrawer} bi={bi} />
+              <NavLinks items={mainNav} closeDrawer={closeDrawer} bi={bi} highlightPath={navHighlight} />
             </div>
           ) : null}
 
@@ -283,7 +355,7 @@ export function Shell() {
                 <Bi en="Marketing" fa="مارکتینگ" />
               </div>
               {marketingNav.head.length > 0 ? (
-                <NavLinks items={marketingNav.head} closeDrawer={closeDrawer} bi={bi} />
+                <NavLinks items={marketingNav.head} closeDrawer={closeDrawer} bi={bi} highlightPath={navHighlight} />
               ) : null}
               {marketingNav.perfTools.length > 0 ? (
                 <details className="advanced nav-advanced" open={perfFocused || perfToolsPathActive || undefined}>
@@ -291,7 +363,15 @@ export function Shell() {
                     <Bi en="Performance tools" fa="ابزارهای پرفورمنس" />
                   </summary>
                   <div className="nav-group nav-group--nested">
-                    <NavLinks items={marketingNav.perfTools} closeDrawer={closeDrawer} bi={bi} />
+                    {recentPerfItems.length > 0 ? (
+                      <>
+                        <div className="nav-group-label nav-group-label--sub">
+                          <Bi en="Recently used" fa="اخیراً استفاده‌شده" />
+                        </div>
+                        <NavLinks items={recentPerfItems} closeDrawer={closeDrawer} bi={bi} highlightPath={navHighlight} />
+                      </>
+                    ) : null}
+                    <NavLinks items={perfToolsOrdered} closeDrawer={closeDrawer} bi={bi} highlightPath={navHighlight} />
                   </div>
                 </details>
               ) : null}
@@ -304,7 +384,7 @@ export function Shell() {
                 <Bi en="More" fa="بیشتر" />
               </summary>
               <div className="nav-group nav-group--nested">
-                <NavLinks items={otherMore} closeDrawer={closeDrawer} bi={bi} />
+                <NavLinks items={otherMore} closeDrawer={closeDrawer} bi={bi} highlightPath={navHighlight} />
               </div>
             </details>
           ) : null}

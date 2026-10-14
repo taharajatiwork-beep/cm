@@ -90,7 +90,18 @@ async def team_home(
     for row in projects:
         tasks = await tasks_for(db, ctx.organization_id, project_id=row.id)
         cards.append(_summary(row, req_codes.get(row.request_id, ""), names.get(row.team_id, ""), progress(tasks)))
-    project_ids = {str(row.id) for row in projects}
+    campaign_tree_ids = set(await child_team_ids(db, [team.id])) if children else {team.id}
+    campaign_project_ids = {
+        str(row_id)
+        for row_id in (
+            await db.scalars(
+                select(WorkProject.id).where(
+                    WorkProject.organization_id == ctx.organization_id,
+                    WorkProject.team_id.in_(campaign_tree_ids),
+                )
+            )
+        ).all()
+    }
     active_campaigns = 0
     month_cost = 0
     campaigns: list[dict] = []
@@ -99,7 +110,7 @@ async def team_home(
             await db.execute(text("SELECT id, code, title, project_id, status FROM pm_campaign"))
         ).all()
         for camp_id, code, title, project_id, status in campaign_rows:
-            if str(project_id) not in project_ids:
+            if str(project_id) not in campaign_project_ids:
                 continue
             if status == "active":
                 active_campaigns += 1

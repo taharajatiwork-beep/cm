@@ -2683,12 +2683,39 @@ html[dir="rtl"] .sheet {
 
 .onboard-steps {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-5);
-  margin-top: var(--space-1);
-  padding-inline-start: 1.1rem;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  margin-top: var(--space-2);
+  padding: 0;
+  list-style: none;
   color: var(--ink-2);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+.onboard-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.onboard-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.nav-primary a.nav-highlight {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--accent-soft);
 }
 
 .onboard-steps a {
@@ -3618,6 +3645,7 @@ html[dir="rtl"] .thread-row.needs {
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
+  transition: width 0.35s ease;
 }
 
 .next-card {
@@ -4310,10 +4338,18 @@ html[dir="rtl"] .tag-list li {
 }
 
 .toast {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   background: var(--ink);
   color: var(--bg);
   padding: 0.6rem 0.9rem;
   border-radius: 0.6rem;
+}
+
+.toast-action {
+  color: var(--bg);
+  border-color: color-mix(in srgb, var(--bg) 35%, transparent);
 }
 
 .nav-toggle {

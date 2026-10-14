@@ -33,6 +33,13 @@ describe("access", () => {
     expect(canSeeNavPath("/projects", user, h)).toBe(false);
   });
 
+  it("calendar.read opens calendar without triage", () => {
+    const user = { roleCode: "designer", permissions: ["calendar.read", "task.read"] };
+    const h = has(user.permissions);
+    expect(canSeeCalendar(user, h)).toBe(true);
+    expect(canSeeNavPath("/calendar", user, h)).toBe(true);
+  });
+
   it("marketing manager sees campaigns and sheet, not sms", () => {
     const user = { roleCode: "marketing_manager", permissions: ["request.triage", "perf.read", "perf.write"] };
     const h = has(user.permissions);

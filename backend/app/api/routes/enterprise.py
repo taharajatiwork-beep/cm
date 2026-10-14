@@ -313,6 +313,64 @@ async def work_report_route(
         raise HTTPException(status_code=403, detail="این محدوده برای نقش شما مجاز نیست") from None
 
 
+@router.get("/reports/work.xlsx")
+async def work_report_xlsx(
+    scope: str = "me",
+    group_by: str = "none",
+    project_id: UUID | None = None,
+    request_id: UUID | None = None,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from io import BytesIO
+
+    from openpyxl import Workbook
+
+    from app.services.work_report import work_report
+
+    try:
+        data = await work_report(
+            db,
+            organization_id=ctx.organization_id,
+            user=ctx.user,
+            permissions=ctx.permissions,
+            scope=scope,
+            group_by=group_by,
+            project_id=project_id,
+            request_id=request_id,
+        )
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="این محدوده برای نقش شما مجاز نیست") from None
+
+    wb = Workbook()
+    ws = wb.active
+    if ws is None:
+        ws = wb.create_sheet()
+    ws.title = "Work"
+    ws.append(["kind", "code", "title", "status", "done", "total"])
+    for row in data.get("request_rows") or []:
+        ws.append(["request", row.get("code", ""), row.get("title", ""), row.get("status", ""), row.get("done", 0), row.get("total", 0)])
+        for project in row.get("projects") or []:
+            ws.append(
+                [
+                    "project",
+                    project.get("code", ""),
+                    project.get("title", ""),
+                    project.get("status", ""),
+                    project.get("done", 0),
+                    project.get("total", 0),
+                ]
+            )
+    buffer = BytesIO()
+    wb.save(buffer)
+    await _write_export_audit(db, ctx, "work.xlsx")
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=work.xlsx"},
+    )
+
+
 @router.get("/reports/campaigns")
 async def campaign_report_route(
     scope: str = "me",

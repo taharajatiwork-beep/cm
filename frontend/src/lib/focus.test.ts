@@ -22,8 +22,11 @@ const admin = {
 };
 
 describe("dailyPaths", () => {
-  it("keeps an admin on six everyday destinations", () => {
-    expect(dailyPaths(admin)).toEqual(["/", "/my-work", "/requests", "/projects", "/communication", "/admin"]);
+  it("keeps an admin on core everyday destinations", () => {
+    const paths = dailyPaths(admin);
+    expect(paths.slice(0, 6)).toEqual(["/", "/my-work", "/requests", "/projects", "/communication", "/admin"]);
+    expect(paths).toContain("/calendar");
+    expect(paths).toContain("/reports");
   });
 
   it("gives performance users perf, campaigns, sms, and sheet", () => {
@@ -37,7 +40,7 @@ describe("dailyPaths", () => {
     expect(paths).toContain("/perf");
     expect(paths).toContain("/perf/campaigns");
     expect(paths).toContain("/perf/sheet");
-    expect(paths.length).toBeLessThanOrEqual(6);
+    expect(paths.length).toBeLessThanOrEqual(12);
   });
 
   it("prioritizes requests and projects for a requester", () => {
@@ -46,7 +49,7 @@ describe("dailyPaths", () => {
         roleCode: "requester",
         permissions: ["request.create", "campaign.read", "conversation.read", "inventory.read"],
       }),
-    ).toEqual(["/", "/my-work", "/requests", "/projects", "/pricing", "/communication"]);
+    ).toEqual(["/", "/my-work", "/requests", "/projects", "/vehicles", "/pricing", "/communication", "/reports"]);
   });
 
   it("starts a seller from vehicles and messages", () => {
@@ -129,10 +132,11 @@ describe("home and work focus", () => {
     expect(caughtUpTarget({ roleHint: "seller", permissions: ["inventory.read"] })).toBe("/vehicles");
   });
 
-  it("gives each role one starting point", () => {
-    expect(onboardingCue("manager").to).toBe("/requests");
-    expect(onboardingCue("marketing").to).toBe("/perf");
-    expect(onboardingCue("viewer").to).toBe("/my-work");
+  it("gives each role three onboarding steps", () => {
+    expect(onboardingCue("manager").steps).toHaveLength(3);
+    expect(onboardingCue("manager").steps[0].to).toBe("/requests");
+    expect(onboardingCue("marketing").steps[0].to).toBe("/perf");
+    expect(onboardingCue("viewer").steps[0].to).toBe("/my-work");
   });
 
   it("drops empty work buckets and opens late work first", () => {

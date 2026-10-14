@@ -11,7 +11,6 @@ import {
   ErrorMessage,
   Icon,
   LoadingState,
-  Muted,
   PageHeader,
   SectionHeader,
   Segmented,
@@ -27,6 +26,7 @@ import { DateText } from "../components/DateText";
 import { faNum } from "../fa";
 import { StatusLabel } from "../ux";
 import { useWorkParentLookups, WorkListKindBadge, WorkParentContext } from "../lib/workContext";
+import { TaskDetailSheet } from "./TaskDetailSheet";
 
 type QueueFilter = "all" | WorkBucket;
 type Row = Record<string, unknown>;
@@ -134,7 +134,6 @@ function WorkBucketFilters({
 export function MyWorkPage() {
   const { user, roleHint, has } = useAuth();
   const bi = useBi();
-  const { locale } = useLocale();
   const qc = useQueryClient();
   const toast = useToast();
   const [justDone, setJustDone] = useState<string | null>(null);
@@ -196,7 +195,18 @@ export function MyWorkPage() {
   async function complete(id: string) {
     await api.tasks.complete(id);
     setJustDone(id);
-    toast(bi("Nice — one less on your list.", "آفرین — یکی از فهرست کم شد."));
+    toast(bi("Nice — one less on your list.", "آفرین — یکی از فهرست کم شد."), {
+      labelEn: "Undo",
+      labelFa: "برگرداندن",
+      onClick: () => {
+        void api.tasks.reopen(id).then(async () => {
+          setJustDone((current) => (current === id ? null : current));
+          await qc.invalidateQueries({ queryKey: ["my-work"] });
+          await qc.invalidateQueries({ queryKey: ["requests", "my-work"] });
+          await qc.invalidateQueries({ queryKey: ["project"] });
+        });
+      },
+    });
     window.setTimeout(() => setJustDone((current) => (current === id ? null : current)), 1200);
     await qc.invalidateQueries({ queryKey: ["my-work"] });
     await qc.invalidateQueries({ queryKey: ["requests", "my-work"] });
@@ -542,70 +552,22 @@ export function MyWorkPage() {
         open={Boolean(detailTaskId)}
         onClose={closeTask}
         title={taskDetail.data?.title ? String(taskDetail.data.title) : bi("Task details", "جزئیات کار")}
-        footer={
-          detailTaskId && taskDetail.data && canFinishTask(taskDetail.data, user?.id) ? (
-            <Button
-              onClick={() =>
-                void complete(String(detailTaskId)).then(() => closeTask())
-              }
-            >
-              <Bi en="Mark done" fa="انجام شد" />
-            </Button>
-          ) : undefined
-        }
       >
         {taskDetail.isLoading ? (
           <LoadingState block={false} />
         ) : taskDetail.error ? (
           <ErrorMessage error={taskDetail.error} />
-        ) : taskDetail.data ? (
-          <div className="stack">
-            {taskDetail.data.description ? (
-              <p>{String(taskDetail.data.description)}</p>
-            ) : (
-              <Muted>
-                <Bi en="No extra notes on this task." fa="یادداشت اضافه‌ای برای این کار نیست." />
-              </Muted>
-            )}
-            {formatDeadline(taskDetail.data.deadline, bi, locale) ? (
-              <p className="row-meta">
-                <Icon name="clock" size={12} />
-                {formatDeadline(taskDetail.data.deadline, bi, locale)}
-              </p>
-            ) : null}
-            <WorkParentContext
-              kind="task"
-              {...(() => {
-                const project = taskDetail.data.project as
-                  | { id: string; code: string; title: string; request_id?: string | null }
-                  | undefined;
-                if (project?.id) {
-                  return {
-                    origin: "project" as const,
-                    projectId: project.id,
-                    projectCode: project.code,
-                    projectTitle: project.title,
-                    requestId: project.request_id ?? null,
-                  };
-                }
-                return parentLookups.resolve({
-                  project_id: taskDetail.data.project_id as string | null,
-                  request_id: taskDetail.data.request_id as string | null,
-                });
-              })()}
-            />
-            {(
-              (taskDetail.data.assignees as Array<{ id: string; full_name: string }> | undefined) ??
-              []
-            ).length > 0 ? (
-              <p className="row-meta">
-                <Bi en="Assignees" fa="مسئول‌ها" />:{" "}
-                {(taskDetail.data.assignees as Array<{ id: string; full_name: string }>)
-                  .map((row) => row.full_name || row.id)
-                  .join("، ")}
-              </p>
-            ) : null}
-          </div>
+        ) : taskDetail.data && detailTaskId ? (
+          <TaskDetailSheet
+            taskId={detailTaskId}
+            data={taskDetail.data}
+            parentLookups={parentLookups}
+            canFinish={canFinishTask(taskDetail.data, user?.id)}
+            onComplete={async () => {
+              await complete(detailTaskId);
+              closeTask();
+            }}
+          />
         ) : null}
       </Sheet>
     </>

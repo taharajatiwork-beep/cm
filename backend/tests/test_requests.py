@@ -181,6 +181,8 @@ async def test_member_sees_only_projects_they_belong_to(client, seeded, db):
     ids = [item["id"] for item in listed.json()]
     assert first.json()["id"] in ids
     assert second.json()["id"] not in ids
+    forbidden_project = await client.get(f"/requests/projects/{second.json()['id']}", headers=member)
+    assert forbidden_project.status_code == 403, forbidden_project.text
     text_edit = await client.patch(f"/requests/{created.json()['id']}", headers=lead, json={"title": "عوض نشود"})
     assert text_edit.status_code == 403
 
@@ -282,6 +284,45 @@ async def test_only_the_assignee_can_tick(client, seeded, db):
     lead_get = await client.get(f"/tasks/{task_id}", headers=lead)
     assert lead_get.status_code == 200, lead_get.text
     assert lead_get.json()["id"] == task_id
+
+    note = await client.post(
+        f"/tasks/{task_id}/notes",
+        headers=maker,
+        json={"kind": "comment", "body": "آماده است"},
+    )
+    assert note.status_code == 201, note.text
+    listed = await client.get(f"/tasks/{task_id}/notes", headers=maker)
+    assert listed.status_code == 200
+    assert any(row["body"] == "آماده است" for row in listed.json())
+
+
+async def test_seller_inquiry_without_customer_admin(client, seeded, db):
+    from sqlalchemy import select
+
+    from app.models import User
+    from app.models.customer import Customer
+    from app.models.inventory import Vehicle
+
+    seller = auth(await login(client, "reza@autoco.example"))
+    vehicle = await db.scalar(select(Vehicle).where(Vehicle.organization_id == seeded.organization_id))
+    assert vehicle is not None
+    created = await client.post(
+        "/cases/inquiry",
+        headers=seller,
+        json={
+            "vehicle_id": str(vehicle.id),
+            "full_name": "خریدار تست",
+            "phone": "09120001122",
+            "note": "تماس بگیرید",
+        },
+    )
+    assert created.status_code == 201, created.text
+    customer = await db.scalar(
+        select(Customer).where(Customer.organization_id == seeded.organization_id, Customer.phone == "09120001122")
+    )
+    assert customer is not None
+    denied = await client.get("/customers", headers=seller)
+    assert denied.status_code == 403
 
 
 async def test_static_request_paths_not_captured_as_uuid(client, seeded, db):

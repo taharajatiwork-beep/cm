@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Field,
+  ForbiddenState,
   Input,
   Muted,
   PageHeader,
@@ -15,6 +16,7 @@ import {
   Table,
   TextArea,
 } from "../components/ui";
+import { isForbiddenError } from "../lib/apiError";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 import { Bi } from "../i18n";
@@ -61,6 +63,7 @@ export function SmsPage() {
   const fromUrl = params.get("campaign") || "";
   const stepParam = params.get("step") || "";
   const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
+  const campaignsForbidden = campaigns.isError && isForbiddenError(campaigns.error);
   const fromLink = (campaigns.data ?? []).find((row) => row.id === fromUrl || row.code === fromUrl)?.id || "";
   const [campaignId, setCampaignId] = useState(fromUrl.length > 8 ? fromUrl : "");
   const [mainTab, setMainTab] = useState<MainTab>(stepParam === "delivery" ? "history" : "new");
@@ -114,6 +117,18 @@ export function SmsPage() {
     if (!panelId) items.push({ label: "پنل انتخاب نشده", step: "send" });
     return items;
   }, [body, hasCancel, campaignId, audienceKind, listId, smartPreview, recipientCount, panelId]);
+
+  if (campaignsForbidden) {
+    return (
+      <>
+        <PageHeader
+          title={<Bi en="SMS" fa="پیامک" />}
+          description={<Bi en="One flow: message, audience, send — with a live summary." fa="یک جریان: پیام، مخاطب، ارسال — با خلاصهٔ همیشه در دسترس." />}
+        />
+        <ForbiddenState />
+      </>
+    );
+  }
 
   return (
     <>

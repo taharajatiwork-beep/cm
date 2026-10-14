@@ -84,6 +84,17 @@ def test_all_problems_are_reported_at_once():
         assert expected in message
 
 
+def test_ai_lab_webhook_requires_secrets_in_production():
+    with pytest.raises(RuntimeError, match="AI_LAB"):
+        assert_production_safe(
+            _prod(
+                ai_lab_enabled=True,
+                ai_lab_mode="webhook",
+                ai_lab_outbound_url="",
+            )
+        )
+
+
 def test_development_is_never_blocked():
     """توسعهٔ محلی نباید به تنظیمات تولید نیاز داشته باشد."""
     assert_production_safe(

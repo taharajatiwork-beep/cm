@@ -108,7 +108,7 @@ export function ProjectPage() {
   });
 
   if (detail.isLoading) return <LoadingState />;
-  if (detail.error) return <ErrorMessage error={detail.error instanceof Error ? detail.error.message : String(detail.error)} />;
+  if (detail.error) return <ErrorMessage error={detail.error} />;
   const row = detail.data ?? {};
   const tasks = (row.tasks as Array<{ id: string; title: string; status: string; owner_id?: string; assignee_ids?: string[] }> | undefined) ?? [];
   const attachments = (row.attachments as Array<Record<string, string>> | undefined) ?? [];

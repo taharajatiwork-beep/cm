@@ -24,6 +24,7 @@ from app.api.routes import (
     telegram,
     work,
 )
+from app.ai_lab.routes import router as ai_lab_router
 from app.calendar.routes import router as calendar_router
 from app.perf.routes import router as perf_router
 from app.requests.routes import router as requests_router
@@ -100,6 +101,7 @@ def create_app() -> FastAPI:
         requests_router,
         teams_router,
         perf_sheets.router,
+        ai_lab_router,
     ]
     for r in routers:
         app.include_router(r)

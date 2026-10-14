@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type SyntheticEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
@@ -107,6 +107,22 @@ export function ReportsPage() {
       <PageHeader
         title={<Bi en="Reports" fa="گزارش‌ها" />}
         description={<Bi en="Campaign numbers from the ledger, then the requests in this range." fa="عدد کمپین‌ها از دفتر هزینه، بعد درخواست‌های این محدوده." />}
+        actions={
+          work.data ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="btn-sm"
+              onClick={() => {
+                void requestsApi.workReportDownload(activeScope, projectId, requestId).catch((err: unknown) => {
+                  console.error("work export failed", err);
+                });
+              }}
+            >
+              <Bi en="Download Excel" fa="دانلود اکسل" />
+            </Button>
+          ) : undefined
+        }
       />
       {scopes.length > 1 ? (
         <Segmented
@@ -350,6 +366,46 @@ function asRequests(data: Record<string, unknown>): RequestLine[] {
   return Array.isArray(rows) ? (rows as RequestLine[]) : [];
 }
 
+function RequestSpineTrail({ requestId }: { requestId: string }) {
+  const [open, setOpen] = useState(false);
+  const spine = useQuery({
+    queryKey: ["requests", requestId, "spine"],
+    enabled: open,
+    queryFn: () => requestsApi.spine(requestId),
+  });
+  function onToggle(event: SyntheticEvent<HTMLDetailsElement>) {
+    setOpen(event.currentTarget.open);
+  }
+  return (
+    <details className="report-spine" onToggle={onToggle}>
+      <summary className="report-spine-summary">
+        <Bi en="How this request moved" fa="روند این درخواست" />
+      </summary>
+      {open && spine.isLoading ? <LoadingState /> : null}
+      {open && spine.error ? <ErrorMessage error={spine.error} /> : null}
+      {open && spine.data?.items?.length ? (
+        <ul className="rows rows--boxed">
+          {spine.data.items.map((item, index) => (
+            <li key={`${item.kind}-${item.code ?? item.label}-${index}`} className="row-item">
+              <span className="row-title">{item.label}</span>
+              <span className="row-meta">
+                {item.code ? <span className="mono muted ltr-value">{item.code}</span> : null}
+                {item.status ? <StatusLabel status={item.status} /> : null}
+                {item.at ? <DateText value={item.at} withTime /> : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {open && spine.data && !spine.data.items.length ? (
+        <Muted as="p">
+          <Bi en="No timeline entries yet." fa="هنوز رویدادی در خط زمین ثبت نشده." />
+        </Muted>
+      ) : null}
+    </details>
+  );
+}
+
 function WorkDetail({
   data,
   focused,
@@ -397,7 +453,7 @@ function WorkDetail({
         <Card key={request.id || request.title} as="article" className="record-card report-tile" stack>
           <div className="record-head">
             <div>
-              {request.code ? <div className="record-code" dir="ltr">{request.code}</div> : null}
+              {request.code ? <div className="record-code mono muted" dir="ltr">{request.code}</div> : null}
               <h3 className="record-title">{request.title}</h3>
               <span className="row-meta work-parent-context">
                 <WorkListKindBadge kind="request" />
@@ -453,8 +509,9 @@ function WorkDetail({
           )}
           {!focused && request.id && canOpenRequest ? (
             <div className="record-actions">
+              <RequestSpineTrail requestId={request.id} />
               <Button variant="ghost" className="btn-sm" to={`/requests/${request.id}`}>
-                <Bi en="How this request moved" fa="روند این درخواست" />
+                <Bi en="Open request" fa="باز کردن درخواست" />
               </Button>
             </div>
           ) : null}

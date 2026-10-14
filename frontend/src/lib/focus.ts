@@ -224,69 +224,83 @@ export function caughtUpTarget(user: FocusNavUser): string {
   return "/my-work";
 }
 
+export type OnboardingStep = {
+  labelEn: string;
+  labelFa: string;
+  to: string;
+};
+
 export type OnboardingCue = {
   titleEn: string;
   titleFa: string;
   bodyEn: string;
   bodyFa: string;
-  to: string;
-  actionEn: string;
-  actionFa: string;
+  steps: OnboardingStep[];
 };
 
 export function onboardingCue(role: FocusRole): OnboardingCue {
   if (role === "admin" || role === "manager") {
     return {
-      titleEn: "Start with one request",
-      titleFa: "از یک درخواست شروع کنید",
-      bodyEn: "The queue already shows what the team is waiting on. Open the first one.",
-      bodyFa: "صف درخواست‌ها نشان می‌دهد تیم منتظر چیست. اولین مورد را باز کنید.",
-      to: "/requests",
-      actionEn: "Open requests",
-      actionFa: "دیدن درخواست‌ها",
+      titleEn: "Three places to run the team",
+      titleFa: "سه جا برای راه انداختن تیم",
+      bodyEn: "Follow these in order — each step is one click away.",
+      bodyFa: "به ترتیب پیش بروید — هر قدم یک کلیک فاصله دارد.",
+      steps: [
+        { labelEn: "Requests queue", labelFa: "صف درخواست‌ها", to: "/requests" },
+        { labelEn: "Projects", labelFa: "پروژه‌ها", to: "/projects" },
+        { labelEn: "Reports", labelFa: "گزارش‌ها", to: "/reports" },
+      ],
     };
   }
   if (role === "marketing") {
     return {
-      titleEn: "Your campaigns are ready to review",
-      titleFa: "کمپین‌ها آماده‌اند",
-      bodyEn: "Performance shows the one campaign that needs you. The rest can wait.",
-      bodyFa: "پرفورمنس همان کمپینی را نشان می‌دهد که به شما نیاز دارد. بقیه می‌توانند بمانند.",
-      to: "/perf",
-      actionEn: "Open performance",
-      actionFa: "رفتن به پرفورمنس",
+      titleEn: "Your marketing rhythm",
+      titleFa: "ریتم کار مارکتینگ",
+      bodyEn: "Performance, calendar, then prices — in that order.",
+      bodyFa: "پرفورمنس، تقویم، بعد قیمت — به این ترتیب.",
+      steps: [
+        { labelEn: "Performance", labelFa: "پرفورمنس", to: "/perf" },
+        { labelEn: "Calendar", labelFa: "تقویم", to: "/calendar" },
+        { labelEn: "Prices & posts", labelFa: "قیمت و پست‌ها", to: "/pricing" },
+      ],
     };
   }
   if (role === "finance") {
     return {
-      titleEn: "Costs that need a decision",
-      titleFa: "هزینه‌هایی که تصمیم می‌خواهند",
-      bodyEn: "The report shows what is waiting. You do not need to set anything up first.",
-      bodyFa: "گزارش نشان می‌دهد چه چیزی منتظر تصمیم است. لازم نیست اول چیزی را تنظیم کنید.",
-      to: "/reports",
-      actionEn: "Open reports",
-      actionFa: "دیدن گزارش",
+      titleEn: "Where money shows up",
+      titleFa: "پول کجا دیده می‌شود",
+      bodyEn: "Costs, reports, then messages when something needs you.",
+      bodyFa: "هزینه‌ها، گزارش، بعد پیام وقتی چیزی منتظر شماست.",
+      steps: [
+        { labelEn: "Costs", labelFa: "هزینه‌ها", to: "/perf/money" },
+        { labelEn: "Reports", labelFa: "گزارش‌ها", to: "/reports" },
+        { labelEn: "Messages", labelFa: "پیام‌ها", to: "/communication" },
+      ],
     };
   }
   if (role === "seller") {
     return {
-      titleEn: "Your next job is already listed",
-      titleFa: "کار بعدی‌تان در فهرست است",
-      bodyEn: "Open My Work and finish the first item. Vehicles stay one step away.",
-      bodyFa: "کارهای من را باز کنید و اولین مورد را تمام کنید. خودروها یک قدم آن‌طرف‌ترند.",
-      to: "/my-work",
-      actionEn: "Open my work",
-      actionFa: "کارهای من",
+      titleEn: "Sell from stock",
+      titleFa: "فروش از موجودی",
+      bodyEn: "Vehicles first, then inquiries, then your tasks.",
+      bodyFa: "اول خودروها، بعد استعلام، بعد کارهای شما.",
+      steps: [
+        { labelEn: "Vehicles", labelFa: "خودروها", to: "/vehicles" },
+        { labelEn: "My work", labelFa: "کارهای من", to: "/my-work" },
+        { labelEn: "Messages", labelFa: "پیام‌ها", to: "/communication" },
+      ],
     };
   }
   return {
-    titleEn: "One list, already filled in",
-    titleFa: "یک فهرست، از قبل آماده",
-    bodyEn: "My Work shows what is yours. Start with the first item.",
-    bodyFa: "کارهای من نشان می‌دهد چه چیزی مال شماست. از اولین مورد شروع کنید.",
-    to: "/my-work",
-    actionEn: "Open my work",
-    actionFa: "کارهای من",
+    titleEn: "Your daily trio",
+    titleFa: "سه‌تایی روزانهٔ شما",
+    bodyEn: "My Work, calendar, then colleagues.",
+    bodyFa: "کارهای من، تقویم، بعد همکاران.",
+    steps: [
+      { labelEn: "My work", labelFa: "کارهای من", to: "/my-work" },
+      { labelEn: "Calendar", labelFa: "تقویم", to: "/calendar" },
+      { labelEn: "Colleagues", labelFa: "همکاران", to: "/people" },
+    ],
   };
 }
 

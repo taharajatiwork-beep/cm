@@ -715,14 +715,14 @@ async def project_detail(
     if _is_requester_only(ctx):
         req = await db.get(WorkRequest, row.request_id) if row.request_id else None
         if not req or req.requested_by != ctx.user.id:
-            raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
+            raise HTTPException(status_code=403, detail="Not authorized")
     elif not _is_triage(ctx):
         if row.id not in await _member_project_ids(db, ctx):
-            raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
+            raise HTTPException(status_code=403, detail="Not authorized")
     else:
         visible = await _tree_ids(db, ctx)
         if visible is not None and row.team_id not in visible:
-            raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
+            raise HTTPException(status_code=403, detail="Not authorized")
     from app.requests.models import DesignDeliverable, Shoot, WorkAttachment
     from app.requests.spine import (
         attachment_out,

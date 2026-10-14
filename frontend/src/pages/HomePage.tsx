@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { InquiryDialog } from "../components/InquiryDialog";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api";
@@ -33,6 +34,20 @@ export function HomePage() {
   const bi = useBi();
   const { locale } = useLocale();
   const [showOnboard, setShowOnboard] = useState(shouldShowOnboarding);
+  const [inquiryOpen, setInquiryOpen] = useState(false);
+  const sellerVehicles = useQuery({
+    queryKey: ["seller-vehicles"],
+    queryFn: () => api.vehicles.list(),
+    enabled: has("inquiry.create"),
+  });
+  const inquiryVehicles = useMemo(
+    () =>
+      (sellerVehicles.data ?? []).map((row) => ({
+        id: String(row.id),
+        label: `${String(row.brand ?? "")} ${String(row.model ?? "")} ${String(row.year ?? "")}`.trim(),
+      })),
+    [sellerVehicles.data],
+  );
 
   const inbox = useQuery({
     queryKey: ["home-inbox", user?.id, roleHint, locale],
@@ -249,9 +264,16 @@ export function HomePage() {
                 <Bi en="Messages" fa="پیام‌ها" />
               </Button>
             ) : null}
+            {has("inquiry.create") ? (
+              <Button type="button" onClick={() => setInquiryOpen(true)}>
+                <Bi en="New inquiry" fa="استعلام جدید" />
+              </Button>
+            ) : null}
           </>
         }
       />
+
+      <InquiryDialog open={inquiryOpen} onClose={() => setInquiryOpen(false)} vehicles={inquiryVehicles} />
 
       {showOnboard && (
         <OnboardingBanner

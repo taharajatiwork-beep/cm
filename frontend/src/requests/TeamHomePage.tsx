@@ -6,9 +6,12 @@ import { faNum } from "../fa";
 import { ApiError } from "../api";
 import { requestStatusLabel } from "./labels";
 import { PROJECT_STATUS_LABEL } from "./ProjectsPage";
+import { useAuth } from "../auth";
 import { requestsApi, type TeamHome } from "./api";
 
 export function TeamHomePage() {
+  const { has } = useAuth();
+  const canOpenCampaigns = has("campaign.read");
   const { teamId = "" } = useParams();
   const home = useQuery({
     queryKey: ["team-home", teamId],
@@ -81,17 +84,28 @@ export function TeamHomePage() {
           <EmptyState
             titleEn="No campaign"
             titleFa="کمپینی نیست"
-            bodyEn="Campaigns attached to these projects show up here."
-            bodyFa="کمپین‌هایی که به پروژه‌های این بخش وصل شده‌اند اینجا دیده می‌شوند."
+            bodyEn="Ask the marketing lead to attach campaigns to team projects."
+            bodyFa="از سرپرست مارکتینگ بخواهید کمپین به پروژه‌های تیم وصل کند."
           />
         ) : (
-          <ul>
-            {(data.campaigns ?? []).map((row) => (
-              <li key={row.id}>
-                <Link to={`/perf/campaigns/${row.id}`}>{row.code} — {row.title}</Link>
-              </li>
-            ))}
-          </ul>
+          <>
+            {!canOpenCampaigns ? (
+              <Muted as="p">
+                <Bi en="Details live with the marketing lead." fa="جزئیات با سرپرست مارکتینگ است." />
+              </Muted>
+            ) : null}
+            <ul>
+              {(data.campaigns ?? []).map((row) => (
+                <li key={row.id}>
+                  {canOpenCampaigns ? (
+                    <Link to={`/perf/campaigns/${row.id}`}>{row.code} — {row.title}</Link>
+                  ) : (
+                    <span>{row.code} — {row.title}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </Card>
       <Card>

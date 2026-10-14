@@ -395,6 +395,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
+    inquiry: (body: { vehicle_id: string; full_name: string; phone: string; note?: string }) =>
+      request<Record<string, unknown>>("/cases/inquiry", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     update: (id: string, body: { status?: string; owner_id?: string | null }) =>
       request<Record<string, unknown>>(`/cases/${id}`, {
         method: "PATCH",
@@ -430,6 +435,22 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ user_id: userId }),
       }),
+    notes: (id: string) =>
+      request<Array<Record<string, unknown>>>(`/tasks/${id}/notes`),
+    addNote: (id: string, body: { kind?: string; body?: string; url?: string }) =>
+      request<Record<string, unknown>>(`/tasks/${id}/notes`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    uploadFile: (id: string, file: File, kind: "file" | "deliverable" = "deliverable") => {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("kind", kind);
+      return request<Record<string, unknown>>(`/tasks/${id}/files`, { method: "POST", body: fd });
+    },
+    fileUrl: (taskId: string, noteId: string) => `/api/tasks/${taskId}/files/${noteId}`,
+    reopen: (id: string) =>
+      request<Record<string, unknown>>(`/tasks/${id}/reopen`, { method: "POST" }),
   },
   notifications: () => request<Array<Record<string, unknown>>>("/notifications"),
   markNotificationRead: (id: string) =>

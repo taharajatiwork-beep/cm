@@ -89,7 +89,11 @@ export function StatusLabel({ status }: { status: string }) {
   return <Badge tone={tone as "" | "ok" | "warn" | "danger"}>{bi(en, fa)}</Badge>;
 }
 
-const ONBOARD_KEY = "cm-onboard-v1";
+const ONBOARD_KEY = "cm-onboard-v2";
+
+export function highlightNavPath(to: string) {
+  window.dispatchEvent(new CustomEvent("cm-nav-highlight", { detail: to }));
+}
 
 export function shouldShowOnboarding(): boolean {
   try {
@@ -120,18 +124,14 @@ export function OnboardingBanner({
   titleFa,
   bodyEn,
   bodyFa,
-  to,
-  actionEn,
-  actionFa,
+  steps,
   onDismiss,
 }: {
   titleEn: string;
   titleFa: string;
   bodyEn: string;
   bodyFa: string;
-  to: string;
-  actionEn: string;
-  actionFa: string;
+  steps: Array<{ labelEn: string; labelFa: string; to: string }>;
   onDismiss: () => void;
 }) {
   return (
@@ -144,10 +144,25 @@ export function OnboardingBanner({
           <Bi en={bodyEn} fa={bodyFa} />
         </span>
       </div>
+      <ol className="onboard-steps">
+        {steps.map((step, index) => (
+          <li key={step.to}>
+            <span className="onboard-step-num">{index + 1}</span>
+            <span>
+              <Bi en={step.labelEn} fa={step.labelFa} />
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              className="btn-sm"
+              onClick={() => highlightNavPath(step.to)}
+            >
+              <Bi en="Show me" fa="نشانم بده" />
+            </Button>
+          </li>
+        ))}
+      </ol>
       <div className="row">
-        <Button to={to}>
-          <Bi en={actionEn} fa={actionFa} />
-        </Button>
         <Button variant="secondary" onClick={onDismiss}>
           <Bi en="Got it" fa="متوجه شدم" />
         </Button>

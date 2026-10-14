@@ -36,12 +36,25 @@ def _is_calendar_admin(ctx: AuthContext) -> bool:
     return PermissionCode.ORG_ADMIN in ctx.permissions
 
 
+def _calendar_read_only(ctx: AuthContext) -> bool:
+    if _is_calendar_admin(ctx):
+        return False
+    if PermissionCode.REQUEST_TRIAGE in ctx.permissions:
+        return False
+    if PermissionCode.REQUEST_MANAGE in ctx.permissions:
+        return False
+    if PermissionCode.PERF_WRITE in ctx.permissions:
+        return False
+    return PermissionCode.CALENDAR_READ in ctx.permissions
+
+
 def _require_calendar_read(ctx: AuthContext) -> None:
     if _is_calendar_admin(ctx):
         return
     try:
         require_any_permission(
             ctx.permissions,
+            PermissionCode.CALENDAR_READ,
             PermissionCode.REQUEST_TRIAGE,
             PermissionCode.REQUEST_MANAGE,
             PermissionCode.PERF_WRITE,
@@ -272,11 +285,18 @@ async def calendar_range(
     return {
         "entries": [_entry_out(row, names) for row in entries],
         "month": _month_out(header),
-        "events": await _events(db, org, start, end, names),
+        "events": await _events(db, org, start, end, names, ctx),
     }
 
 
-async def _events(db: AsyncSession, org: UUID, start: date, end: date, names: dict[UUID, str]) -> list[dict]:
+async def _events(
+    db: AsyncSession,
+    org: UUID,
+    start: date,
+    end: date,
+    names: dict[UUID, str],
+    ctx: AuthContext,
+) -> list[dict]:
     events: list[dict] = []
     start_at, end_at = _bounds(start, end)
 
@@ -296,6 +316,26 @@ async def _events(db: AsyncSession, org: UUID, start: date, end: date, names: di
         links = (await db.scalars(select(TaskAssignee).where(TaskAssignee.task_id.in_(task_ids)))).all()
         for link in links:
             assignee_ids.setdefault(link.task_id, []).append(link.user_id)
+    if _calendar_read_only(ctx):
+        team_ids = _team_ids_for_calendar(ctx)
+        user_id = ctx.user.id
+        project_teams: dict[UUID, UUID | None] = {}
+        project_ids = {row.project_id for row in tasks if row.project_id}
+        if project_ids:
+            for project in (
+                await db.scalars(select(WorkProject).where(WorkProject.id.in_(project_ids)))
+            ).all():
+                project_teams[project.id] = project.team_id
+        visible_tasks = []
+        for row in tasks:
+            if row.owner_id == user_id or user_id in assignee_ids.get(row.id, []):
+                visible_tasks.append(row)
+                continue
+            team_id = project_teams.get(row.project_id) if row.project_id else None
+            if team_id and team_id in team_ids:
+                visible_tasks.append(row)
+        tasks = visible_tasks
+
     for row in tasks:
         people = [row.owner_id, *assignee_ids.get(row.id, [])]
         person_id = people[0] if people else None

@@ -14,6 +14,7 @@ import {
   Badge,
   Button,
   Card,
+  Dialog,
   ForbiddenState,
   Field,
   Input,
@@ -93,6 +94,12 @@ export function CalendarPage() {
     [user?.roleCode, user?.permissions, user?.team_id, user?.team_home_team_id],
   );
   const allowed = canSeeCalendar(accessUser, has);
+  const readOnly =
+    has("calendar.read") &&
+    !has("org.admin") &&
+    !has("request.triage") &&
+    !has("request.manage") &&
+    !has("perf.write");
   const bi = useBi();
   const toast = useToast();
   const confirmDialog = useConfirm();
@@ -100,7 +107,8 @@ export function CalendarPage() {
   const now = gregorianToJalali(new Date().getFullYear(), new Date().getMonth() + 1, new Date().getDate());
   const [year, setYear] = useState(now[0]);
   const [month, setMonth] = useState(now[1]);
-  const [view, setView] = useState<"month" | "week" | "table">("month");
+  const [view, setView] = useState<"month" | "week" | "table">(readOnly ? "week" : "month");
+  const [addOpen, setAddOpen] = useState(false);
   const [week, setWeek] = useState(0);
   const [kind, setKind] = useState("");
   const [person, setPerson] = useState("");
@@ -247,17 +255,20 @@ export function CalendarPage() {
               <Button type="button" variant="ghost" className="btn-sm" onClick={() => shift(-1)}>ماه قبل</Button>
               <strong>{monthName}</strong>
               <Button type="button" variant="ghost" className="btn-sm" onClick={() => shift(1)}>ماه بعد</Button>
-              <Button
-                type="button"
-                variant="secondary"
-                className="btn-sm"
-                onClick={() => {
-                  setView("table");
-                  if (!fresh.on_date) setFresh((row) => ({ ...row, on_date: todayIso() }));
-                }}
-              >
-                افزودن محتوا
-              </Button>
+              {!readOnly ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="btn-sm"
+                  onClick={() => {
+                    if (!fresh.on_date) setFresh((row) => ({ ...row, on_date: todayIso() }));
+                    setAddOpen(true);
+                  }}
+                >
+                  افزودن محتوا
+                </Button>
+              ) : null}
+              {!readOnly ? (
               <MoreMenu label={bi("More", "بیشتر")}>
                 <Button type="button" variant="ghost" className="btn-sm" disabled={makeDraft.isPending} onClick={() => makeDraft.mutate()}>
                   پیش‌نویس ماه
@@ -267,10 +278,12 @@ export function CalendarPage() {
                   اکسل
                 </Button>
               </MoreMenu>
+              ) : null}
             </div>
           }
         />
         <QueryState isLoading={query.isLoading} error={query.error}>
+          {!readOnly ? (
           <MonthCard
             header={header}
             title={title}
@@ -280,7 +293,13 @@ export function CalendarPage() {
             onSave={() => saveHeader.mutate()}
             busy={saveHeader.isPending}
           />
-          {draft ? (
+          ) : header ? (
+            <Card>
+              <strong>{header.title}</strong>
+              {header.goal ? <p className="muted">{header.goal}</p> : null}
+            </Card>
+          ) : null}
+          {!readOnly && draft ? (
             <Card>
               <p>{draft.length} ردیف پیش‌نویس آماده است و هنوز ذخیره نشده. روزهایی که ردیف دارند عوض نمی‌شوند.</p>
               <div className="row">
@@ -338,15 +357,7 @@ export function CalendarPage() {
           {view === "table" ? (
             <ContentTable
               entries={visibleEntries}
-              fresh={fresh}
-              onFresh={setFresh}
-              onCreate={() => {
-                if (!fresh.topic.trim() || !fresh.on_date) {
-                  toast("تاریخ و موضوع لازم است");
-                  return;
-                }
-                saveEntry.mutate(fresh);
-              }}
+              readOnly={readOnly}
               onPatch={(id, body) => patchEntry.mutate({ id, body })}
               onRemove={(id) => {
                 void confirmDialog("حذف ردیف", "این ردیف از تقویم حذف شود؟", DELETE_CONFIRM_LABEL, { danger: true }).then((ok) => {
@@ -354,6 +365,37 @@ export function CalendarPage() {
                 });
               }}
             />
+          ) : null}
+          {!readOnly && addOpen ? (
+            <Dialog onClose={() => setAddOpen(false)} label={bi("Add content", "افزودن محتوا")}>
+              <div className="stack">
+                <Field label="تاریخ"><Input type="date" value={fresh.on_date} onChange={(event) => setFresh({ ...fresh, on_date: event.target.value })} /></Field>
+                <Field label="موضوع"><Input value={fresh.topic} onChange={(event) => setFresh({ ...fresh, topic: event.target.value })} /></Field>
+                <Field label="کمپین">
+                  <Select value={fresh.tier} onChange={(event) => setFresh({ ...fresh, tier: event.target.value })}>
+                    {TIERS.map((row) => <option key={row.value} value={row.value}>{row.label}</option>)}
+                  </Select>
+                </Field>
+                <Field label="فرمت"><Input value={fresh.format} onChange={(event) => setFresh({ ...fresh, format: event.target.value })} /></Field>
+                <Field label="کانال"><Input value={fresh.channel} onChange={(event) => setFresh({ ...fresh, channel: event.target.value })} /></Field>
+                <div className="row">
+                  <Button
+                    type="button"
+                    disabled={saveEntry.isPending}
+                    onClick={() => {
+                      if (!fresh.topic.trim() || !fresh.on_date) {
+                        toast("تاریخ و موضوع لازم است");
+                        return;
+                      }
+                      saveEntry.mutate(fresh, { onSuccess: () => setAddOpen(false) });
+                    }}
+                  >
+                    افزودن
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setAddOpen(false)}>انصراف</Button>
+                </div>
+              </div>
+            </Dialog>
           ) : null}
           {selected ? (
             <Card>
@@ -553,33 +595,17 @@ function WeekBoard({
 
 function ContentTable({
   entries,
-  fresh,
-  onFresh,
-  onCreate,
+  readOnly,
   onPatch,
   onRemove,
 }: {
   entries: CalendarEntry[];
-  fresh: { topic: string; tier: string; format: string; channel: string; on_date: string };
-  onFresh: (value: { topic: string; tier: string; format: string; channel: string; on_date: string }) => void;
-  onCreate: () => void;
+  readOnly?: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onRemove: (id: string) => void;
 }) {
   return (
     <div className="stack">
-      <div className="row">
-        <Field label="تاریخ"><Input type="date" value={fresh.on_date} onChange={(event) => onFresh({ ...fresh, on_date: event.target.value })} /></Field>
-        <Field label="موضوع"><Input value={fresh.topic} onChange={(event) => onFresh({ ...fresh, topic: event.target.value })} /></Field>
-        <Field label="کمپین">
-          <Select value={fresh.tier} onChange={(event) => onFresh({ ...fresh, tier: event.target.value })}>
-            {TIERS.map((row) => <option key={row.value} value={row.value}>{row.label}</option>)}
-          </Select>
-        </Field>
-        <Field label="فرمت"><Input value={fresh.format} onChange={(event) => onFresh({ ...fresh, format: event.target.value })} /></Field>
-        <Field label="کانال"><Input value={fresh.channel} onChange={(event) => onFresh({ ...fresh, channel: event.target.value })} /></Field>
-        <Button type="button" className="btn-sm" onClick={onCreate}>افزودن</Button>
-      </div>
       <div className="cal-table-wrap">
         <table className="cal-table">
           <thead>
@@ -589,7 +615,7 @@ function ContentTable({
           </thead>
           <tbody>
             {entries.map((row) => (
-              <EntryRow key={row.id} row={row} onPatch={onPatch} onRemove={onRemove} />
+              <EntryRow key={row.id} row={row} readOnly={readOnly} onPatch={onPatch} onRemove={onRemove} />
             ))}
           </tbody>
         </table>
@@ -600,10 +626,12 @@ function ContentTable({
 
 function EntryRow({
   row,
+  readOnly,
   onPatch,
   onRemove,
 }: {
   row: CalendarEntry;
+  readOnly?: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onRemove: (id: string) => void;
 }) {
@@ -612,6 +640,21 @@ function EntryRow({
   const [channel, setChannel] = useState(row.channel);
   const [cta, setCta] = useState(row.cta);
   const [kpi, setKpi] = useState(row.kpi);
+  if (readOnly) {
+    return (
+      <tr>
+        <td>{formatJalaliLong(row.on_date)}</td>
+        <td>{tierLabel(row.tier)}</td>
+        <td>{row.format}</td>
+        <td>{row.channel}</td>
+        <td>{row.topic}</td>
+        <td>{row.cta}</td>
+        <td>{row.kpi}</td>
+        <td>{statusLabel(row.status)}</td>
+        <td />
+      </tr>
+    );
+  }
   return (
     <tr>
       <td>{formatJalaliLong(row.on_date)}</td>

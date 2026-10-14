@@ -46,6 +46,8 @@ class PermissionCode(StrEnum):
     REQUEST_MANAGE = "request.manage"
     EXPENSE_REQUEST = "expense.request"
     EXPENSE_APPROVE = "expense.approve"
+    CALENDAR_READ = "calendar.read"
+    INQUIRY_CREATE = "inquiry.create"
 
 
 def admin_role_permission_codes() -> list[str]:

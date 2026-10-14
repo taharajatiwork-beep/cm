@@ -62,6 +62,7 @@ from app.models.inventory import (  # noqa: F401 — register metadata
 from app.models.pricing import PostSlot  # noqa: F401
 from app.calendar.models import CalendarEntry, CalendarMonth  # noqa: F401
 from app.requests import models as _request_models  # noqa: F401
+from app.ai_lab.models import AiTask  # noqa: F401
 from app.perf.models import (  # noqa: F401
     PmBlacklist,
     PmCampaign,
@@ -490,6 +491,21 @@ class TaskDependency(Base):
         back_populates="dependencies_as_dependent",
         foreign_keys=[dependent_task_id],
     )
+
+
+class TaskNote(Base):
+    __tablename__ = "task_notes"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    author_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, default="comment")
+    body: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(Text)
+    file_path: Mapped[str | None] = mapped_column(Text)
+    file_name: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Notification(Base):

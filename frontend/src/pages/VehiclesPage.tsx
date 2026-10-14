@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { DateText } from "../components/DateText";
 import { useAuth } from "../auth";
+import { isForbiddenError } from "../lib/apiError";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import {
   Button,
@@ -12,6 +13,7 @@ import {
   Dialog,
   EmptyState,
   ErrorMessage,
+  ForbiddenState,
   Field,
   Icon,
   Input,
@@ -32,6 +34,7 @@ import { useToast } from "../components/ui/Toast";
 import { nextCursor } from "../lib/pagination";
 import { queryKeys } from "../lib/queryKeys";
 import { useVehicleLabel } from "../lib/vehicleLabels";
+import { InquiryDialog } from "../components/InquiryDialog";
 import { StatusLabel } from "../ux";
 
 type VehicleForm = {
@@ -273,7 +276,9 @@ export function VehiclesPage() {
     [listQuery.data],
   );
   const loading = listQuery.isLoading;
-  const listError = listQuery.isError ? String((listQuery.error as Error).message) : "";
+  const listForbidden = listQuery.isError && isForbiddenError(listQuery.error);
+  const listError = listQuery.isError && !listForbidden ? listQuery.error : null;
+  const scopeEmpty = canRead && !loading && !listQuery.isError && rows.length === 0 && !q.trim() && statusFilter === "ALL";
   const invalidateVehicles = () => qc.invalidateQueries({ queryKey: queryKeys.vehiclesRoot });
 
   function setField<K extends keyof VehicleForm>(key: K, value: string) {
@@ -459,6 +464,15 @@ export function VehiclesPage() {
     );
   }
 
+  if (!canRead || listForbidden) {
+    return (
+      <>
+        <PageHeader title={<Bi en="Vehicles" fa="خودروها" />} />
+        <ForbiddenState />
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -547,10 +561,22 @@ export function VehiclesPage() {
             onRowClick={(v) => navigate(`/vehicles/${String(v.id)}`)}
             empty={
               <EmptyState
-                titleEn="No vehicles match"
-                titleFa="خودرویی پیدا نشد"
-                bodyEn={canWrite ? "Change the filter, or add / import vehicles." : "Change the filter or ask someone who can edit inventory."}
-                bodyFa={canWrite ? "فیلتر را تغییر دهید یا خودرو اضافه / وارد کنید." : "فیلتر را عوض کنید یا از کسی که به موجودی دسترسی دارد بخواهید."}
+                titleEn={scopeEmpty ? "No vehicles in your scope" : "No vehicles match"}
+                titleFa={scopeEmpty ? "در محدودهٔ شما خودرویی نیست" : "خودرویی پیدا نشد"}
+                bodyEn={
+                  scopeEmpty
+                    ? "Your role can browse inventory, but nothing is visible in your team scope right now."
+                    : canWrite
+                      ? "Change the filter, or add / import vehicles."
+                      : "Change the filter or ask someone who can edit inventory."
+                }
+                bodyFa={
+                  scopeEmpty
+                    ? "دسترسی مشاهده دارید، اما در محدودهٔ تیم شما فعلاً خودرویی ثبت نشده."
+                    : canWrite
+                      ? "فیلتر را تغییر دهید یا خودرو اضافه / وارد کنید."
+                      : "فیلتر را عوض کنید یا از کسی که به موجودی دسترسی دارد بخواهید."
+                }
                 action={
                   has("inventory.write") ? (
                     <Button variant="secondary" onClick={openAdd}>
@@ -854,6 +880,7 @@ export function VehicleDetailPage() {
   const { id = "" } = useParams();
   const vehicleLabel = useVehicleLabel();
   const { has } = useAuth();
+  const [inquiryOpen, setInquiryOpen] = useState(false);
   const bi = useBi();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -924,7 +951,7 @@ export function VehicleDetailPage() {
             {v.color ? (
               <>
                 <span className="dot" />
-                <span>{String(v.color)}</span>
+                <span>{vehicleLabel(String(v.color))}</span>
               </>
             ) : null}
             {v.trim ? (
@@ -937,6 +964,11 @@ export function VehicleDetailPage() {
         }
         actions={
           <>
+            {has("inquiry.create") ? (
+              <Button type="button" onClick={() => setInquiryOpen(true)}>
+                <Bi en="New inquiry" fa="استعلام جدید" />
+              </Button>
+            ) : null}
             <Button variant="secondary" to="/vehicles">
               <Bi en="Back" fa="بازگشت" />
             </Button>
@@ -959,6 +991,12 @@ export function VehicleDetailPage() {
       />
 
       <ErrorMessage error={error || ctxError} />
+      <InquiryDialog
+        open={inquiryOpen}
+        onClose={() => setInquiryOpen(false)}
+        vehicleId={id}
+        vehicleLabel={`${String(v.brand)} ${String(v.model)} ${String(v.year)}`}
+      />
       <VehicleOps id={id} />
 
       <div className="split split--wide-side">

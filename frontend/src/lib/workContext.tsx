@@ -95,8 +95,8 @@ export function WorkParentContext({
       <span key="req">
         <Bi en="Under request" fa="زیر درخواست" />{" "}
         <Link to={`/requests/${requestId}`} className="work-parent-link">
-          <span dir="ltr">{requestCode}</span>
-          {requestTitle ? <> — {requestTitle}</> : null}
+          {requestTitle ? <span>{requestTitle}</span> : null}
+          {requestCode ? <span className="mono muted ltr-value"> {requestCode}</span> : null}
         </Link>
       </span>,
     );
@@ -107,13 +107,13 @@ export function WorkParentContext({
         <Bi en="In project" fa="در پروژه" />{" "}
         {showProjectLink ? (
           <Link to={`/projects/${projectId}`} className="work-parent-link">
-            <span dir="ltr">{projectCode}</span>
-            {projectTitle ? <> — {projectTitle}</> : null}
+            {projectTitle ? <span>{projectTitle}</span> : null}
+            {projectCode ? <span className="mono muted ltr-value"> {projectCode}</span> : null}
           </Link>
         ) : (
           <span className="work-parent-link">
-            <span dir="ltr">{projectCode}</span>
-            {projectTitle ? <> — {projectTitle}</> : null}
+            {projectTitle ? <span>{projectTitle}</span> : null}
+            {projectCode ? <span className="mono muted ltr-value"> {projectCode}</span> : null}
           </span>
         )}
       </span>,

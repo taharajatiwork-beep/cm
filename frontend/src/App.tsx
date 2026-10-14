@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./auth";
 import { Shell } from "./Shell";
 import { LoadingState } from "./components/ui";
 import { AdminPage } from "./pages/AdminPage";
+import { AiLabPage } from "./pages/AiLabPage";
 import { CalendarPage } from "./pages/CalendarPage";
 import { AgentPage } from "./pages/AgentPage";
 import { CommunicationPage } from "./pages/CommunicationPage";
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="stories" element={<Navigate to="/perf/social" replace />} />
           <Route path="social" element={<Navigate to="/perf/social" replace />} />
           <Route path="perf/*" element={<PerfRoutes />} />
+          <Route path="ai-lab" element={<AiLabPage />} />
           <Route path="requests" element={<RequestsPage />} />
           <Route path="requests/:id" element={<RequestPage />} />
           <Route path="projects" element={<ProjectsPage />} />

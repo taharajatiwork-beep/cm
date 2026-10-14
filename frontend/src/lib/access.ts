@@ -18,6 +18,7 @@ export function canSeeCustomers(user: AccessUser | null | undefined, has: (perm:
 
 export function canSeeCalendar(user: AccessUser | null | undefined, has: (perm: string) => boolean): boolean {
   if (isSiteAdmin(user, has)) return true;
+  if (has("calendar.read")) return true;
   if (has("request.triage") || has("request.manage") || has("perf.write")) return true;
   return false;
 }
@@ -82,6 +83,15 @@ export function canSeeNavPath(
     return has("request.triage") || has("request.manage") || has("request.create") || isSiteAdmin(user, has);
   }
   if (path === "/projects") return canSeeProjects(user, has);
+
+  if (path === "/ai-lab") {
+    return (
+      has("perf.read") ||
+      has("perf.write") ||
+      has("perf.approve") ||
+      isSiteAdmin(user, has)
+    );
+  }
 
   if (!path.startsWith("/perf")) {
     if (path === "/vehicles") return has("inventory.read");

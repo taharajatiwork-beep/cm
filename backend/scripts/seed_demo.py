@@ -250,6 +250,7 @@ async def _ensure_org(db) -> dict:
             PC.KB_READ,
             PC.EVENT_READ,
             PC.CAMPAIGN_READ,
+            PC.INQUIRY_CREATE,
         ],
         "team",
     )
@@ -271,6 +272,7 @@ async def _ensure_org(db) -> dict:
             PC.EVENT_READ,
             PC.CAMPAIGN_READ,
             PC.CAMPAIGN_WRITE,
+            PC.CALENDAR_READ,
         ],
         "team",
     )
@@ -353,6 +355,7 @@ async def _ensure_org(db) -> dict:
         PC.CONVERSATION_WRITE,
         PC.NOTIFICATION_READ,
         PC.REQUEST_CREATE,
+        PC.CALENDAR_READ,
     ]
     design_role = await get_or_create_role("طراح", "designer", maker_perms, "team")
     film_role = await get_or_create_role("فیلم‌بردار", "filmmaker", maker_perms, "team")
@@ -591,7 +594,7 @@ async def _ensure_org(db) -> dict:
         "sara@autoco.example": ("marketing", "MKT_T", mkt_dept.id, branch.id, []),
         "mina@autoco.example": ("marketing_manager", "MKT_T", mkt_dept.id, branch.id, []),
         "finance@autoco.example": ("finance", "FIN_T", fin_dept.id, branch.id, []),
-        "nima@autoco.example": ("member", None, ops_dept.id, branch.id, ["request.create"]),
+        "nima@autoco.example": ("member", None, ops_dept.id, branch.id, ["request.create", "inquiry.create"]),
         "nadia@autoco.example": ("performance_marketing", "MKT_PERF", mkt_dept.id, branch.id, []),
         "leila@autoco.example": ("designer", "MKT_DESIGN", mkt_dept.id, branch.id, []),
         "kamran@autoco.example": ("filmmaker", "MKT_FILM", mkt_dept.id, branch.id, []),

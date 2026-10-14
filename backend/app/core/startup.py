@@ -42,5 +42,24 @@ def assert_production_safe(settings: Settings) -> None:
     # worker نباید در همان پروسهٔ API اجرا شود مگر صریحاً خواسته شده باشد
     if settings.worker_mode == "embedded" and settings.app_env == "production":
         problems.append("WORKER_MODE should be 'external' in production")
+    if settings.ai_lab_enabled and settings.ai_lab_mode == "webhook":
+        if not settings.ai_lab_outbound_url.strip():
+            problems.append("AI_LAB_OUTBOUND_URL is required when AI lab webhook mode is on")
+        if not settings.ai_lab_outbound_secret or len(settings.ai_lab_outbound_secret) < 24:
+            problems.append("AI_LAB_OUTBOUND_SECRET is too short")
+        if not settings.ai_lab_inbound_secret or len(settings.ai_lab_inbound_secret) < 24:
+            problems.append("AI_LAB_INBOUND_SECRET is too short")
+        has_callback = bool(settings.ai_lab_callback_base.strip())
+        if not has_callback:
+            has_callback = any(
+                o.strip().startswith("https://") for o in settings.cors_origins.split(",")
+            )
+        if not has_callback:
+            problems.append("AI_LAB_CALLBACK_BASE or https CORS_ORIGINS is required for inbound results")
+        if (
+            "cursor.sh/automations/webhook" in settings.ai_lab_outbound_url
+            and not (settings.ai_lab_outbound_bearer or "").strip()
+        ):
+            problems.append("AI_LAB_OUTBOUND_BEARER is required for Cursor automation webhooks")
     if problems:
         raise RuntimeError("Refusing to start: " + "; ".join(problems))

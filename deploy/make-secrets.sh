@@ -41,6 +41,8 @@ grafana_password="$(rand)"
 backup_passphrase="$(rand)"
 secret_key="$(rand)"
 telegram_webhook_secret="$(rand)"
+ai_lab_outbound_secret="$(rand)"
+ai_lab_inbound_secret="$(rand)"
 
 # کاراکترهای URL-unsafe باید escape شوند وگرنه DATABASE_URL خراب می‌شود
 url_encode() {
@@ -103,6 +105,17 @@ LDAP_ENABLED=false
 SLA_USE_BUSINESS_CALENDAR=false
 SLA_CHAIN_ESCALATION=false
 REQUIRE_HUMAN_APPROVAL_FOR_SENSITIVE_AI=false
+
+# --- AI Lab (optional — set AI_LAB_ENABLED=true and paste Cursor bearer) ---
+AI_LAB_ENABLED=false
+AI_LAB_MODE=webhook
+LLM_EXTERNAL_ENABLED=true
+AI_LAB_OUTBOUND_URL=
+AI_LAB_OUTBOUND_SECRET=$ai_lab_outbound_secret
+AI_LAB_INBOUND_SECRET=$ai_lab_inbound_secret
+AI_LAB_OUTBOUND_BEARER=
+# First https origin in CORS_ORIGINS + /api if unset
+AI_LAB_CALLBACK_BASE=
 EOF
 
 chmod 600 "$out" 2>/dev/null || true

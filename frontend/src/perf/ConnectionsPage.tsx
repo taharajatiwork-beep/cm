@@ -59,6 +59,15 @@ function sheetLine(label: string, link: SheetLink | undefined): string {
   return `${label}: وصل نیست. ${link.reason || "دلیلی از سرور نیامد."}`;
 }
 
+function StatusLight({ tone, label }: { tone: Tone; label: string }) {
+  return (
+    <p className="conn-status-line" data-tone={tone}>
+      <span className="conn-status-dot" aria-hidden />
+      {label}
+    </p>
+  );
+}
+
 export function ConnectionsPage() {
   const { has } = useAuth();
   const perfTools = has("perf.read") || has("perf.write");
@@ -184,19 +193,33 @@ export function ConnectionsPage() {
         <SectionHeader
           icon="book"
           title={<Bi en="Google Sheets" fa="گوگل‌شیت" />}
-          hint={data.service_account
-            ? <span dir="ltr">{data.service_account}</span>
-            : <Bi en="The service account file is not set." fa="فایل حساب سرویس روی سرور پیدا نشد." />}
           action={data.sheets_ready
             ? <Badge tone="ok"><Bi en="File found" fa="فایل حساب سرویس هست" /></Badge>
             : <Badge tone="danger"><Bi en="No credentials" fa="حساب سرویس نیست" /></Badge>}
         />
-        {!data.service_account ? (
-          <ErrorMessage
-            friendly={false}
-            message="فایل JSON حساب سرویس در مسیر تنظیم‌شده پیدا نشد. تا این فایل نباشد، هیچ‌کدام از شیت‌ها خوانده یا نوشته نمی‌شوند."
-          />
-        ) : null}
+        <StatusLight
+          tone={data.sheets_ready ? (SHEETS.every((item) => data.sheets[item.key]?.connected) ? "ok" : liveReady ? "danger" : "warn") : "danger"}
+          label={
+            data.sheets_ready
+              ? SHEETS.every((item) => data.sheets[item.key]?.connected)
+                ? "همهٔ شیت‌های گوگل در آخرین بررسی وصل بودند."
+                : liveReady
+                  ? "برخی شیت‌ها باز نشدند — جزئیات را در کارت‌های پایین ببینید."
+                  : "فایل حساب سرویس هست؛ برای وضعیت زنده «بررسی همین حالا» را بزنید."
+              : "فایل حساب سرویس روی سرور نیست — تا تنظیم شود شیت کار نمی‌کند."
+          }
+        />
+        <details className="conn-tech">
+          <summary><Bi en="Technical details" fa="جزئیات فنی" /></summary>
+          {data.service_account ? (
+            <Muted as="p" className="mono ltr-value">{data.service_account}</Muted>
+          ) : (
+            <ErrorMessage
+              friendly={false}
+              message="فایل JSON حساب سرویس در مسیر تنظیم‌شده پیدا نشد."
+            />
+          )}
+        </details>
         <div className="conn-grid">
           {SHEETS.map((item) => {
             const link = data.sheets[item.key];
@@ -229,9 +252,19 @@ export function ConnectionsPage() {
               ? <Badge tone="ok"><Bi en="Connected" fa="وصل" /></Badge>
               : <Badge tone="danger"><Bi en="Not connected" fa="وصل نیست" /></Badge>}
         />
+        <StatusLight
+          tone={checking && !liveReady ? "busy" : mizito.connected ? "ok" : "danger"}
+          label={
+            mizito.connected
+              ? `میزیتو وصل است — ${toman(mizito.open_count ?? 0)} کارت فعال در آخرین خواندن.`
+              : mizito.saved
+                ? "توکن میزیتو ذخیره شده اما آخرین بررسی وصل نبود."
+                : "توکن میزیتو ذخیره نشده — از جزئیات فنی بچسبانید."
+          }
+        />
         <article className="conn-tile" data-tone={checking && !liveReady ? "busy" : mizito.connected ? "ok" : "danger"}>
           <p className="conn-help">
-            میزیتو فقط خوانده می‌شود. «وصل» یعنی در آخرین بررسی (زمانش پایین همین کارت است) فهرست پروژه‌ها با x-token جواب داد. رمز عبور ذخیره نمی‌شود. خواندن کارت‌ها جداست و با دکمهٔ زیر در صفحهٔ هزینه‌ها می‌نشیند.
+            میزیتو فقط خوانده می‌شود. رمز عبور ذخیره نمی‌شود. خواندن کارت‌ها با دکمهٔ «خواندن کارت‌ها» یا از صفحهٔ هزینه‌ها انجام می‌شود.
           </p>
           {mizito.connected ? (
             <Muted>
@@ -245,28 +278,29 @@ export function ConnectionsPage() {
           )}
           {mizito.checked_at ? <Muted>آخرین جواب میزیتو: <DateText value={mizito.checked_at} withTime /></Muted> : <Muted>میزیتو هنوز بررسی نشده است.</Muted>}
         </article>
-        <ol className="perf-steps">
-          <li>یک بار در <a href="https://office.mizito.ir" target="_blank" rel="noreferrer">office.mizito.ir</a> وارد شوید.</li>
-          <li>در همان مرورگر ابزار توسعه را باز کنید (F12) و تب Network را انتخاب کنید.</li>
-          <li>صفحه را تازه کنید و یک درخواست به app.mizito.ir را باز کنید.</li>
-          <li>در Request Headers مقدار <strong>x-token</strong> را کپی کنید.</li>
-          <li>همین‌جا بچسبانید و ذخیره کنید. این توکن روی سرور می‌ماند و از هر سیستم همین پنل کافی است.</li>
-        </ol>
-        <Muted>وقتی توکن منقضی شد، وضعیت همین کارت به «وصل نیست» برمی‌گردد و کد ۴۰۱ یا ۴۰۳ را نشان می‌دهد.</Muted>
-        {canEditSecrets ? (
-          <div className="form-grid">
-            <Field label={<Bi en="Connection key" fa="کلید اتصال" />}>
-              <Input type="password" autoComplete="off" value={token} placeholder="از هدر درخواست کپی شود" onChange={(event) => setToken(event.target.value)} />
-            </Field>
-            <div className="row perf-actions">
-              <Button type="button" disabled={!token.trim()} onClick={() => save(token)}><Bi en="Save" fa="ذخیره" /></Button>
-              {mizito.saved ? <Button type="button" variant="secondary" onClick={() => save("")}><Bi en="Clear" fa="پاک کردن" /></Button> : null}
-              <Button type="button" variant="secondary" onClick={tryMizito}><Bi en="Read cards" fa="خواندن کارت‌ها" /></Button>
+        <details className="conn-tech">
+          <summary><Bi en="Technical details" fa="جزئیات فنی" /></summary>
+          <ol className="perf-steps">
+            <li>یک بار در <a href="https://office.mizito.ir" target="_blank" rel="noreferrer">office.mizito.ir</a> وارد شوید.</li>
+            <li>در همان مرورگر ابزار توسعه را باز کنید (F12) و تب Network را انتخاب کنید.</li>
+            <li>صفحه را تازه کنید و یک درخواست به app.mizito.ir را باز کنید.</li>
+            <li>در Request Headers مقدار <strong>x-token</strong> را کپی کنید.</li>
+          </ol>
+          {canEditSecrets ? (
+            <div className="form-grid">
+              <Field label={<Bi en="Connection key" fa="کلید اتصال (x-token)" />}>
+                <Input type="password" autoComplete="off" value={token} placeholder="از هدر درخواست کپی شود" onChange={(event) => setToken(event.target.value)} />
+              </Field>
+              <div className="row perf-actions">
+                <Button type="button" disabled={!token.trim()} onClick={() => save(token)}><Bi en="Save" fa="ذخیره" /></Button>
+                {mizito.saved ? <Button type="button" variant="secondary" onClick={() => save("")}><Bi en="Clear" fa="پاک کردن" /></Button> : null}
+                <Button type="button" variant="secondary" onClick={tryMizito}><Bi en="Read cards" fa="خواندن کارت‌ها" /></Button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <Muted>ذخیرهٔ توکن فقط برای سرپرست و ادمین است.</Muted>
-        )}
+          ) : (
+            <Muted>ذخیرهٔ توکن فقط برای سرپرست و ادمین است.</Muted>
+          )}
+        </details>
       </Card> : null}
 
       {perfTools ? <div className="conn-side">

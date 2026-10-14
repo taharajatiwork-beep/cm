@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -410,15 +411,22 @@ async def list_tasks(
     return listed
 
 
-@router.get("/tasks/{task_id}")
-async def get_task(
-    task_id: UUID,
-    ctx: AuthContext = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+def _task_note_out(note, author_name: str = "") -> dict:
+    return {
+        "id": str(note.id),
+        "kind": note.kind,
+        "body": note.body or "",
+        "url": note.url or "",
+        "file_name": note.file_name or "",
+        "author_name": author_name,
+        "created_at": note.created_at.isoformat() if note.created_at else None,
+        "has_file": bool(note.file_path),
+    }
+
+
+async def _ensure_task_visible(db: AsyncSession, ctx: AuthContext, task_id: UUID):
     from app.models import Task
     from app.models.enums import TaskRole
-    from app.schemas import TaskOut
     from sqlalchemy.orm import selectinload
 
     try:
@@ -444,8 +452,20 @@ async def get_task(
         )
         if not await db.scalar(scoped):
             raise HTTPException(403, "Not authorized")
-    from app.models import User
+    return task
 
+
+@router.get("/tasks/{task_id}")
+async def get_task(
+    task_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models import User
+    from app.models.enums import TaskRole
+    from app.schemas import TaskOut
+
+    task = await _ensure_task_visible(db, ctx, task_id)
     row = TaskOut.model_validate(task).model_dump(mode="json")
     assignee_ids_ordered = [link.user_id for link in task.assignees if link.role == TaskRole.ASSIGNEE]
     row["assignee_ids"] = [str(uid) for uid in assignee_ids_ordered]
@@ -457,7 +477,7 @@ async def get_task(
             names[user.id] = user.full_name
     row["assignees"] = [{"id": str(uid), "full_name": names.get(uid, "")} for uid in assignee_ids_ordered]
     if task.project_id:
-        from app.requests.models import WorkProject
+        from app.requests.models import WorkAttachment, WorkProject
 
         project = await db.get(WorkProject, task.project_id)
         if project and project.organization_id == ctx.organization_id:
@@ -465,9 +485,135 @@ async def get_task(
                 "id": str(project.id),
                 "code": project.code,
                 "title": project.title,
+                "description": (project.description or "").strip(),
                 "request_id": str(project.request_id) if project.request_id else None,
             }
+            attachments = list(
+                (
+                    await db.scalars(
+                        select(WorkAttachment).where(WorkAttachment.project_id == project.id)
+                    )
+                ).all()
+            )
+            row["project_attachments"] = [
+                {
+                    "id": str(item.id),
+                    "title": item.title,
+                    "url": item.url,
+                    "kind": item.kind,
+                }
+                for item in attachments
+            ]
     return row
+
+
+@router.get("/tasks/{task_id}/notes")
+async def list_task_notes(
+    task_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models import TaskNote, User
+
+    await _ensure_task_visible(db, ctx, task_id)
+    notes = list(
+        (
+            await db.scalars(
+                select(TaskNote)
+                .where(TaskNote.task_id == task_id, TaskNote.organization_id == ctx.organization_id)
+                .order_by(TaskNote.created_at.asc())
+            )
+        ).all()
+    )
+    author_ids = {note.author_id for note in notes if note.author_id}
+    authors: dict[UUID, str] = {}
+    if author_ids:
+        for user in (await db.scalars(select(User).where(User.id.in_(author_ids)))).all():
+            authors[user.id] = user.full_name
+    return [_task_note_out(note, authors.get(note.author_id, "") if note.author_id else "") for note in notes]
+
+
+@router.post("/tasks/{task_id}/notes", status_code=201)
+async def add_task_note(
+    task_id: UUID,
+    body: dict,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models import TaskNote
+
+    await _ensure_task_visible(db, ctx, task_id)
+    kind = str(body.get("kind") or "comment").strip() or "comment"
+    if kind not in ("comment", "link"):
+        raise HTTPException(422, "Invalid note kind")
+    note = TaskNote(
+        organization_id=ctx.organization_id,
+        task_id=task_id,
+        author_id=ctx.user.id,
+        kind=kind,
+        body=(body.get("body") or "").strip() or None,
+        url=(body.get("url") or "").strip() or None,
+    )
+    if kind == "link" and not note.url:
+        raise HTTPException(422, "URL required")
+    db.add(note)
+    await db.flush()
+    return _task_note_out(note, ctx.user.full_name)
+
+
+@router.post("/tasks/{task_id}/files", status_code=201)
+async def upload_task_file(
+    task_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    file: UploadFile = File(...),
+    kind: str = Form("deliverable"),
+):
+    from app.core.files import UploadRejected, save_upload
+    from app.models import TaskNote
+
+    await _ensure_task_visible(db, ctx, task_id)
+    if kind not in ("file", "deliverable"):
+        raise HTTPException(422, "Invalid file kind")
+    raw = await file.read()
+    try:
+        path = save_upload(file.filename or "upload", file.content_type, raw)
+    except UploadRejected as exc:
+        raise HTTPException(422, str(exc)) from exc
+    note = TaskNote(
+        organization_id=ctx.organization_id,
+        task_id=task_id,
+        author_id=ctx.user.id,
+        kind=kind,
+        file_path=str(path),
+        file_name=file.filename or "file",
+    )
+    db.add(note)
+    await db.flush()
+    return _task_note_out(note, ctx.user.full_name)
+
+
+@router.get("/tasks/{task_id}/files/{note_id}")
+async def download_task_file(
+    task_id: UUID,
+    note_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import Response
+
+    from app.core.files import read_upload
+    from app.models import TaskNote
+
+    await _ensure_task_visible(db, ctx, task_id)
+    note = await db.get(TaskNote, note_id)
+    if not note or note.task_id != task_id or note.organization_id != ctx.organization_id:
+        raise HTTPException(404, "File not found")
+    if not note.file_path:
+        raise HTTPException(404, "File not found")
+    data = read_upload(note.file_path)
+    name = note.file_name or "file"
+    return Response(content=data, media_type="application/octet-stream", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @router.post("/tasks/{task_id}/participants")
@@ -586,6 +732,84 @@ async def list_cases(
         owner_id=owner_id,
         scope=ctx.scope,
     )
+
+
+class InquiryIn(BaseModel):
+    vehicle_id: UUID
+    full_name: str = Field(min_length=1, max_length=200)
+    phone: str = Field(min_length=3, max_length=40)
+    note: str = ""
+
+
+@router.post("/cases/inquiry", response_model=CaseOut, status_code=201)
+async def create_inquiry(
+    body: InquiryIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        require_permission(ctx.permissions, PermissionCode.INQUIRY_CREATE)
+    except AuthorizationError as e:
+        raise handle_authz(e) from e
+    from app.models import Role, User
+    from app.models.customer import Customer
+    from app.models.inventory import Vehicle
+    from app.services.notifications import notify
+
+    vehicle = await db.get(Vehicle, body.vehicle_id)
+    if not vehicle or vehicle.organization_id != ctx.organization_id:
+        raise HTTPException(status_code=404, detail="خودرو پیدا نشد")
+    phone = body.phone.strip()
+    customer = await db.scalar(
+        select(Customer).where(
+            Customer.organization_id == ctx.organization_id,
+            Customer.phone == phone,
+        )
+    )
+    if customer is None:
+        customer = Customer(
+            organization_id=ctx.organization_id,
+            full_name=body.full_name.strip(),
+            phone=phone,
+            created_by=ctx.user.id,
+        )
+        db.add(customer)
+        await db.flush()
+    elif body.full_name.strip():
+        customer.full_name = body.full_name.strip()
+    owner_id = ctx.user.manager_id
+    if owner_id is None:
+        owner_id = await db.scalar(
+            select(User.id)
+            .join(Role, User.role_id == Role.id)
+            .where(User.organization_id == ctx.organization_id, Role.code == "admin")
+            .limit(1)
+        )
+    if owner_id is None:
+        owner_id = ctx.user.id
+    label = f"{vehicle.brand} {vehicle.model}".strip()
+    subject = f"استعلام خرید — {label}"
+    if body.note.strip():
+        subject = f"{subject} — {body.note.strip()[:120]}"
+    case = await WorkService(db).create_case(
+        organization_id=ctx.organization_id,
+        subject=subject,
+        case_type=CaseType.BUYER_REQUEST,
+        created_by=ctx.user.id,
+        owner_id=owner_id,
+        vehicle_id=body.vehicle_id,
+        customer_id=customer.id,
+    )
+    await notify(
+        db,
+        organization_id=ctx.organization_id,
+        user_id=owner_id,
+        title="استعلام جدید",
+        body=subject,
+        entity_type="case",
+        entity_id=case.id,
+    )
+    return case
 
 
 @router.post("/cases", response_model=CaseOut)
@@ -729,6 +953,33 @@ async def complete_task(
         raise HTTPException(403, str(e)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+
+
+@router.post("/tasks/{task_id}/reopen", response_model=TaskOut)
+async def reopen_task(
+    task_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import Task
+    from app.models.enums import TaskRole, TaskStatus
+    from app.schemas import TaskOut
+
+    task = await _ensure_task_visible(db, ctx, task_id)
+    if task.status != TaskStatus.COMPLETED:
+        raise HTTPException(400, "Task is not completed")
+    assignee_ids = {link.user_id for link in task.assignees if link.role == TaskRole.ASSIGNEE}
+    if ctx.user.id != task.owner_id and ctx.user.id not in assignee_ids:
+        raise HTTPException(403, "Not authorized")
+    if not task.completed_at or task.completed_at < datetime.now(UTC) - timedelta(minutes=10):
+        raise HTTPException(400, "Reopen window expired")
+    task.status = TaskStatus.IN_PROGRESS
+    task.completed_at = None
+    task.updated_at = datetime.now(UTC)
+    await db.flush()
+    return TaskOut.model_validate(task)
 
 
 @router.post("/sla/policies", response_model=SlaPolicyOut)

@@ -154,6 +154,16 @@ class Settings(BaseSettings):
     perf_mizito_respect_unread: bool = True
     perf_mizito_history_pages: int = 20
 
+    # AI Lab (Grok Bot) — isolated marketing analysis pilot; off by default.
+    ai_lab_enabled: bool = False
+    ai_lab_mode: str = "manual"  # manual | webhook
+    ai_lab_outbound_url: str = ""
+    ai_lab_outbound_secret: str = ""
+    ai_lab_outbound_bearer: str = ""  # e.g. Cursor Automations webhook Authorization bearer
+    ai_lab_inbound_secret: str = ""
+    ai_lab_callback_base: str = ""  # public API base, e.g. https://cm.example.com/api
+    ai_lab_task_ttl_hours: int = 24
+
 
 @lru_cache
 def get_settings() -> Settings:

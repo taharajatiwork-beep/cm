@@ -9,7 +9,7 @@ import { DateText } from "../components/DateText";
 import { JalaliDateInput } from "../components/JalaliDateInput";
 import { Bi, useBi } from "../i18n";
 import { useAuth } from "../auth";
-import { DEFAULT_PROJECT_KIND, DEFAULT_REQUEST_KIND, DEFAULT_REQUEST_PRIORITY, suggestTeamId } from "../lib/focus";
+import { caughtUpTarget, DEFAULT_PROJECT_KIND, DEFAULT_REQUEST_KIND, DEFAULT_REQUEST_PRIORITY, suggestTeamId } from "../lib/focus";
 import { requestsApi, type TeamOption, type WorkProject, type WorkRequest } from "./api";
 import { REQUEST_STATUS_LABEL } from "./labels";
 import { WorkChainLegend, WorkListKindBadge } from "../lib/workContext";
@@ -171,6 +171,11 @@ export function RequestsPage() {
                 titleFa="هنوز درخواستی نیست"
                 bodyEn="A request is the starting point. The team turns it into a project."
                 bodyFa="درخواست نقطهٔ شروع است. تیم آن را به پروژه تبدیل می‌کند. از دکمهٔ بالای صفحه درخواست جدید بسازید."
+                action={
+                  <Button to={caughtUpTarget({ roleCode: user?.roleCode, permissions: user?.permissions ?? [] })}>
+                    <Bi en="Next step" fa="قدم بعد" />
+                  </Button>
+                }
               />
             )
           }

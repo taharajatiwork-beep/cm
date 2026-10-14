@@ -112,6 +112,10 @@ export const requestsApi = {
   list: (status: string = "") =>
     request<WorkRequest[]>(`/requests${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   get: (id: string) => request<RequestDetail>(`/requests/${id}`),
+  spine: (id: string) =>
+    request<{ request_id: string; items: Array<{ at?: string; kind: string; label: string; status?: string; code?: string }> }>(
+      `/requests/${id}/spine`,
+    ),
   create: (body: Record<string, unknown>) => request<WorkRequest>("/requests", { method: "POST", body: JSON.stringify(body) }),
   patch: (id: string, body: Record<string, unknown>) =>
     request<WorkRequest>(`/requests/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
@@ -190,6 +194,23 @@ export const requestsApi = {
     }),
   myWork: () =>
     request<Record<string, Array<Record<string, string>>>>("/requests/my-work"),
+  workReportDownload: async (scope: string, projectId = "", requestId = "") => {
+    const params = new URLSearchParams({ scope });
+    if (projectId) params.set("project_id", projectId);
+    if (requestId) params.set("request_id", requestId);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`/api/reports/work.xlsx?${params.toString()}`, { headers, credentials: "include" });
+    if (!res.ok) throw new Error(res.statusText);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "work.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
+  },
   workReport: (scope: string, projectId = "", requestId = "") => {
     const params = new URLSearchParams({ scope });
     if (projectId) params.set("project_id", projectId);
