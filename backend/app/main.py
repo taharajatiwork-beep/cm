@@ -43,7 +43,9 @@ async def lifespan(_app: FastAPI):
     settings = get_settings()
     assert_production_safe(settings)
     if settings.worker_mode == "embedded" and (
-        settings.telegram_mode != "off" or settings.bale_mode != "off"
+        settings.telegram_mode != "off"
+        or settings.bale_mode != "off"
+        or (settings.ai_lab_enabled and settings.ai_lab_result_source == "github")
     ):
         # نگه‌داشتن reference تا garbage collector تسک‌ها را نبندد
         _bg_tasks = await start_background(WorkerSessionLocal)
