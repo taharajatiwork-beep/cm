@@ -30,7 +30,7 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   return res.json() as Promise<T>;
 }
 
-export type AiLabConfig = { enabled: boolean; mode: string };
+export type AiLabConfig = { enabled: boolean; mode: string; result_source?: string };
 
 export type AiTaskKind = "period_review" | "campaign_review" | "channel_budget";
 
@@ -65,6 +65,7 @@ export type AiTask = {
   latency_seconds: number | null;
   created_at: string | null;
   completed_at: string | null;
+  last_polled_at: string | null;
 };
 
 export type EvalSummary = {
@@ -98,4 +99,5 @@ export const aiLabApi = {
       method: "PATCH",
       body: JSON.stringify({ rating, useful, eval_note }),
     }),
+  pollNow: (id: string) => request<AiTask>(`/ai-lab/tasks/${id}/poll`, { method: "POST" }),
 };

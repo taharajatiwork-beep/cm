@@ -19,6 +19,24 @@ import {
 import { Bi, useBi } from "../i18n";
 import { isForbiddenError } from "../lib/apiError";
 
+const STATUS_LABEL: Record<string, { en: string; fa: string }> = {
+  pending: { en: "pending", fa: "در انتظار ارسال" },
+  sent: { en: "sent", fa: "ارسال شد" },
+  waiting: { en: "waiting", fa: "منتظر نتیجه" },
+  done: { en: "done", fa: "انجام شد" },
+  failed: { en: "failed", fa: "ناموفق" },
+  expired: { en: "expired", fa: "منقضی" },
+};
+
+function formatPollTime(iso: string | null | undefined, bi: (en: string, fa: string) => string) {
+  if (!iso) return bi("never", "هنوز چک نشده");
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
 const KIND_LABEL: Record<AiTaskKind, { en: string; fa: string }> = {
   period_review: { en: "Period review", fa: "بررسی بازه" },
   campaign_review: { en: "Campaign review", fa: "تحلیل کمپین" },
@@ -111,6 +129,14 @@ export function AiLabPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-lab", "task", detailId] }),
   });
 
+  const pollMut = useMutation({
+    mutationFn: () => aiLabApi.pollNow(detailId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ai-lab", "tasks"] });
+      qc.invalidateQueries({ queryKey: ["ai-lab", "task", detailId] });
+    },
+  });
+
   const evalMut = useMutation({
     mutationFn: () =>
       aiLabApi.evaluate(detailId!, Number(evalRating), evalUseful === "yes", evalNote),
@@ -139,6 +165,11 @@ export function AiLabPage() {
   }
 
   const mode = config.data?.mode ?? "manual";
+  const resultSource = config.data?.result_source ?? "callback";
+  const statusLabel = (s: string) => {
+    const pair = STATUS_LABEL[s] ?? { en: s, fa: s };
+    return bi(pair.en, pair.fa);
+  };
   const rows = tasks.data ?? [];
   const active: AiTask | undefined = detail.data ?? rows.find((r) => r.id === detailId);
 
@@ -148,8 +179,8 @@ export function AiLabPage() {
         title={<Bi en="AI Lab" fa="آزمایشگاه AI مارکتینگ" />}
         description={
           <Bi
-            en="Structured analysis from perf data. Manual mode: copy JSON to Grok Bot, paste the reply."
-            fa="تحلیل ساختاریافته از دادهٔ پرفورمنس. در حالت دستی JSON را برای Grok Bot بفرستید و جواب را بچسبانید."
+            en="Structured analysis from perf data. Webhook + GitHub polling, or manual paste as fallback."
+            fa="تحلیل ساختاریافته از دادهٔ پرفورمنس. با webhook و polling از GitHub، یا چسباندن دستی در صورت خطا."
           />
         }
         actions={
@@ -199,7 +230,7 @@ export function AiLabPage() {
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{bi(KIND_LABEL[row.kind].en, KIND_LABEL[row.kind].fa)}</td>
-                  <td>{row.status}</td>
+                  <td>{statusLabel(row.status)}</td>
                   <td>{row.rating ?? "—"}</td>
                   <td>{row.accepted_count}</td>
                   <td>
@@ -272,8 +303,29 @@ export function AiLabPage() {
             <LoadingState />
           ) : !active ? null : (
           <>
-          <h2><Bi en="Task" fa="کار" /> · {active.status}</h2>
+          <h2><Bi en="Task" fa="کار" /> · {statusLabel(active.status)}</h2>
           <p className="muted">{bi(KIND_LABEL[active.kind].en, KIND_LABEL[active.kind].fa)}</p>
+          {resultSource === "github" && (active.status === "waiting" || active.status === "sent") && (
+            <>
+              <p className="muted">
+                <Bi en="Last GitHub check" fa="آخرین چک GitHub" />: {formatPollTime(active.last_polled_at, bi)}
+              </p>
+              <Button type="button" variant="ghost" onClick={() => pollMut.mutate()} disabled={pollMut.isPending}>
+                <Bi en="Check now" fa="چک الان" />
+              </Button>
+              {pollMut.error && <ErrorMessage error={pollMut.error} />}
+            </>
+          )}
+          {(active.status === "failed" || active.error === "timeout") && (
+            <>
+              <Field label={<Bi en="Paste bot JSON (fallback)" fa="چسباندن JSON جواب (پشتیبان)" />}>
+                <TextArea rows={8} value={manualJson} onChange={(e) => setManualJson(e.target.value)} />
+              </Field>
+              <Button type="button" onClick={() => manualMut.mutate()} disabled={manualMut.isPending || !manualJson.trim()}>
+                <Bi en="Save result" fa="ذخیرهٔ نتیجه" />
+              </Button>
+            </>
+          )}
           {mode === "manual" && active.status === "pending" && (
             <>
               <Button
