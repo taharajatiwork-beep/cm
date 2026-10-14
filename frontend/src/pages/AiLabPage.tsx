@@ -66,6 +66,8 @@ export function AiLabPage() {
   const bi = useBi();
   const qc = useQueryClient();
   const config = useQuery({ queryKey: ["ai-lab", "config"], queryFn: aiLabApi.config });
+  const [filterKind, setFilterKind] = useState("");
+  const [filterTrigger, setFilterTrigger] = useState("");
   const tasks = useQuery({
     queryKey: ["ai-lab", "tasks", filterKind, filterTrigger],
     queryFn: () => aiLabApi.tasks({ kind: filterKind || undefined, trigger: filterTrigger || undefined }),
@@ -97,8 +99,6 @@ export function AiLabPage() {
   const [evalRating, setEvalRating] = useState("4");
   const [evalUseful, setEvalUseful] = useState("yes");
   const [evalNote, setEvalNote] = useState("");
-  const [filterKind, setFilterKind] = useState("");
-  const [filterTrigger, setFilterTrigger] = useState("");
   const [toTaskDeadline, setToTaskDeadline] = useState("");
 
   const inputPayload = useMemo(() => {
@@ -402,6 +402,7 @@ export function AiLabPage() {
           )}
           {active.error && <p className="error-text">{active.error}</p>}
           {active.result && (
+            <>
             <Field label={<Bi en="Task deadline (optional)" fa="مهلت کار (اختیاری)" />}>
               <Input type="date" value={toTaskDeadline} onChange={(e) => setToTaskDeadline(e.target.value)} />
             </Field>
@@ -438,6 +439,7 @@ export function AiLabPage() {
                 </>
               }
             />
+            </>
           )}
           </>
           )}
