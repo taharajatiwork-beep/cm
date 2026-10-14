@@ -153,6 +153,12 @@
   border-top: 1px solid var(--line);
 }
 
+.ai-lab-outcome {
+  margin: var(--space-2) 0 0;
+  font-size: 0.85rem;
+  width: 100%;
+}
+
 .ai-lab-waiting {
   display: flex;
   flex-wrap: wrap;

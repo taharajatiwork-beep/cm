@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { AiRecommendation, AiResult } from "./api";
+import type { AiRecFollowup, AiRecommendation, AiResult } from "./api";
 import { Button } from "../components/ui";
 import { Bi } from "../i18n";
 
@@ -40,11 +40,41 @@ type Props = {
   decisions: Record<string, string>;
   bi: (en: string, fa: string) => string;
   onDecide: (recId: string, decision: "accepted" | "rejected") => void;
+  onToTask?: (recId: string) => void;
+  toTaskPending?: boolean;
+  followups?: Record<string, AiRecFollowup>;
   decidePending: boolean;
   evalSlot: ReactNode;
 };
 
-export function AiLabResultView({ result, decisions, bi, onDecide, decidePending, evalSlot }: Props) {
+function formatOutcome(fu: AiRecFollowup, bi: (en: string, fa: string) => string) {
+  const b = fu.baseline;
+  const f = fu.followup;
+  if (!f) {
+    return bi(`Due ${fu.followup_due_on}`, `سنجش تا ${fu.followup_due_on}`);
+  }
+  const parts: string[] = [];
+  if (b.cpl != null && f.cpl != null && b.cpl > 0) {
+    const pct = Math.round(((f.cpl - b.cpl) / b.cpl) * 100);
+    parts.push(`CPL ${b.cpl} → ${f.cpl} (${pct > 0 ? "+" : ""}${pct}%)`);
+  }
+  if (b.leads != null && f.leads != null) {
+    parts.push(`Leads ${b.leads} → ${f.leads}`);
+  }
+  return parts.join(" · ") || "—";
+}
+
+export function AiLabResultView({
+  result,
+  decisions,
+  followups = {},
+  bi,
+  onDecide,
+  onToTask,
+  toTaskPending,
+  decidePending,
+  evalSlot,
+}: Props) {
   const findings = result.findings ?? [];
   const recommendations = result.recommendations ?? [];
   const gaps = result.data_gaps ?? [];
@@ -114,6 +144,24 @@ export function AiLabResultView({ result, decisions, bi, onDecide, decidePending
                       <span className="badge ai">
                         {decision === "accepted" ? bi("Accepted", "پذیرفته") : bi("Rejected", "رد شده")}
                       </span>
+                    )}
+                    {onToTask && (
+                      <Button
+                        variant="ghost"
+                        type="button"
+                        disabled={toTaskPending}
+                        onClick={() => onToTask(rec.id)}
+                      >
+                        <Bi en="Create task" fa="تبدیل به کار" />
+                      </Button>
+                    )}
+                    {followups[rec.id] && (
+                      <p className="muted ai-lab-outcome">{formatOutcome(followups[rec.id], bi)}</p>
+                    )}
+                    {followups[rec.id]?.cm_task_id && (
+                      <a className="muted" href={`/my-work`}>
+                        <Bi en="Open CM task" fa="باز کردن کار" />
+                      </a>
                     )}
                   </div>
                 </article>

@@ -416,6 +416,20 @@ async def run_telegram_setup() -> None:
         await setup_telegram(clients)
 
 
+async def run_ai_lab_daily(session_factory: async_sessionmaker[AsyncSession]) -> dict[str, int]:
+    from app.ai_lab.automation import run_ai_lab_automation
+    from app.ai_lab.followup import measure_due_followups
+
+    settings = get_settings()
+    if not settings.ai_lab_enabled:
+        return {"followups": 0, "weekly": 0, "anomaly": 0}
+    async with session_factory() as db:
+        followups = await measure_due_followups(db)
+        stats = await run_ai_lab_automation(db)
+        await db.commit()
+    return {"followups": followups, **stats}
+
+
 async def run_ai_lab_github_poll(session_factory: async_sessionmaker[AsyncSession]) -> int:
     """Poll GitHub for AI Lab task results (when AI_LAB_RESULT_SOURCE=github)."""
     from app.ai_lab.service import poll_github_due_tasks
@@ -521,6 +535,22 @@ class Worker:
                     log.warning("worker_ai_lab_github_loop_error", error=str(e))
                 await asyncio.sleep(60)
 
+        async def _ai_lab_daily_loop():
+            while True:
+                try:
+                    if await acquire_job("ai_lab_daily", ttl_seconds=3500):
+                        try:
+                            stats = await run_ai_lab_daily(self.session_factory)
+                            if any(stats.values()):
+                                log.info("ai_lab_daily", **stats)
+                        finally:
+                            await release_job("ai_lab_daily")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    log.warning("worker_ai_lab_daily_loop_error", error=str(e))
+                await asyncio.sleep(3600)
+
         self._tasks.append(asyncio.create_task(_outbox_loop(), name="worker-outbox"))
         self._tasks.append(asyncio.create_task(_sla_loop(), name="worker-sla"))
         self._tasks.append(asyncio.create_task(_snapshot_loop(), name="worker-kpi-snapshot"))
@@ -537,6 +567,10 @@ class Worker:
         if settings.ai_lab_enabled and settings.ai_lab_result_source == "github":
             self._tasks.append(
                 asyncio.create_task(_ai_lab_github_loop(), name="worker-ai-lab-github")
+            )
+        if settings.ai_lab_enabled:
+            self._tasks.append(
+                asyncio.create_task(_ai_lab_daily_loop(), name="worker-ai-lab-daily")
             )
 
         log.info("worker_started", tasks=[t.get_name() for t in self._tasks])

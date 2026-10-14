@@ -32,7 +32,23 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
 
 export type AiLabConfig = { enabled: boolean; mode: string; result_source?: string };
 
-export type AiTaskKind = "period_review" | "campaign_review" | "channel_budget";
+export type AiTaskKind = "period_review" | "campaign_review" | "channel_budget" | "sms_copy_review";
+export type AiTaskTrigger = "manual" | "scheduled" | "anomaly";
+
+export type AiFollowupMetrics = {
+  period?: { from: string; to: string };
+  cost_toman?: number;
+  leads?: number;
+  cpl?: number | null;
+};
+
+export type AiRecFollowup = {
+  cm_task_id: string | null;
+  baseline: AiFollowupMetrics;
+  followup: AiFollowupMetrics | null;
+  followup_due_on: string;
+  measured_at: string | null;
+};
 
 export type AiFinding = { title: string; evidence: string; severity: string };
 export type AiRecommendation = {
@@ -52,6 +68,7 @@ export type AiResult = {
 export type AiTask = {
   id: string;
   kind: AiTaskKind;
+  trigger?: AiTaskTrigger;
   input: Record<string, unknown>;
   snapshot: Record<string, unknown>;
   status: string;
@@ -61,6 +78,7 @@ export type AiTask = {
   useful: boolean | null;
   eval_note: string | null;
   decisions: Record<string, string>;
+  followups?: Record<string, AiRecFollowup>;
   accepted_count: number;
   latency_seconds: number | null;
   created_at: string | null;
@@ -73,6 +91,7 @@ export type EvalSummary = {
     string,
     { tasks: number; avg_rating: number | null; accept_rate: number | null; median_latency_seconds: number | null }
   >;
+  avg_accepted_cpl_change_pct?: number | null;
 };
 
 export const aiLabApi = {
@@ -80,7 +99,13 @@ export const aiLabApi = {
   evaluationSummary: () => request<EvalSummary>("/ai-lab/evaluation-summary"),
   previewSnapshot: (kind: AiTaskKind, input: Record<string, unknown>) =>
     request<Record<string, unknown>>("/ai-lab/snapshot", { method: "POST", body: JSON.stringify({ kind, input }) }),
-  tasks: () => request<AiTask[]>("/ai-lab/tasks"),
+  tasks: (params?: { kind?: string; trigger?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.kind) q.set("kind", params.kind);
+    if (params?.trigger) q.set("trigger", params.trigger);
+    const suffix = q.toString() ? `?${q}` : "";
+    return request<AiTask[]>(`/ai-lab/tasks${suffix}`);
+  },
   task: (id: string) => request<AiTask>(`/ai-lab/tasks/${id}`),
   createTask: (kind: AiTaskKind, input: Record<string, unknown>) =>
     request<AiTask>("/ai-lab/tasks", { method: "POST", body: JSON.stringify({ kind, input }) }),
@@ -100,4 +125,9 @@ export const aiLabApi = {
       body: JSON.stringify({ rating, useful, eval_note }),
     }),
   pollNow: (id: string) => request<AiTask>(`/ai-lab/tasks/${id}/poll`, { method: "POST" }),
+  toTask: (id: string, recId: string, body: { deadline?: string; priority?: string }) =>
+    request<AiTask & { cm_task_id?: string }>(`/ai-lab/tasks/${id}/recommendations/${recId}/to-task`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import "../ai-lab/ai-lab.css";
 import { AiLabResultView, statusBadgeClass } from "../ai-lab/AiLabResultView";
-import { aiLabApi, type AiTask, type AiTaskKind } from "../ai-lab/api";
+import { aiLabApi, type AiTask, type AiTaskKind, type AiTaskTrigger } from "../ai-lab/api";
 import { perfApi } from "../perf/api";
 import {
   Button,
@@ -43,6 +43,13 @@ const KIND_LABEL: Record<AiTaskKind, { en: string; fa: string }> = {
   period_review: { en: "Period review", fa: "بررسی بازه" },
   campaign_review: { en: "Campaign review", fa: "تحلیل کمپین" },
   channel_budget: { en: "Budget split", fa: "تقسیم بودجه" },
+  sms_copy_review: { en: "SMS copy review", fa: "بررسی متن پیامک" },
+};
+
+const TRIGGER_LABEL: Record<AiTaskTrigger, { en: string; fa: string }> = {
+  manual: { en: "Manual", fa: "دستی" },
+  scheduled: { en: "Weekly", fa: "هفتگی" },
+  anomaly: { en: "Alert", fa: "هشدار" },
 };
 
 function todayIso() {
@@ -59,7 +66,11 @@ export function AiLabPage() {
   const bi = useBi();
   const qc = useQueryClient();
   const config = useQuery({ queryKey: ["ai-lab", "config"], queryFn: aiLabApi.config });
-  const tasks = useQuery({ queryKey: ["ai-lab", "tasks"], queryFn: aiLabApi.tasks, enabled: config.data?.enabled });
+  const tasks = useQuery({
+    queryKey: ["ai-lab", "tasks", filterKind, filterTrigger],
+    queryFn: () => aiLabApi.tasks({ kind: filterKind || undefined, trigger: filterTrigger || undefined }),
+    enabled: config.data?.enabled,
+  });
   const summary = useQuery({
     queryKey: ["ai-lab", "summary"],
     queryFn: aiLabApi.evaluationSummary,
@@ -86,9 +97,12 @@ export function AiLabPage() {
   const [evalRating, setEvalRating] = useState("4");
   const [evalUseful, setEvalUseful] = useState("yes");
   const [evalNote, setEvalNote] = useState("");
+  const [filterKind, setFilterKind] = useState("");
+  const [filterTrigger, setFilterTrigger] = useState("");
+  const [toTaskDeadline, setToTaskDeadline] = useState("");
 
   const inputPayload = useMemo(() => {
-    if (kind === "period_review") return { from_date: fromDate, to_date: toDate, brand };
+    if (kind === "period_review" || kind === "sms_copy_review") return { from_date: fromDate, to_date: toDate, brand };
     if (kind === "campaign_review") return { campaign_id: campaignId };
     return {
       next_budget_toman: Number(nextBudget) || 0,
@@ -129,6 +143,15 @@ export function AiLabPage() {
     mutationFn: ({ recId, decision }: { recId: string; decision: "accepted" | "rejected" }) =>
       aiLabApi.decide(detailId!, recId, decision),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-lab", "task", detailId] }),
+  });
+
+  const toTaskMut = useMutation({
+    mutationFn: ({ recId }: { recId: string }) =>
+      aiLabApi.toTask(detailId!, recId, { deadline: toTaskDeadline || undefined, priority: "medium" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ai-lab", "task", detailId] });
+      qc.invalidateQueries({ queryKey: ["ai-lab", "tasks"] });
+    },
   });
 
   const pollMut = useMutation({
@@ -213,6 +236,20 @@ export function AiLabPage() {
 
       <Card>
         <SectionHeader icon="layers" title={<Bi en="Tasks" fa="کارها" />} count={rows.length} />
+        <div className="toolbar" style={{ marginBottom: "0.75rem" }}>
+          <Select value={filterKind} onChange={(e) => setFilterKind(e.target.value)}>
+            <option value="">{bi("All kinds", "همهٔ نوع‌ها")}</option>
+            {(Object.keys(KIND_LABEL) as AiTaskKind[]).map((k) => (
+              <option key={k} value={k}>{bi(KIND_LABEL[k].en, KIND_LABEL[k].fa)}</option>
+            ))}
+          </Select>
+          <Select value={filterTrigger} onChange={(e) => setFilterTrigger(e.target.value)}>
+            <option value="">{bi("All triggers", "همهٔ منابع")}</option>
+            {(Object.keys(TRIGGER_LABEL) as AiTaskTrigger[]).map((t) => (
+              <option key={t} value={t}>{bi(TRIGGER_LABEL[t].en, TRIGGER_LABEL[t].fa)}</option>
+            ))}
+          </Select>
+        </div>
         {tasks.isLoading ? (
           <LoadingState />
         ) : !rows.length ? (
@@ -222,6 +259,7 @@ export function AiLabPage() {
             <thead>
               <tr>
                 <th><Bi en="Kind" fa="نوع" /></th>
+                <th><Bi en="Source" fa="منبع" /></th>
                 <th><Bi en="Status" fa="وضعیت" /></th>
                 <th><Bi en="Rating" fa="امتیاز" /></th>
                 <th><Bi en="Accepted" fa="پذیرفته" /></th>
@@ -232,6 +270,7 @@ export function AiLabPage() {
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{bi(KIND_LABEL[row.kind].en, KIND_LABEL[row.kind].fa)}</td>
+                  <td>{bi(TRIGGER_LABEL[(row.trigger as AiTaskTrigger) || "manual"].en, TRIGGER_LABEL[(row.trigger as AiTaskTrigger) || "manual"].fa)}</td>
                   <td><span className={statusBadgeClass(row.status)}>{statusLabel(row.status)}</span></td>
                   <td>{row.rating ?? "—"}</td>
                   <td>{row.accepted_count}</td>
@@ -255,9 +294,10 @@ export function AiLabPage() {
               <option value="period_review">{bi("Period review", "بررسی بازه")}</option>
               <option value="campaign_review">{bi("Campaign review", "تحلیل کمپین")}</option>
               <option value="channel_budget">{bi("Budget split", "تقسیم بودجه")}</option>
+              <option value="sms_copy_review">{bi("SMS copy review", "بررسی متن پیامک")}</option>
             </Select>
           </Field>
-          {kind === "period_review" && (
+          {(kind === "period_review" || kind === "sms_copy_review") && (
             <>
               <Field label={<Bi en="From" fa="از" />}><Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} /></Field>
               <Field label={<Bi en="To" fa="تا" />}><Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} /></Field>
@@ -362,11 +402,17 @@ export function AiLabPage() {
           )}
           {active.error && <p className="error-text">{active.error}</p>}
           {active.result && (
+            <Field label={<Bi en="Task deadline (optional)" fa="مهلت کار (اختیاری)" />}>
+              <Input type="date" value={toTaskDeadline} onChange={(e) => setToTaskDeadline(e.target.value)} />
+            </Field>
             <AiLabResultView
               result={active.result}
               decisions={active.decisions}
+              followups={active.followups}
               bi={bi}
               decidePending={decideMut.isPending}
+              toTaskPending={toTaskMut.isPending}
+              onToTask={(recId) => toTaskMut.mutate({ recId })}
               onDecide={(recId, decision) => decideMut.mutate({ recId, decision })}
               evalSlot={
                 <>

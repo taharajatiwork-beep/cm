@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-TASK_KINDS = ("period_review", "campaign_review", "channel_budget")
+TASK_KINDS = ("period_review", "campaign_review", "channel_budget", "sms_copy_review")
 
 
 class PeriodReviewIn(BaseModel):
@@ -26,13 +26,19 @@ class ChannelBudgetIn(BaseModel):
     reference_to: str
 
 
+class SmsCopyReviewIn(BaseModel):
+    from_date: str
+    to_date: str
+    brand: str = ""
+
+
 class SnapshotIn(BaseModel):
-    kind: Literal["period_review", "campaign_review", "channel_budget"]
+    kind: Literal["period_review", "campaign_review", "channel_budget", "sms_copy_review"]
     input: dict[str, Any]
 
 
 class TaskCreateIn(BaseModel):
-    kind: Literal["period_review", "campaign_review", "channel_budget"]
+    kind: Literal["period_review", "campaign_review", "channel_budget", "sms_copy_review"]
     input: dict[str, Any]
 
 
@@ -82,3 +88,9 @@ class EvaluationIn(BaseModel):
 
 class RecommendationDecisionIn(BaseModel):
     decision: Literal["accepted", "rejected", "done"]
+
+
+class RecToTaskIn(BaseModel):
+    owner_id: UUID | None = None
+    deadline: str | None = None
+    priority: Literal["low", "medium", "high", "critical"] = "medium"

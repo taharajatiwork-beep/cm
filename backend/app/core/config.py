@@ -166,6 +166,12 @@ class Settings(BaseSettings):
     ai_lab_result_source: str = "callback"  # callback | github
     ai_lab_github_repo: str = ""
     ai_lab_github_token_ro: str = ""
+    ai_lab_followup_days: int = 14
+    ai_lab_weekly_enabled: bool = False
+    ai_lab_weekly_weekday: int = 5  # Monday=0 … Saturday=5
+    ai_lab_schedule_user_email: str = ""
+    ai_lab_anomaly_enabled: bool = False
+    ai_lab_anomaly_cpl_ratio: float = 1.5
 
 
 @lru_cache

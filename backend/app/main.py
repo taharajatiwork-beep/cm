@@ -45,7 +45,7 @@ async def lifespan(_app: FastAPI):
     if settings.worker_mode == "embedded" and (
         settings.telegram_mode != "off"
         or settings.bale_mode != "off"
-        or (settings.ai_lab_enabled and settings.ai_lab_result_source == "github")
+        or settings.ai_lab_enabled
     ):
         # نگه‌داشتن reference تا garbage collector تسک‌ها را نبندد
         _bg_tasks = await start_background(WorkerSessionLocal)

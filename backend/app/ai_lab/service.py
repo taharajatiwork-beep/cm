@@ -16,6 +16,7 @@ from app.ai_lab.models import AiTask
 from app.ai_lab.polling import due_for_poll, is_poll_timeout, task_age_seconds
 from app.ai_lab.schemas import BotCallbackIn
 from app.ai_lab.signing import sign
+from app.ai_lab.snapshots import build_snapshot
 from app.core.config import get_settings
 
 
@@ -42,6 +43,57 @@ def apply_bot_payload(row: AiTask, payload: dict) -> None:
 
 def apply_bot_callback(row: AiTask, parsed: BotCallbackIn) -> None:
     apply_bot_payload(row, parsed.model_dump(mode="json"))
+
+
+async def notify_task_done(db: AsyncSession, row: AiTask) -> None:
+    if row.trigger == "manual" or row.status != "done":
+        return
+    try:
+        result = json.loads(row.result_json or "{}")
+        summary = (result.get("summary") or "")[:400]
+    except json.JSONDecodeError:
+        summary = ""
+    from app.services.notifications import notify
+
+    title = "AI Lab: تحلیل آماده است"
+    body = f"{row.kind}\n{summary}\n/ai-lab"
+    await notify(
+        db,
+        organization_id=row.organization_id,
+        user_id=row.created_by,
+        title=title,
+        body=body,
+        entity_type="ai_task",
+        entity_id=row.id,
+    )
+
+
+async def create_ai_task(
+    db: AsyncSession,
+    *,
+    organization_id: UUID,
+    user_id: UUID,
+    kind: str,
+    input_data: dict,
+    trigger: str = "manual",
+) -> AiTask:
+    snap = await build_snapshot(db, organization_id, kind, input_data)
+    row = AiTask(
+        organization_id=organization_id,
+        created_by=user_id,
+        kind=kind,
+        input_json=json.dumps(input_data, ensure_ascii=False),
+        snapshot_json=json.dumps(snap, ensure_ascii=False),
+        status="pending",
+        trigger=trigger,
+    )
+    db.add(row)
+    await db.flush()
+    settings = get_settings()
+    if settings.ai_lab_mode == "webhook":
+        await send_outbound_webhook(row)
+    await db.flush()
+    return row
 
 
 async def send_outbound_webhook(row: AiTask) -> None:
@@ -163,6 +215,8 @@ async def poll_github_for_task(db: AsyncSession, row: AiTask) -> None:
         await db.flush()
         return
     apply_bot_callback(row, callback)
+    if row.status == "done":
+        await notify_task_done(db, row)
     await db.flush()
 
 

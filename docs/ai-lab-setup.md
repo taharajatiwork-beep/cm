@@ -62,9 +62,26 @@ pytest tests/test_ai_lab.py tests/test_ai_lab_github.py -q
 
 پنل: `/ai-lab` → تحلیل جدید → با GitHub: `waiting` سپس `done`؛ با callback: `sent` سپس `done`.
 
+## قابلیت‌های بعدی (پیش‌فرض خاموش)
+
+```env
+AI_LAB_FOLLOWUP_DAYS=14
+AI_LAB_WEEKLY_ENABLED=false
+AI_LAB_WEEKLY_WEEKDAY=5
+AI_LAB_SCHEDULE_USER_EMAIL=you@company.com
+AI_LAB_ANOMALY_ENABLED=false
+AI_LAB_ANOMALY_CPL_RATIO=1.5
+```
+
+- **حافظه:** فیلد `history` در `snapshot` — آخرین تحلیل‌ها و تصمیم‌ها.
+- **پیشنهاد → کار:** `POST .../recommendations/{id}/to-task` و دکمه در UI.
+- **سنجش نتیجه:** baseline هنگام قبول؛ worker روزانه followup.
+- **sms_copy_review:** نوع تحلیل جدید برای متن پیامک‌ها.
+- **هفتگی / هشدار:** worker روزانه؛ نیاز به `AI_LAB_SCHEDULE_USER_EMAIL`.
+
 ## قرارداد JSON
 
-ورودی CM به automation: `task_id`, `kind`, `input`, `snapshot`, `created_at` (+ `callback_url` فقط در حالت callback).
+ورودی CM به automation: `task_id`, `kind`, `input`, `snapshot`, `created_at` (+ `callback_url` فقط در حالت callback). `snapshot.history` اختیاری است.
 
 خروجی automation (داخل `body` یا callback): `task_id`, `status` (`done`|`failed`), `result` با `summary`, `findings[]` (هر کدام `evidence` اجباری), `recommendations[]` با `id` یکتا.
 

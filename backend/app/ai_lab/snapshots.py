@@ -10,7 +10,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai_lab.schemas import CampaignReviewIn, ChannelBudgetIn, PeriodReviewIn
+from app.ai_lab.history import build_history
+from app.ai_lab.schemas import CampaignReviewIn, ChannelBudgetIn, PeriodReviewIn, SmsCopyReviewIn
 from app.perf.models import PmCampaign, PmCost, PmLead, PmPage, PmSmsSend, PmStory
 from app.perf.services.reports import build_report, load_settlement, placement_live
 
@@ -42,12 +43,18 @@ def _sms_in_range(sent_at: datetime | None, start: date, end: date) -> bool:
 
 async def build_snapshot(db: AsyncSession, organization_id: UUID, kind: str, raw_input: dict) -> dict:
     if kind == "period_review":
-        return await _period_review(db, organization_id, PeriodReviewIn(**raw_input))
-    if kind == "campaign_review":
-        return await _campaign_review(db, organization_id, CampaignReviewIn(**raw_input))
-    if kind == "channel_budget":
-        return await _channel_budget(db, organization_id, ChannelBudgetIn(**raw_input))
-    raise HTTPException(status_code=400, detail="Unknown task kind")
+        snap = await _period_review(db, organization_id, PeriodReviewIn(**raw_input))
+    elif kind == "campaign_review":
+        snap = await _campaign_review(db, organization_id, CampaignReviewIn(**raw_input))
+    elif kind == "channel_budget":
+        snap = await _channel_budget(db, organization_id, ChannelBudgetIn(**raw_input))
+    elif kind == "sms_copy_review":
+        snap = await _sms_copy_review(db, organization_id, SmsCopyReviewIn(**raw_input))
+    else:
+        raise HTTPException(status_code=400, detail="Unknown task kind")
+    scope = dict(raw_input)
+    snap["history"] = await build_history(db, organization_id, kind, scope)
+    return snap
 
 
 async def _period_review(db: AsyncSession, org: UUID, inp: PeriodReviewIn) -> dict:
@@ -265,4 +272,47 @@ async def _channel_budget(db: AsyncSession, org: UUID, inp: ChannelBudgetIn) -> 
         },
         "pages": page_rows,
         "notes": "Use historical CPL to suggest split for next_budget_toman.",
+    }
+
+
+async def _sms_copy_review(db: AsyncSession, org: UUID, inp: SmsCopyReviewIn) -> dict:
+    start = _parse_day(inp.from_date)
+    end = _parse_day(inp.to_date)
+    if end < start:
+        raise HTTPException(status_code=400, detail="to_date must be on or after from_date")
+    sends = list((await db.scalars(select(PmSmsSend).where(PmSmsSend.organization_id == org))).all())
+    if inp.brand.strip():
+        brand = inp.brand.strip()
+        camps = {
+            c.id
+            for c in (await db.scalars(select(PmCampaign).where(PmCampaign.organization_id == org))).all()
+            if brand in (c.brand or "")
+        }
+        sends = [s for s in sends if s.campaign_id in camps]
+    rows = []
+    for row in sends:
+        if not _sms_in_range(row.sent_at, start, end):
+            continue
+        body = (row.body or "")[:300]
+        recipients = row.recipient_count or 0
+        leads = row.leads or 0
+        cost = row.cost_toman or 0
+        rows.append(
+            {
+                "body": body,
+                "recipient_count": recipients,
+                "delivered_count": row.delivered_count,
+                "leads": leads,
+                "lead_rate_pct": _div(leads * 100, recipients),
+                "cost_toman": cost,
+                "cpl": _div(cost, leads),
+                "sent_at": row.sent_at.isoformat() if row.sent_at else None,
+            }
+        )
+    rows.sort(key=lambda r: (r["cpl"] is None, r["cpl"] or 0))
+    return {
+        "kind": "sms_copy_review",
+        "period": {"from": inp.from_date, "to": inp.to_date, "brand_filter": inp.brand.strip()},
+        "sms_samples": rows[:50],
+        "notes": "Suggest A/B SMS copy in recommendations[].action; no phone numbers.",
     }
