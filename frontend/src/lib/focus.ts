@@ -149,10 +149,17 @@ export function dailyPaths(user: FocusNavUser): string[] {
 
 export const PERF_HUB_PATH = "/perf";
 
-const PERF_TOOL_ORDER = ["/perf/campaigns", "/perf/sms", "/perf/social", "/perf/sheet", "/perf/money"];
+const PERF_TOOL_ORDER = [
+  "/perf/campaigns",
+  "/perf/sms",
+  "/perf/social",
+  "/perf/sheet",
+  "/ai-lab",
+  "/perf/money",
+];
 
 export function isPerfToolPath(to: string): boolean {
-  return to.startsWith("/perf/") && to !== "/perf/connections";
+  return (to.startsWith("/perf/") && to !== "/perf/connections") || to === "/ai-lab";
 }
 
 /** مارکتینگ: اول خانهٔ بخش و پرفورمنس، بقیهٔ مسیرهای /perf در ابزارهای تو در تو. */

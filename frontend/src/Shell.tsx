@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { aiLabApi } from "./ai-lab/api";
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { Avatar, Icon, type IconName } from "./components/ui";
@@ -102,18 +101,6 @@ function NavLinks({
   ));
 }
 
-const PERF_RECENT_KEY = "cm-perf-recent";
-
-function readPerfRecent(): string[] {
-  try {
-    const raw = localStorage.getItem(PERF_RECENT_KEY);
-    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
-    return Array.isArray(parsed) ? parsed.slice(0, 3) : [];
-  } catch {
-    return [];
-  }
-}
-
 export function Shell() {
   const { user, logout, roleHint, has } = useAuth();
   const bi = useBi();
@@ -123,7 +110,6 @@ export function Shell() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [navHighlight, setNavHighlight] = useState<string | null>(null);
-  const [perfRecent, setPerfRecent] = useState<string[]>(() => readPerfRecent());
   const [drawerAt, setDrawerAt] = useState<string | null>(null);
   if (drawerAt !== null && drawerAt !== pathname) setDrawerAt(null);
   const drawer = drawerAt === pathname;
@@ -135,12 +121,6 @@ export function Shell() {
     queryKey: ["notifications", "badge"],
     queryFn: () => api.notifications(),
     refetchInterval: 30_000,
-  });
-  const aiLab = useQuery({
-    queryKey: ["ai-lab", "config"],
-    queryFn: () => aiLabApi.config(),
-    retry: false,
-    enabled: Boolean(user),
   });
   const noteCount = (notes.data ?? []).filter((row) => !row.is_read).length;
   const roleLabel =
@@ -177,7 +157,6 @@ export function Shell() {
         : [];
     const items = [...injected, ...navCatalog].filter((item) => {
       if (seen.has(item.to)) return false;
-      if (item.to === "/ai-lab" && !aiLab.data?.enabled) return false;
       if (item.adminOnly && !isSiteAdmin) return false;
       if (item.managerOnly && !isBranchManager) return false;
       const visible = canSeeNavPath(item.to, accessUser, has);
@@ -185,7 +164,7 @@ export function Shell() {
       return visible;
     });
     return items;
-  }, [accessUser, has, isSiteAdmin, isBranchManager, aiLab.data?.enabled]);
+  }, [accessUser, has, isSiteAdmin, isBranchManager]);
 
   const focusUser = useMemo(
     () => ({
@@ -221,29 +200,8 @@ export function Shell() {
   const perfToolsPathActive = marketingNav.perfTools.some(
     (item) => pathname === item.to || pathname.startsWith(`${item.to}/`),
   );
-  const perfToolsOrdered = useMemo(() => {
-    const order = new Map(perfRecent.map((path, index) => [path, index]));
-    return [...marketingNav.perfTools].sort((a, b) => (order.get(a.to) ?? 99) - (order.get(b.to) ?? 99));
-  }, [marketingNav.perfTools, perfRecent]);
-  const recentPerfItems = useMemo(
-    () => perfRecent.map((path) => marketingNav.perfTools.find((item) => item.to === path)).filter(Boolean) as NavItem[],
-    [perfRecent, marketingNav.perfTools],
-  );
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!pathname.startsWith("/perf") || pathname === "/perf") return;
-    setPerfRecent((prev) => {
-      const next = [pathname, ...prev.filter((path) => path !== pathname)].slice(0, 3);
-      try {
-        localStorage.setItem(PERF_RECENT_KEY, JSON.stringify(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
   }, [pathname]);
 
   useEffect(() => {
@@ -363,15 +321,7 @@ export function Shell() {
                     <Bi en="Performance tools" fa="ابزارهای پرفورمنس" />
                   </summary>
                   <div className="nav-group nav-group--nested">
-                    {recentPerfItems.length > 0 ? (
-                      <>
-                        <div className="nav-group-label nav-group-label--sub">
-                          <Bi en="Recently used" fa="اخیراً استفاده‌شده" />
-                        </div>
-                        <NavLinks items={recentPerfItems} closeDrawer={closeDrawer} bi={bi} highlightPath={navHighlight} />
-                      </>
-                    ) : null}
-                    <NavLinks items={perfToolsOrdered} closeDrawer={closeDrawer} bi={bi} highlightPath={navHighlight} />
+                    <NavLinks items={marketingNav.perfTools} closeDrawer={closeDrawer} bi={bi} highlightPath={navHighlight} />
                   </div>
                 </details>
               ) : null}
