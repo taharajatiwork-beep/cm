@@ -2078,6 +2078,20 @@ html[dir="rtl"] .work-list > li.is-warn {
 .ui-card--flush .row-item {
   padding-inline: var(--space-4);
 }
+
+.ui-card--flush .rows .row-section-head {
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.ui-card--flush .rows .row-section-head .section-head {
+  margin-bottom: 0;
+}
+
+.ui-card--flush .rows .row-section-head + .row-item {
+  border-top: 0;
+}
 .row-title--wrap {
   white-space: normal;
 }
