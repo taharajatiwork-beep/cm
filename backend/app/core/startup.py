@@ -49,13 +49,19 @@ def assert_production_safe(settings: Settings) -> None:
             problems.append("AI_LAB_OUTBOUND_SECRET is too short")
         if not settings.ai_lab_inbound_secret or len(settings.ai_lab_inbound_secret) < 24:
             problems.append("AI_LAB_INBOUND_SECRET is too short")
-        has_callback = bool(settings.ai_lab_callback_base.strip())
-        if not has_callback:
-            has_callback = any(
-                o.strip().startswith("https://") for o in settings.cors_origins.split(",")
-            )
-        if not has_callback:
-            problems.append("AI_LAB_CALLBACK_BASE or https CORS_ORIGINS is required for inbound results")
+        if settings.ai_lab_result_source == "github":
+            if not settings.ai_lab_github_repo.strip():
+                problems.append("AI_LAB_GITHUB_REPO is required when AI_LAB_RESULT_SOURCE=github")
+            if not settings.ai_lab_github_token_ro.strip():
+                problems.append("AI_LAB_GITHUB_TOKEN_RO is required when AI_LAB_RESULT_SOURCE=github")
+        else:
+            has_callback = bool(settings.ai_lab_callback_base.strip())
+            if not has_callback:
+                has_callback = any(
+                    o.strip().startswith("https://") for o in settings.cors_origins.split(",")
+                )
+            if not has_callback:
+                problems.append("AI_LAB_CALLBACK_BASE or https CORS_ORIGINS is required for inbound results")
         if (
             "cursor.sh/automations/webhook" in settings.ai_lab_outbound_url
             and not (settings.ai_lab_outbound_bearer or "").strip()

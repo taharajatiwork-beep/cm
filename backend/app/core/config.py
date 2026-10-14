@@ -163,6 +163,9 @@ class Settings(BaseSettings):
     ai_lab_inbound_secret: str = ""
     ai_lab_callback_base: str = ""  # public API base, e.g. https://cm.example.com/api
     ai_lab_task_ttl_hours: int = 24
+    ai_lab_result_source: str = "callback"  # callback | github
+    ai_lab_github_repo: str = ""
+    ai_lab_github_token_ro: str = ""
 
 
 @lru_cache
