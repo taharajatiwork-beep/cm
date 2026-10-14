@@ -325,6 +325,47 @@ async def test_seller_inquiry_without_customer_admin(client, seeded, db):
     assert denied.status_code == 403
 
 
+async def test_reporter_can_read_spine_for_team_request(client, seeded, db):
+    from app.services import OrgService
+
+    svc = OrgService(db)
+    rep_role = await svc.create_role(
+        seeded["org"].id, "گزارشگر خط", "rep_spine_role", [PermissionCode.REPORT_READ], "team"
+    )
+    await svc.create_user(
+        organization_id=seeded["org"].id,
+        email="rep-spine@autoco.example",
+        full_name="گزارشگر خط",
+        password="password",
+        role_id=rep_role.id,
+        branch_id=seeded["branch"].id,
+        team_id=seeded["mkt_team"].id,
+    )
+    await db.commit()
+
+    await _request_user(db, seeded, "mgr-spine@autoco.example", "مدیر خط", [PermissionCode.REQUEST_CREATE])
+    manager = auth(await login(client, "mgr-spine@autoco.example"))
+    reporter = auth(await login(client, "rep-spine@autoco.example"))
+
+    in_team = await client.post(
+        "/requests",
+        headers=manager,
+        json={"title": "گزارش تیم", "team_id": str(seeded["mkt_team"].id)},
+    )
+    assert in_team.status_code == 201, in_team.text
+    ok = await client.get(f"/requests/{in_team.json()['id']}/spine", headers=reporter)
+    assert ok.status_code == 200, ok.text
+
+    other = await client.post(
+        "/requests",
+        headers=manager,
+        json={"title": "گزارش فروش", "team_id": str(seeded["sales_team"].id)},
+    )
+    assert other.status_code == 201, other.text
+    denied = await client.get(f"/requests/{other.json()['id']}/spine", headers=reporter)
+    assert denied.status_code == 404
+
+
 async def test_static_request_paths_not_captured_as_uuid(client, seeded, db):
     """Regression: GET /{request_id} must not shadow /my-work, /projects, /team-load."""
     await _request_user(db, seeded, "route-mgr@autoco.example", "مدیر مسیر", [PermissionCode.REQUEST_CREATE])

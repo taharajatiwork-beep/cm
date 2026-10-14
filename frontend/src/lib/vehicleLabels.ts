@@ -41,6 +41,10 @@ const VALUE_LABELS: Record<string, [string, string]> = {
   cerato: ["Cerato", "سراتو"],
 };
 
+const HISTORY_NOTE_LABELS: Record<string, [string, string]> = {
+  "Vehicle created": ["Vehicle created", "خودرو ثبت شد"],
+};
+
 export function useVehicleLabel() {
   const bi = useBi();
   return (value: string | null | undefined) => {
@@ -49,5 +53,14 @@ export function useVehicleLabel() {
     const key = raw.toLowerCase();
     const pair = VALUE_LABELS[key];
     return pair ? bi(pair[0], pair[1]) : raw;
+  };
+}
+
+export function useVehicleHistoryNote() {
+  const bi = useBi();
+  return (value: string | null | undefined) => {
+    if (!value) return "";
+    const pair = HISTORY_NOTE_LABELS[value.trim()];
+    return pair ? bi(pair[0], pair[1]) : value;
   };
 }

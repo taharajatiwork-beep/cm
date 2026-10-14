@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.permissions import AuthorizationError, PermissionCode
 from app.core.scope import DataScopeContext
@@ -35,7 +36,7 @@ async def get_current_user(
         user_id = UUID(payload["sub"])
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
-    user = await db.get(User, user_id)
+    user = await db.scalar(select(User).where(User.id == user_id).options(selectinload(User.role)))
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User inactive")
     perms = await get_user_permissions(db, user)

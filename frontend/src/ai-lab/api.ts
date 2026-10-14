@@ -1,4 +1,4 @@
-import { getToken, setToken } from "../api";
+import { ApiError, getToken, setToken } from "../api";
 
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(init.headers);
@@ -24,7 +24,7 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
     } catch {
       /* ignore */
     }
-    throw new Error(detail);
+    throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;

@@ -18,8 +18,10 @@ import {
   Select,
   TextArea,
 } from "../components/ui";
+import { useAuth } from "../auth";
 import { Bi, useBi } from "../i18n";
 import { isForbiddenError } from "../lib/apiError";
+import { canSeeAiLab } from "../lib/access";
 
 const STATUS_LABEL: Record<string, { en: string; fa: string }> = {
   pending: { en: "pending", fa: "در انتظار ارسال" },
@@ -62,10 +64,32 @@ function weekAgoIso() {
   return d.toISOString().slice(0, 10);
 }
 
+function aiLabDisabledMessage(error: unknown): boolean {
+  if (isForbiddenError(error)) return false;
+  const s = String(error instanceof Error ? error.message : error).toLowerCase();
+  return s.includes("disabled") || s.includes("not found") || s.includes("404");
+}
+
 export function AiLabPage() {
   const bi = useBi();
   const qc = useQueryClient();
-  const config = useQuery({ queryKey: ["ai-lab", "config"], queryFn: aiLabApi.config });
+  const { user, has, loading: authLoading } = useAuth();
+  const accessUser = useMemo(
+    () => ({
+      roleCode: user?.roleCode,
+      permissions: user?.permissions ?? [],
+      teamId: user?.team_id,
+      teamHomeTeamId: user?.team_home_team_id,
+    }),
+    [user?.roleCode, user?.permissions, user?.team_id, user?.team_home_team_id],
+  );
+  const mayUse = canSeeAiLab(accessUser, has);
+  const config = useQuery({
+    queryKey: ["ai-lab", "config"],
+    queryFn: aiLabApi.config,
+    enabled: mayUse && !authLoading,
+    retry: false,
+  });
   const [filterKind, setFilterKind] = useState("");
   const [filterTrigger, setFilterTrigger] = useState("");
   const tasks = useQuery({
@@ -125,10 +149,11 @@ export function AiLabPage() {
     },
   });
 
+  const labOn = Boolean(config.data?.enabled);
   const detail = useQuery({
     queryKey: ["ai-lab", "task", detailId],
     queryFn: () => aiLabApi.task(detailId!),
-    enabled: Boolean(detailId),
+    enabled: labOn && Boolean(detailId),
   });
 
   const manualMut = useMutation({
@@ -171,22 +196,37 @@ export function AiLabPage() {
     },
   });
 
+  if (authLoading) return <LoadingState />;
+  if (!mayUse) {
+    return <EmptyState titleEn="No access" titleFa="دسترسی ندارید" bodyEn="" bodyFa="" />;
+  }
   if (config.isLoading) return <LoadingState />;
   if (config.error) {
     if (isForbiddenError(config.error)) {
       return <EmptyState titleEn="No access" titleFa="دسترسی ندارید" bodyEn="" bodyFa="" />;
     }
-    if ((config.error as Error).message.includes("404") || (config.error as Error).message.includes("disabled")) {
+    if (aiLabDisabledMessage(config.error)) {
       return (
         <EmptyState
           titleEn="AI Lab is off"
-          titleFa="آزمایشگاه AI خاموش است"
-          bodyEn="Set AI_LAB_ENABLED=true on the server to try the pilot."
-          bodyFa="روی سرور AI_LAB_ENABLED=true بگذارید تا پایلوت فعال شود."
+          titleFa="آزمایشگاه AI غیرفعال است"
+          bodyEn="An admin can enable AI_LAB_ENABLED on the server."
+          bodyFa="ادمین می‌تواند AI_LAB_ENABLED=true را روی سرور بگذارد."
         />
       );
     }
     return <ErrorMessage error={config.error} />;
+  }
+
+  if (!config.data?.enabled) {
+    return (
+      <EmptyState
+        titleEn="AI Lab is off"
+        titleFa="آزمایشگاه AI غیرفعال است"
+        bodyEn="The feature is disabled in server settings (AI_LAB_ENABLED)."
+        bodyFa="این بخش در تنظیمات سرور خاموش است (AI_LAB_ENABLED)."
+      />
+    );
   }
 
   const mode = config.data?.mode ?? "manual";

@@ -135,6 +135,18 @@ async def _ensure_request_visible(db: AsyncSession, ctx: AuthContext, request_id
             if linked:
                 return row
         raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
+    if PermissionCode.REPORT_READ in ctx.permissions:
+        if ctx.scope.is_org_wide or ctx.scope.level == "organization":
+            return row
+        if ctx.user.team_id:
+            if row.team_id == ctx.user.team_id:
+                return row
+            from app.requests.spine import child_team_ids
+
+            tree = set(await child_team_ids(db, [ctx.user.team_id]))
+            if row.team_id and row.team_id in tree:
+                return row
+        raise HTTPException(status_code=404, detail="درخواست پیدا نشد")
     raise HTTPException(status_code=403, detail="دسترسی نیست")
 
 
@@ -365,6 +377,7 @@ async def request_spine(
         PermissionCode.REQUEST_TRIAGE,
         PermissionCode.REQUEST_MANAGE,
         PermissionCode.TASK_READ,
+        PermissionCode.REPORT_READ,
         PermissionCode.ORG_ADMIN,
     )
     await _ensure_request_visible(db, ctx, request_id)
@@ -614,7 +627,6 @@ async def delete_project(
 
 @router.get("/my-work")
 async def my_work_view(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    _need(ctx, PermissionCode.TASK_READ, PermissionCode.REQUEST_CREATE, PermissionCode.ORG_ADMIN)
     from app.requests.spine import my_work
 
     return await my_work(db, ctx.organization_id, ctx.user.id)

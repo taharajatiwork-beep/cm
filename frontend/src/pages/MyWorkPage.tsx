@@ -154,7 +154,7 @@ export function MyWorkPage() {
   });
   const canPrice = has("price.approve") || has("price.write");
   const canPost = has("campaign.write");
-  const canUseWorkBuckets = has("task.read") || has("request.create") || has("org.admin");
+  const canUseWorkBuckets = true;
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
   const buckets = useQuery({
     queryKey: ["requests", "my-work"],

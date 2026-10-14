@@ -27,11 +27,13 @@ import {
   taskMark,
 } from "../lib/collaboration";
 import { caughtUpTarget, onboardingCue, visibleHomeKpis, type HomeKpi } from "../lib/focus";
+import { useVehicleLabel } from "../lib/vehicleLabels";
 import { OnboardingBanner, dismissOnboarding, recallOnboarding, shouldShowOnboarding } from "../ux";
 
 export function HomePage() {
   const { user, roleHint, has } = useAuth();
   const bi = useBi();
+  const vehicleLabel = useVehicleLabel();
   const { locale } = useLocale();
   const [showOnboard, setShowOnboard] = useState(shouldShowOnboarding);
   const [inquiryOpen, setInquiryOpen] = useState(false);
@@ -44,9 +46,9 @@ export function HomePage() {
     () =>
       (sellerVehicles.data ?? []).map((row) => ({
         id: String(row.id),
-        label: `${String(row.brand ?? "")} ${String(row.model ?? "")} ${String(row.year ?? "")}`.trim(),
+        label: `${vehicleLabel(String(row.brand ?? ""))} ${vehicleLabel(String(row.model ?? ""))} ${String(row.year ?? "")}`.trim(),
       })),
-    [sellerVehicles.data],
+    [sellerVehicles.data, vehicleLabel],
   );
 
   const inbox = useQuery({
@@ -94,9 +96,11 @@ export function HomePage() {
         const openMine = myTasks.filter((t) => t.status !== "COMPLETED");
         const projectById = new Map(projects.map((p) => [String(p.id), p]));
         for (const project of projects.filter((p) => p.status !== "done").slice(0, 8)) {
-          const subline = project.request_code
-            ? bi(`Under request ${project.request_code}`, `زیر درخواست ${project.request_code}`)
-            : project.team_name || project.kind;
+          const subline = project.request_title
+            ? bi(`Under request ${project.request_title}`, `زیر درخواست ${project.request_title}`)
+            : project.request_code
+              ? bi(`Under request ${project.request_code}`, `زیر درخواست ${project.request_code}`)
+              : project.team_name || project.kind;
           out.push({
             id: `prj-${project.id}`,
             title: project.title,
@@ -149,14 +153,15 @@ export function HomePage() {
         for (const t of openMine.filter((x) => !x.work_item_id).slice(0, 3)) {
           const proj = t.project_id ? projectById.get(String(t.project_id)) : undefined;
           const lines = [{ text: bi("Task assigned to you", "کار — به شما سپرده شده") }];
-          if (proj?.request_code) {
+          if (proj?.request_title || proj?.request_code) {
+            const reqLabel = proj.request_title || proj.request_code;
             lines.push({
-              text: bi(`Under request ${proj.request_code}`, `زیر درخواست ${proj.request_code}`),
+              text: bi(`Under request ${reqLabel}`, `زیر درخواست ${reqLabel}`),
             });
           }
-          if (proj) {
+          if (proj?.title) {
             lines.push({
-              text: bi(`In project ${proj.code}`, `در پروژه ${proj.code}`),
+              text: bi(`In project ${proj.title}`, `در پروژه ${proj.title}`),
             });
           }
           out.push({

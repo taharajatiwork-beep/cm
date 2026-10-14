@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSeeCalendar, canSeeNavPath, canSeePricing, canSeeProjects, marketingHomePath } from "./access";
+import { canSeeAiLab, canSeeCalendar, canSeeNavPath, canSeePricing, canSeeProjects, marketingHomePath } from "./access";
 
 const has = (perms: string[]) => (code: string) => perms.includes(code) || perms.includes("org.admin");
 
@@ -15,13 +15,13 @@ describe("access", () => {
     expect(canSeePricing(finance, has(finance.permissions))).toBe(true);
   });
 
-  it("my-work only for task.read, request.create, or org.admin", () => {
+  it("my-work is available to every signed-in role", () => {
     const reporter = { roleCode: "reporter", permissions: ["report.read"] };
-    expect(canSeeNavPath("/my-work", reporter, has(reporter.permissions))).toBe(false);
+    expect(canSeeNavPath("/my-work", reporter, has(reporter.permissions))).toBe(true);
+    const finance = { roleCode: "finance", permissions: ["price.approve"] };
+    expect(canSeeNavPath("/my-work", finance, has(finance.permissions))).toBe(true);
     const member = { roleCode: "member", permissions: ["task.read"] };
     expect(canSeeNavPath("/my-work", member, has(member.permissions))).toBe(true);
-    const requester = { roleCode: "requester", permissions: ["request.create"] };
-    expect(canSeeNavPath("/my-work", requester, has(requester.permissions))).toBe(true);
   });
 
   it("calendar for perf.write; projects hidden from performance", () => {
@@ -49,6 +49,19 @@ describe("access", () => {
     expect(canSeeNavPath("/perf/sheet", user, h)).toBe(true);
     expect(canSeeNavPath("/perf/campaigns", user, h)).toBe(true);
     expect(canSeeNavPath("/perf", user, h)).toBe(false);
+  });
+
+  it("ai-lab excludes finance with perf.read only", () => {
+    const finance = { roleCode: "finance", permissions: ["perf.read", "price.approve"] };
+    const h = has(finance.permissions);
+    expect(canSeeAiLab(finance, h)).toBe(false);
+    expect(canSeeNavPath("/ai-lab", finance, h)).toBe(false);
+    const nadia = { roleCode: "performance_marketing", permissions: ["perf.read", "perf.write"] };
+    const hn = has(nadia.permissions);
+    expect(canSeeAiLab(nadia, hn)).toBe(true);
+    const mina = { roleCode: "marketing_manager", permissions: ["perf.read", "perf.approve"] };
+    const hm = has(mina.permissions);
+    expect(canSeeAiLab(mina, hm)).toBe(true);
   });
 
   it("uses parent team for marketing home link", () => {

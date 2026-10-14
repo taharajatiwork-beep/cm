@@ -13,6 +13,8 @@
 | [unification-plan.md](unification-plan.md) | یکپارچه‌سازی درخواست/پروژه |
 | [adr/](adr/) | تصمیم‌های معماری |
 | [llm-data-audit.md](llm-data-audit.md) | دادهٔ خروجی به LLM |
+| [ai-lab-setup.md](ai-lab-setup.md) | آزمایشگاه AI مارکتینگ (Grok / GitHub polling) |
+| [ai-lab-github-polling.md](ai-lab-github-polling.md) | طرح تحویل نتیجه از ریپوی GitHub |
 | [team-tree.html](team-tree.html) | درخت تیم (با seed هم‌خوان شود) |
 | [requester-experience.md](requester-experience.md) | دید درخواست‌دهنده و فید خانه |
 | [cm-flowchart.html](cm-flowchart.html) · [performance-flowchart.html](performance-flowchart.html) | جریان‌ها |
@@ -87,6 +89,7 @@ cm/
 │   ├── app/
 │   │   ├── api/routes/       # HTTP هسته (org، work، pricing، telegram، enterprise، …)
 │   │   ├── perf/             # پرفورمنس مارکتینگ: مسیرها، مدل‌ها، سرویس‌ها
+│   │   ├── ai_lab/           # آزمایشگاه AI: snapshot، webhook، polling GitHub، followup
 │   │   ├── calendar/         # تقویم محتوا و کار (/calendar)
 │   │   ├── requests/         # درخواست کار و پروژه (جدا از perf)
 │   │   ├── services/         # منطق دامنه (audit، notifications، org، work، sla، …)
@@ -95,7 +98,7 @@ cm/
 │   │   ├── integrations/     # تلگرام/باله، دیوار، …
 │   │   │   └── telegram/     # client، adapter، outbox، polling
 │   │   └── core/             # تنظیمات، مجوزها، امنیت، تقویم
-│   ├── alembic/              # مایگریشن (تا 0031 تقویم محتوا، 0030 قفل sync شیت، …)
+│   ├── alembic/              # مایگریشن (شامل ai_tasks، 0041 followup/trigger، …)
 │   ├── scripts/seed_demo.py  # دادهٔ نمایشی
 │   └── tests/
 ├── frontend/                 # SPA (React + Vite + React Query)
@@ -103,6 +106,7 @@ cm/
 │       ├── pages/            # صفحات هسته (شامل Settings با کارت تلگرام و TOTP)
 │       ├── requests/         # درخواست‌ها و پروژه‌ها
 │       ├── perf/             # پرفورمنس: کمپین، پیامک، سوشال، هزینه، شیت، اتصالات
+│       ├── ai-lab/           # کلاینت و UI نتیجهٔ تحلیل (/ai-lab)
 │       ├── components/ui/    # کامپوننت‌های مشترک UI (Card، Toast، EmptyState، …)
 │       ├── lib/              # access.ts، focus.ts (منو و تمرکز روزانه)، navigation، roles، …
 │       ├── calendarApi.ts    # کلاینت تقویم
@@ -118,15 +122,15 @@ cm/
 | لایه | فناوری |
 |------|--------|
 | بک‌اند | Python 3.12+، FastAPI، SQLAlchemy async، Alembic |
-| دیتابیس | PostgreSQL (تولید/لوکال) یا SQLite (تست و توسعهٔ سبک) |
+| دیتابیس | PostgreSQL (تولید، لوکال، تست CI) — [`adr/004-sqlite-retirement.md`](adr/004-sqlite-retirement.md) |
 | فرانت | React 19، TypeScript، Vite، React Router، React Query |
 | زبان رابط | دو زبانه EN/FA با RTL برای فارسی (`LocaleProvider`) |
 | احراز هویت | JWT + رمز هش‌شده + TOTP اختیاری برای ورود |
 | AI | عامل‌های tool-only؛ پلنر rules یا LLM (مثلاً 9Router)؛ Hybrid RAG |
 | کانال پرسنل | تلگرام (و اختیاری باله) — polling یا webhook؛ outbox پس‌زمینه |
-| تست | pytest (SQLite در حافظه لوکال؛ Postgres در CI)، Vitest، Playwright |
+| تست | pytest (Postgres تست)، Vitest، Playwright |
 
-نسخهٔ API فعلی **0.17.0** است (Core + Agents + CRM سبک + LLM planner + Campaigns + کانال تلگرام پرسنل + لایهٔ سازمانی/گزارش‌ها + پرفورمنس مارکتینگ + درخواست، پروژه، هزینهٔ مشترک و گزارش کار).
+نسخهٔ API فعلی **0.17.0** است (Core + Agents + CRM سبک + LLM planner + Campaigns + کانال تلگرام پرسنل + لایهٔ سازمانی/گزارش‌ها + پرفورمنس مارکتینگ + درخواست، پروژه، هزینهٔ مشترک و گزارش کار + **آزمایشگاه AI مارکتینگ**).
 
 ---
 
@@ -186,6 +190,25 @@ cm/
 - بریف کمپین (پیش‌نویس با مدل زبانی، ویرایش انسانی)
 - خواندن میزیتو (فقط‌خواندنی): کارت‌ها و درخواست‌های تبلیغ؛ هیچ نوشتنی در میزیتو نیست
 - شیت گوگل: شیت‌های منبع فقط append؛ شیت گزارش پنل بازنویسی با دکمه/API. فهرست کمپین `push=False`؛ نوشتن واقعی با قفل `perf_sync_state` (۴۰۹ هم‌زمانی). جزئیات: [`performance-flowchart.html`](performance-flowchart.html).
+
+### آزمایشگاه AI مارکتینگ (AI Lab)
+
+پایلوت **تحلیل ساختاریافته** از دادهٔ پرفورمنس برای تیم مارکتینگ — جدا از عامل‌های `/agent` و بدون نوشتن در جداول `pm_*` یا میزیتو.
+
+| موضوع | توضیح |
+|--------|--------|
+| مسیر UI | `/ai-lab` — در منوی ابزارهای مارکتینگ (`focus.ts` / `perf.read`) |
+| کد | `backend/app/ai_lab/`، `frontend/src/ai-lab/` |
+| فعال‌سازی | `AI_LAB_ENABLED=true`؛ حالت `manual` یا `webhook` |
+| ارسال کار | POST به Cursor Automation (`AI_LAB_OUTBOUND_URL` + Bearer) |
+| تحویل نتیجه | پیش‌فرض جدید: **GitHub polling** (`AI_LAB_RESULT_SOURCE=github`) از ریپوی `results/{task_id}.json`؛ fallback: callback HTTPS و paste دستی |
+| نوع تحلیل | `period_review`، `campaign_review`، `channel_budget`، `sms_copy_review` |
+| Snapshot | فقط aggregate از perf؛ بدون تلفن؛ فیلد `history` برای تحلیل‌های قبلی |
+| بعد از نتیجه | قبول/رد پیشنهاد، **تبدیل به وظیفه** (`task.write`)، سنجش KPI قبل/بعد (followup) |
+| خودکار (خاموش) | تحلیل هفتگی و هشدار ناهنجاری CPL/لید — `AI_LAB_WEEKLY_ENABLED` / `AI_LAB_ANOMALY_ENABLED` |
+| Worker | polling GitHub (~۶۰ث) + job روزانه followup/automation وقتی `AI_LAB_ENABLED` |
+
+راه‌اندازی: [`ai-lab-setup.md`](ai-lab-setup.md). قرارداد JSON: `backend/app/ai_lab/schemas.py`.
 
 ### تقویم محتوا و کار
 
@@ -259,7 +282,7 @@ WEB_APP_BASE_URL=http://localhost:5173
 | مشتریان | `/customers` | فقط ادمین |
 | دستیار | `/agent` | عامل با مجوز (در منوی کناری نیست؛ مسیر مستقیم) |
 | خانه مارکتینگ | `/teams/{id}` | وضعیت کلی MKT_T برای سرپرست/پرفورمنس/اعضا |
-| مارکتینگ ← پرفورمنس … | `/perf`، `/perf/campaigns`، … | سرپرست مارکتینگ: کمپین + شیت؛ پرفورمنس: اجرا؛ مالی (`finance`): فقط `/perf/money` |
+| مارکتینگ ← پرفورمنس … | `/perf`، `/perf/campaigns`، `/ai-lab`، … | سرپرست مارکتینگ: کمپین + شیت؛ پرفورمنس: اجرا + AI Lab؛ مالی (`finance`): فقط `/perf/money` |
 | همکاران / قوانین | `/people`، `/knowledge` | `user.read` / `kb.read` (در قالب‌های اصلی از `SHARED_READ`) |
 | گزارش‌ها | `/reports` | همهٔ نقش‌ها (دامنهٔ داده متفاوت) |
 | مدیریت | `/admin` | `org.admin` |
@@ -315,7 +338,7 @@ Hybrid RAG (`/rag` و مسیر پرسش آزاد بات): پاسخ از SQL سا
 - `work_item.*`، `task.*` (شامل `task.assign`، `task.delegate`)
 - `inventory.*`، `customer.*`، `campaign.*`
 - `request.create` / `request.triage` / `request.manage` — ساخت درخواست، تریاژ و تبدیل به پروژه، دیدن همه
-- `perf.read` / `perf.write` / `perf.approve` — دیدن و اجرای پرفورمنس
+- `perf.read` / `perf.write` / `perf.approve` — دیدن و اجرای پرفورمنس (شامل AI Lab)
 - `price.approve` / `expense.pay` — تأیید قیمت و پست‌ها جدا از پرداخت هزینه (`finance_perms.py`؛ حذف alias `price.write`: [`adr/005-price-write-sunset.md`](adr/005-price-write-sunset.md))
 - `expense.approve` / `request.triage` — گام `manager_ok` روی هزینهٔ وصل به پروژه/درخواست
 - `kb.*`، `agent.run`، `search.run`، …
@@ -340,6 +363,7 @@ Hybrid RAG (`/rag` و مسیر پرسش آزاد بات): پاسخ از SQL سا
 |-------|--------|
 | `app/requests` | درخواست کار و پروژه: فهرست، ساخت، تریاژ، تبدیل به پروژه |
 | `app/perf` | کمپین پرفورمنس، پیامک، سوشال، هزینه، شیت، اتصالات، میزیتو، بریف، thread کمپین |
+| `app/ai_lab` | تحلیل مارکتینگ: snapshot، tasks، webhook، polling GitHub، نتیجه، followup، to-task |
 | `app/calendar` | تقویم محتوا — خواندن/نوشتن با `request.triage` / `perf.write` و اسکوپ تیم؛ اکسل و LLM فقط `org.admin` |
 | `pricing` | تابلوی قیمت، اسلات، تأیید، ثبت پست |
 | `org` | ورود، bootstrap، کاربران، شعب، تیم‌ها، روابط |
@@ -413,6 +437,7 @@ uv run pytest -q
 6. **موجودی** خودرو را باز می‌کند و از همان‌جا به کار مشترک یا پیگیری می‌رود.
 7. **پرونده‌ها:** وضعیت و مسؤول از همان صفحه تغییر می‌کند و در تایم‌لاین ثبت و اعلان می‌شود.
 8. **تلگرام پرسنل:** تنظیمات → اتصال بات → دریافت اعلان وظیفه روی موبایل → انجام با دکمه یا دستور کوتاه؛ پرسش آزاد از دانش/وضعیت خودرو.
+9. **AI Lab:** پرفورمنس → آزمایشگاه AI → تحلیل جدید (بازه/کمپین/بودجه/متن پیامک) → نتیجه از Grok (GitHub) → قبول پیشنهاد یا تبدیل به وظیفه در CM.
 
 جزئیات: [`user-flows.md`](user-flows.md).
 
@@ -442,6 +467,7 @@ uv run pytest -q
 | [`performance-flowchart.html`](performance-flowchart.html) | فلوچارت تفصیلی پرفورمنس |
 | [`team-tree.html`](team-tree.html) | درخت تیم و حساب‌های دمو AutoCo |
 | [`roles-plan.md`](roles-plan.md) | قالب نقش‌ها و دسترسی صفحات |
+| [`ai-lab-setup.md`](ai-lab-setup.md) / [`ai-lab-github-polling.md`](ai-lab-github-polling.md) | راه‌اندازی و polling نتیجه |
 
 ---
 
@@ -462,9 +488,9 @@ uv run pytest -q
 
 ## ۱۵. وضعیت فعلی و جهت بعدی
 
-**پیاده‌شده (نمای کلی):** سازمان و RBAC (`access.ts` / `focus.ts` / `permissions.ts`)، کار و گفتگو، CRM (منوی مشتریان فقط `org.admin`؛ فروشنده با `case.read` پرونده می‌بیند نه CRM عمومی)، موضوع گفتگو، RAG و عامل‌ها، تلگرام، ادمین و TOTP. **تقویم** با اسکوپ تیم برای سرپرست/پرفورمنس (`request.triage` / `perf.write`). پرفورمنس: کد کمپین در DB (`PmCampaignSequence`)، thread، هزینه با `manager_ok` + ممیزی `payment.*` + `expense.pay`، شیت با `perf_sync_state` و idempotency export. رمزنگاری فیلد (شبا، میزیتو، پنل): [`adr/003-field-encryption.md`](adr/003-field-encryption.md). درخواست/پروژه، spine، دید درخواست‌دهنده فقط‌خواندنی. ADRها: SQLite retirement، sunset `price.write`. مستندات: `cm-flowchart.html`، `performance-flowchart.html`، `team-tree.html`.
+**پیاده‌شده (نمای کلی):** سازمان و RBAC (`access.ts` / `focus.ts` / `permissions.ts`)، کار و گفتگو، CRM (منوی مشتریان فقط `org.admin`؛ فروشنده با `case.read` پرونده می‌بیند نه CRM عمومی)، موضوع گفتگو، RAG و عامل‌ها، تلگرام، ادمین و TOTP. **تقویم** با اسکوپ تیم برای سرپرست/پرفورمنس (`request.triage` / `perf.write`). پرفورمنس: کد کمپین در DB (`PmCampaignSequence`)، thread، هزینه با `manager_ok` + ممیزی `payment.*` + `expense.pay`، شیت با `perf_sync_state` و idempotency export. **AI Lab:** webhook به Grok، تحویل نتیجه با polling GitHub، حافظه در snapshot، followup KPI، تبدیل پیشنهاد به `Task`، انواع تحلیل شامل `sms_copy_review`؛ زمان‌بندی هفتگی و هشدار ناهنجاری با flag (پیش‌فرض خاموش). رمزنگاری فیلد (شبا، میزیتو، پنل): [`adr/003-field-encryption.md`](adr/003-field-encryption.md). درخواست/پروژه، spine، دید درخواست‌دهنده فقط‌خواندنی. ADRها: SQLite retirement، sunset `price.write`. مستندات: `cm-flowchart.html`، `performance-flowchart.html`، `team-tree.html`، `ai-lab-setup.md`.
 
-خطوط قرمز پرفورمنس و درخواست: پرداخت، ارسال واقعی پیامک، نوشتن در میزیتو، ساخت کمپین، تبدیل درخواست به پروژه و تأیید قیمت خودکار نمی‌شوند.
+خطوط قرمز پرفورمنس و درخواست: پرداخت، ارسال واقعی پیامک، نوشتن در میزیتو، ساخت کمپین، تبدیل درخواست به پروژه و تأیید قیمت خودکار نمی‌شوند. **AI Lab** فقط می‌خواند و تحلیل می‌کند؛ اجرای پیشنهاد (مثلاً ساخت وظیفه) با تأیید کاربر و مجوز `task.write` است — خودکار به perf/میزیتو نمی‌نویسد.
 
 **باقی‌مانده / جهت بعدی:** حذف کامل fallback `price.write` پس از تاریخ ADR 005؛ مهاجرت دادهٔ تولید به Postgres طبق ADR 004؛ آداپتر واقعی پیامک/ایمیل/ERP؛ observability کامل در `docker-compose.prod.yml` (nginx، Prometheus، Grafana، Loki). refresh در کوکی **httpOnly** و قفل ورود و seed guard در کد هستند — [`security-and-audit.md`](security-and-audit.md). جزئیات پشتیبان: [`runbooks/backup.md`](runbooks/backup.md).
 

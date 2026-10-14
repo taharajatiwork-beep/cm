@@ -245,7 +245,7 @@ export function ConnectionsPage() {
         <SectionHeader
           icon="briefcase"
           title={<Bi en="Mizito" fa="میزیتو" />}
-          hint={mizito.saved ? <Bi en={`Saved ${mizito.hint}`} fa={`توکن ذخیره شده ${mizito.hint}`} /> : <Bi en="No token yet" fa="هنوز توکنی ذخیره نشده" />}
+          hint={mizito.saved ? <Bi en={`Saved ${mizito.hint}`} fa={`کلید ذخیره شده ${mizito.hint}`} /> : <Bi en="No key yet" fa="هنوز کلیدی ذخیره نشده" />}
           action={checking && !liveReady
             ? <Badge tone="warn"><Bi en="Checking" fa="در حال بررسی" /></Badge>
             : mizito.connected
@@ -258,8 +258,8 @@ export function ConnectionsPage() {
             mizito.connected
               ? `میزیتو وصل است — ${toman(mizito.open_count ?? 0)} کارت فعال در آخرین خواندن.`
               : mizito.saved
-                ? "توکن میزیتو ذخیره شده اما آخرین بررسی وصل نبود."
-                : "توکن میزیتو ذخیره نشده — از جزئیات فنی بچسبانید."
+                ? "کلید میزیتو ذخیره شده اما آخرین بررسی وصل نبود."
+                : "کلید میزیتو ذخیره نشده — از جزئیات فنی بچسبانید."
           }
         />
         <article className="conn-tile" data-tone={checking && !liveReady ? "busy" : mizito.connected ? "ok" : "danger"}>
@@ -298,7 +298,7 @@ export function ConnectionsPage() {
               </div>
             </div>
           ) : (
-            <Muted>ذخیرهٔ توکن فقط برای سرپرست و ادمین است.</Muted>
+            <Muted>ذخیرهٔ کلید فقط برای سرپرست و ادمین است.</Muted>
           )}
         </details>
       </Card> : null}
@@ -306,7 +306,7 @@ export function ConnectionsPage() {
       {perfTools ? <div className="conn-side">
         <Card>
           <SectionHeader icon="message" title={<Bi en="SMS panels" fa="پنل‌های پیامک" />} />
-          <p className="conn-help conn-note">پنلی که آدرس API و توکنش ذخیره باشد، با «بررسی همین حالا» موجودی‌اش زنده خوانده می‌شود. آی‌اس‌ام‌اس با نام کاربری و رمز وب‌سرویس موجودی زنده می‌خواند؛ اگر ورود سه بار ناموفق باشد پنل ۱۰ دقیقه قفل می‌شود.</p>
+          <p className="conn-help conn-note">پنلی که آدرس API و کلید اتصالش ذخیره باشد، با «بررسی همین حالا» موجودی‌اش زنده خوانده می‌شود. آی‌اس‌ام‌اس با نام کاربری و رمز وب‌سرویس موجودی زنده می‌خواند؛ اگر ورود سه بار ناموفق باشد پنل ۱۰ دقیقه قفل می‌شود.</p>
           {data.panels.length === 0 ? <Muted>هنوز پنلی ثبت نشده است.</Muted> : (
             <div className="conn-grid">
               {data.panels.map((panel) => (
@@ -443,7 +443,7 @@ function PanelTile({ panel, writable, checking, onSaved }: { panel: PanelRow; wr
       ) : (
         <p className="conn-help">
           {panel.detail}
-          {panel.ready && !canProbe ? " آدرس API یا توکن پنل خالی است؛ با ذخیرهٔ آن‌ها موجودی زنده خوانده می‌شود." : ""}
+          {panel.ready && !canProbe ? " آدرس API یا کلید پنل خالی است؛ با ذخیرهٔ آن‌ها موجودی زنده خوانده می‌شود." : ""}
         </p>
       )}
       {writable ? (
@@ -451,7 +451,7 @@ function PanelTile({ panel, writable, checking, onSaved }: { panel: PanelRow; wr
           {panel.code === "pishgam" || panel.code === "isms" ? null : (
             <>
               <Input placeholder="آدرس API پنل (مثل https://api.example.ir)" value={base} onChange={(event) => setBase(event.target.value)} />
-              <Input type="password" autoComplete="off" placeholder={panel.has_token ? "توکن ذخیره شده" : "توکن API"} value={token} onChange={(event) => setToken(event.target.value)} />
+              <Input type="password" autoComplete="off" placeholder={panel.has_token ? "کلید ذخیره شده" : "کلید API"} value={token} onChange={(event) => setToken(event.target.value)} />
               <Button type="button" variant="secondary" disabled={busy || (!base.trim() && !token.trim())} onClick={save}>
                 <Bi en="Save API" fa="ذخیره API" />
               </Button>

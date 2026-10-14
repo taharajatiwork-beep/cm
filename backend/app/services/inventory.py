@@ -130,7 +130,7 @@ class InventoryService:
                 actor_id=actor_id,
                 from_status=None,
                 to_status=status,
-                note="Vehicle created",
+                note="خودرو ثبت شد",
             )
         )
         if branch_id:

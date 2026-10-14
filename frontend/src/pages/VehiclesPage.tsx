@@ -33,7 +33,7 @@ import { Bi, useBi } from "../i18n";
 import { useToast } from "../components/ui/Toast";
 import { nextCursor } from "../lib/pagination";
 import { queryKeys } from "../lib/queryKeys";
-import { useVehicleLabel } from "../lib/vehicleLabels";
+import { useVehicleHistoryNote, useVehicleLabel } from "../lib/vehicleLabels";
 import { InquiryDialog } from "../components/InquiryDialog";
 import { StatusLabel } from "../ux";
 
@@ -175,6 +175,7 @@ function QuickEditPop({
   onSave: (id: string, fields: Record<string, unknown>) => void;
 }) {
   const bi = useBi();
+  const vehicleLabel = useVehicleLabel();
   const titleId = useId();
 
   return (
@@ -215,7 +216,7 @@ function QuickEditPop({
                 }}
               >
                 <strong>
-                  {String(row.brand)} {String(row.model)}
+                  {vehicleLabel(String(row.brand))} {vehicleLabel(String(row.model))}
                 </strong>
                 <Input name="price" defaultValue={row.sale_price != null ? String(Math.round(Number(row.sale_price) / 1_000_000)) : ""} placeholder={bi("Price, million", "قیمت، میلیون")} disabled={!canPrice} />
                 <Input name="mileage" defaultValue={row.mileage != null ? String(row.mileage) : ""} placeholder={bi("Mileage", "کارکرد")} />
@@ -598,7 +599,7 @@ export function VehiclesPage() {
                     </span>
                     <div>
                       <strong>
-                        {String(v.brand)} {String(v.model)}
+                        {vehicleLabel(String(v.brand))} {vehicleLabel(String(v.model))}
                       </strong>
                       <div className="cell-sub">
                         {String(v.year)}
@@ -879,6 +880,7 @@ function Spec({
 export function VehicleDetailPage() {
   const { id = "" } = useParams();
   const vehicleLabel = useVehicleLabel();
+  const historyNote = useVehicleHistoryNote();
   const { has } = useAuth();
   const [inquiryOpen, setInquiryOpen] = useState(false);
   const bi = useBi();
@@ -940,7 +942,7 @@ export function VehicleDetailPage() {
               <Icon name="car" size={22} />
             </span>
             <span>
-              {String(v.brand)} {String(v.model)}{" "}
+              {vehicleLabel(String(v.brand))} {vehicleLabel(String(v.model))}{" "}
               <Muted>{String(v.year)}</Muted>
             </span>
           </span>
@@ -995,7 +997,7 @@ export function VehicleDetailPage() {
         open={inquiryOpen}
         onClose={() => setInquiryOpen(false)}
         vehicleId={id}
-        vehicleLabel={`${String(v.brand)} ${String(v.model)} ${String(v.year)}`}
+        vehicleLabel={`${vehicleLabel(String(v.brand))} ${vehicleLabel(String(v.model))} ${String(v.year)}`}
       />
       <VehicleOps id={id} />
 
@@ -1073,7 +1075,7 @@ export function VehicleDetailPage() {
                     </span>
                     {h.note ? (
                       <div>
-                        <Muted>{String(h.note)}</Muted>
+                        <Muted>{historyNote(String(h.note))}</Muted>
                       </div>
                     ) : null}
                   </ListItem>

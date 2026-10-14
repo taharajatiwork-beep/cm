@@ -5,7 +5,8 @@ import { api } from "./api";
 import { useAuth } from "./auth";
 import { Avatar, Icon, type IconName } from "./components/ui";
 import { Bi, LangSwitch, useBi, useLocale } from "./i18n";
-import { canSeeMarketingHome, canSeeNavPath, marketingHomePath } from "./lib/access";
+import { aiLabApi } from "./ai-lab/api";
+import { canSeeAiLab, canSeeMarketingHome, canSeeNavPath, marketingHomePath } from "./lib/access";
 import { dailyPaths, groupDailyNav, partitionMarketingNav } from "./lib/focus";
 import { isPerformanceUser } from "./lib/navigation";
 import { roleTitle } from "./lib/roles";
@@ -138,6 +139,16 @@ export function Shell() {
     [user?.roleCode, user?.permissions, user?.team_id, user?.team_home_team_id],
   );
 
+  const maySeeAiLab = canSeeAiLab(accessUser, has);
+  const aiLabConfig = useQuery({
+    queryKey: ["ai-lab", "config"],
+    queryFn: () => aiLabApi.config(),
+    enabled: Boolean(user) && maySeeAiLab,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const aiLabNavOn = maySeeAiLab && aiLabConfig.data?.enabled === true;
+
   const visibleItems = useMemo(() => {
     const seen = new Set<string>();
     const homePath = marketingHomePath(accessUser);
@@ -157,6 +168,7 @@ export function Shell() {
         : [];
     const items = [...injected, ...navCatalog].filter((item) => {
       if (seen.has(item.to)) return false;
+      if (item.to === "/ai-lab" && !aiLabNavOn) return false;
       if (item.adminOnly && !isSiteAdmin) return false;
       if (item.managerOnly && !isBranchManager) return false;
       const visible = canSeeNavPath(item.to, accessUser, has);
@@ -164,7 +176,7 @@ export function Shell() {
       return visible;
     });
     return items;
-  }, [accessUser, has, isSiteAdmin, isBranchManager]);
+  }, [accessUser, has, isSiteAdmin, isBranchManager, aiLabNavOn]);
 
   const focusUser = useMemo(
     () => ({

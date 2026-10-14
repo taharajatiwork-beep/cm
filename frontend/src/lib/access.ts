@@ -61,6 +61,16 @@ export function canSeeMarketingHome(user: AccessUser | null | undefined): boolea
   return false;
 }
 
+/** آزمایشگاه AI — پرفورمنس عملیاتی، نه مالی با perf.read فقط. */
+export function canSeeAiLab(user: AccessUser | null | undefined, has: (perm: string) => boolean): boolean {
+  if (!user) return false;
+  if (isSiteAdmin(user, has)) return true;
+  if (user.roleCode === "finance") return false;
+  if (isPerformanceUser(user) || user.roleCode === "performance_marketing") return true;
+  if (has("perf.write") || has("perf.approve")) return true;
+  return false;
+}
+
 /** منوی پرفورمنس: مسیر مشخص برای هر نقش. */
 export function canSeeNavPath(
   path: string,
@@ -85,12 +95,7 @@ export function canSeeNavPath(
   if (path === "/projects") return canSeeProjects(user, has);
 
   if (path === "/ai-lab") {
-    return (
-      has("perf.read") ||
-      has("perf.write") ||
-      has("perf.approve") ||
-      isSiteAdmin(user, has)
-    );
+    return canSeeAiLab(user, has);
   }
 
   if (!path.startsWith("/perf")) {
@@ -99,7 +104,7 @@ export function canSeeNavPath(
     if (path === "/admin") return has("org.admin");
     if (path === "/") return true;
     if (path === "/my-work") {
-      return has("task.read") || has("request.create") || has("org.admin");
+      return true;
     }
     return true;
   }

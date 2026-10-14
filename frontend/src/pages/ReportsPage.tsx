@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   Disclosure,
+  EmptyState,
   ErrorMessage,
   LoadingState,
   Muted,
@@ -23,6 +24,7 @@ import { useAuth } from "../auth";
 import { faNum, tomanText } from "../fa";
 import { Bi, useBi } from "../i18n";
 import { canSeeNavPath } from "../lib/access";
+import { caughtUpTarget } from "../lib/focus";
 import { requestsApi } from "../requests/api";
 import { ConceptHint, StatusLabel } from "../ux";
 import { WorkChainLegend, WorkListKindBadge } from "../lib/workContext";
@@ -420,11 +422,16 @@ function WorkDetail({
   onBack: () => void;
 }) {
   const { user, has } = useAuth();
-  const canOpenRequest = canSeeNavPath(
-    "/requests",
-    { roleCode: user?.roleCode, permissions: user?.permissions ?? [] },
-    has,
-  );
+  const accessUser = { roleCode: user?.roleCode, permissions: user?.permissions ?? [] };
+  const canOpenRequest = canSeeNavPath("/requests", accessUser, has);
+  const canSeeSpine =
+    has("report.read") ||
+    has("request.create") ||
+    has("request.triage") ||
+    has("request.manage") ||
+    has("task.read") ||
+    has("org.admin");
+  const nextPlace = caughtUpTarget(accessUser);
   let rows = asRequests(data);
   if (requestId) {
     rows = rows.filter((row) => row.id === requestId);
@@ -438,7 +445,19 @@ function WorkDetail({
       .filter((row) => row.projects.length > 0);
   }
   if (rows.length === 0) {
-    return <Muted as="p"><Bi en="Nothing in this range." fa="در این محدوده درخواستی نیست." /></Muted>;
+    return (
+      <EmptyState
+        titleEn="Nothing in this range"
+        titleFa="در این محدوده درخواستی نیست"
+        bodyEn="Try another scope or go where your role usually starts."
+        bodyFa="محدودهٔ دیگری انتخاب کنید یا به جایی که معمولاً کار شماست بروید."
+        action={
+          <Button to={nextPlace}>
+            <Bi en="Next step" fa="قدم بعد" />
+          </Button>
+        }
+      />
+    );
   }
   return (
     <div className="report-board">
@@ -473,8 +492,8 @@ function WorkDetail({
               {request.projects.map((project) => (
                 <li key={project.id}>
                   <Link className="record-sub" to={`/projects/${project.id}`}>
-                    <span className="record-code" dir="ltr">{project.code}</span>
                     <strong>{project.title}</strong>
+                    {project.code ? <span className="record-code mono muted" dir="ltr">{project.code}</span> : null}
                     <WorkListKindBadge kind="project" />
                     <Badge tone={project.overdue ? "danger" : project.status === "done" ? "ok" : "warn"}>
                       {project.overdue
@@ -507,12 +526,14 @@ function WorkDetail({
               <Bi en="No projects yet — the team has not split this request into work packages." fa="هنوز پروژه‌ای نیست — تیم این درخواست را به بستهٔ کار تبدیل نکرده." />
             </Muted>
           )}
-          {!focused && request.id && canOpenRequest ? (
+          {!focused && request.id && (canSeeSpine || canOpenRequest) ? (
             <div className="record-actions">
-              <RequestSpineTrail requestId={request.id} />
-              <Button variant="ghost" className="btn-sm" to={`/requests/${request.id}`}>
-                <Bi en="Open request" fa="باز کردن درخواست" />
-              </Button>
+              {canSeeSpine ? <RequestSpineTrail requestId={request.id} /> : null}
+              {canOpenRequest ? (
+                <Button variant="ghost" className="btn-sm" to={`/requests/${request.id}`}>
+                  <Bi en="Open request" fa="باز کردن درخواست" />
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </Card>

@@ -441,8 +441,8 @@ function RequestCard({
             {projects.map((project) => (
               <li key={project.id}>
                 <Link className="record-sub" to={`/projects/${project.id}`}>
-                  <span className="record-code" dir="ltr">{project.code}</span>
                   <strong>{project.title}</strong>
+                  {project.code ? <span className="record-code mono muted" dir="ltr">{project.code}</span> : null}
                   <Badge tone={project.status === "done" ? "ok" : "warn"}>{PROJECT_STATUS_LABEL[project.status] || project.status}</Badge>
                 </Link>
                 <span className="row-meta work-parent-context">

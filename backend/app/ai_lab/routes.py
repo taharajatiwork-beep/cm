@@ -32,6 +32,7 @@ from app.ai_lab.service import (
 )
 from app.models.enums import Priority
 from app.services.work import WorkService
+from app.ai_lab.access import can_use_ai_lab
 from app.ai_lab.signing import verify
 from app.ai_lab.snapshots import build_snapshot
 from app.api.deps import AuthContext, get_current_user, handle_authz
@@ -50,16 +51,15 @@ def _settings_ok() -> None:
         raise HTTPException(status_code=404, detail="AI Lab is disabled")
 
 
+def _require_ai_lab_access(auth: AuthContext) -> None:
+    if not can_use_ai_lab(auth):
+        raise AuthorizationError("AI Lab is not available for this role")
+
+
 def _require_perf(auth: AuthContext = Depends(get_current_user)) -> AuthContext:
     _settings_ok()
     try:
-        require_any_permission(
-            auth.permissions,
-            PermissionCode.PERF_READ,
-            PermissionCode.PERF_WRITE,
-            PermissionCode.PERF_APPROVE,
-            PermissionCode.ORG_ADMIN,
-        )
+        _require_ai_lab_access(auth)
     except AuthorizationError as exc:
         raise handle_authz(exc) from exc
     return auth
@@ -84,13 +84,7 @@ async def _expire_if_needed(db: AsyncSession, row: AiTask) -> None:
 @router.get("/config")
 async def lab_config(auth: AuthContext = Depends(get_current_user)) -> dict:
     try:
-        require_any_permission(
-            auth.permissions,
-            PermissionCode.PERF_READ,
-            PermissionCode.PERF_WRITE,
-            PermissionCode.PERF_APPROVE,
-            PermissionCode.ORG_ADMIN,
-        )
+        _require_ai_lab_access(auth)
     except AuthorizationError as exc:
         raise handle_authz(exc) from exc
     settings = get_settings()
