@@ -69,3 +69,13 @@ pytest tests/test_ai_lab.py tests/test_ai_lab_github.py -q
 خروجی automation (داخل `body` یا callback): `task_id`, `status` (`done`|`failed`), `result` با `summary`, `findings[]` (هر کدام `evidence` اجباری), `recommendations[]` با `id` یکتا.
 
 جزئیات: [`backend/app/ai_lab/schemas.py`](../backend/app/ai_lab/schemas.py). طرح polling: [`docs/ai-lab-github-polling.md`](ai-lab-github-polling.md).
+
+## Worker (polling و زمان‌بندی)
+
+- **Development:** با `WORKER_MODE=embedded` (پیش‌فرض)، همان پروسهٔ API حلقه‌های پس‌زمینه را اجرا می‌کند (شامل `ai_lab_github_poll` وقتی `AI_LAB_RESULT_SOURCE=github`).
+- **Production:** `assert_production_safe` انتظار `WORKER_MODE=external` دارد — یک پروسهٔ جدا با `uv run python -m app.worker` (یا اسکریپت deploy شما) باید worker را نگه دارد؛ API فقط HTTP.
+- سرور داخلی (`192.168.17.4`) اگر `APP_ENV` production نیست، embedded معمولاً OK است؛ اگر production است، worker جدا را مستند کنید و فقط یک نمونه leader (Redis یا DB lock) داشته باشید.
+
+## پاک‌سازی ریپوی نتایج
+
+توکن `AI_LAB_GITHUB_TOKEN_RO` فقط خواندن دارد. برای حذف فایل‌های قدیمی `results/*.json` نمونه workflow: [`docs/ai-lab-results-cleanup.example.yml`](ai-lab-results-cleanup.example.yml).

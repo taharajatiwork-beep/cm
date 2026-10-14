@@ -1,0 +1,36 @@
+# Copy to cm-ai-lab-results/.github/workflows/cleanup-results.yml
+# Requires a PAT with repo delete_contents (not the CM read-only token).
+
+name: Cleanup old AI Lab results
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete results older than 30 days
+        env:
+          GH_TOKEN: ${{ secrets.CLEANUP_PAT }}
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          for path in results/*.json; do
+            [ -f "$path" ] || continue
+            mtime=$(git log -1 --format=%cI -- "$path" 2>/dev/null || echo "")
+            if [ -n "$mtime" ] && [ "$mtime" \< "$cutoff" ]; then
+              git rm -f "$path"
+            fi
+          done
+          if git diff --staged --quiet; then
+            echo "Nothing to delete"
+            exit 0
+          fi
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "chore: prune AI Lab results older than 30 days"
+          git push

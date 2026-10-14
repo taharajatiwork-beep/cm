@@ -87,7 +87,8 @@ for key, val in patch.items():
 path.write_text("\\n".join(out) + "\\n", encoding="utf-8")
 for key in sorted(patch):
     val = patch[key]
-    if "SECRET" in key or "BEARER" in key:
+    upper = key.upper()
+    if any(s in upper for s in ("SECRET", "BEARER", "TOKEN", "PASSWORD")):
         val = "***"
     print(f"{{key}}={{val}}")
 PY
