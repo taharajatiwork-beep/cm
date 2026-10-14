@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import "../ai-lab/ai-lab.css";
+import { AiLabResultView, statusBadgeClass } from "../ai-lab/AiLabResultView";
 import { aiLabApi, type AiTask, type AiTaskKind } from "../ai-lab/api";
 import { perfApi } from "../perf/api";
 import {
@@ -230,7 +232,7 @@ export function AiLabPage() {
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{bi(KIND_LABEL[row.kind].en, KIND_LABEL[row.kind].fa)}</td>
-                  <td>{statusLabel(row.status)}</td>
+                  <td><span className={statusBadgeClass(row.status)}>{statusLabel(row.status)}</span></td>
                   <td>{row.rating ?? "—"}</td>
                   <td>{row.accepted_count}</td>
                   <td>
@@ -298,23 +300,26 @@ export function AiLabPage() {
       )}
 
       {detailId && (
-        <Dialog layout="pop" className="brief-pop" onClose={() => setDetailId(null)} label={bi("Task detail", "جزئیات کار")}>
+        <Dialog layout="pop" className="brief-pop ai-lab-pop" onClose={() => setDetailId(null)} label={bi("Task detail", "جزئیات کار")}>
           {detail.isLoading && !active ? (
             <LoadingState />
           ) : !active ? null : (
           <>
-          <h2><Bi en="Task" fa="کار" /> · {statusLabel(active.status)}</h2>
-          <p className="muted">{bi(KIND_LABEL[active.kind].en, KIND_LABEL[active.kind].fa)}</p>
+          <div className="ai-lab-detail-head">
+            <h2><Bi en="Analysis" fa="تحلیل" /></h2>
+            <span className={`ai-lab-status ${statusBadgeClass(active.status)}`}>{statusLabel(active.status)}</span>
+          </div>
+          <p className="muted ai-lab-meta">{bi(KIND_LABEL[active.kind].en, KIND_LABEL[active.kind].fa)}</p>
           {resultSource === "github" && (active.status === "waiting" || active.status === "sent") && (
-            <>
-              <p className="muted">
+            <div className="ai-lab-waiting">
+              <span>
                 <Bi en="Last GitHub check" fa="آخرین چک GitHub" />: {formatPollTime(active.last_polled_at, bi)}
-              </p>
+              </span>
               <Button type="button" variant="ghost" onClick={() => pollMut.mutate()} disabled={pollMut.isPending}>
                 <Bi en="Check now" fa="چک الان" />
               </Button>
               {pollMut.error && <ErrorMessage error={pollMut.error} />}
-            </>
+            </div>
           )}
           {(active.status === "failed" || active.error === "timeout") && (
             <>
@@ -357,60 +362,36 @@ export function AiLabPage() {
           )}
           {active.error && <p className="error-text">{active.error}</p>}
           {active.result && (
-            <>
-              <p>{active.result.summary}</p>
-              {active.result.findings?.map((f, i) => (
-                <Card key={i}>
-                  <strong>{f.title}</strong> ({f.severity})
-                  <div className="muted">{f.evidence}</div>
-                </Card>
-              ))}
-              {active.result.recommendations?.map((rec) => (
-                <Card key={rec.id}>
-                  <strong>{rec.action}</strong>
-                  <div>{rec.reason}</div>
-                  <div className="muted">{rec.expected_impact} · {rec.confidence}</div>
-                  <div className="toolbar">
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      disabled={decideMut.isPending}
-                      onClick={() => decideMut.mutate({ recId: rec.id, decision: "accepted" })}
-                    >
-                      <Bi en="Accept" fa="قبول" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      disabled={decideMut.isPending}
-                      onClick={() => decideMut.mutate({ recId: rec.id, decision: "rejected" })}
-                    >
-                      <Bi en="Reject" fa="رد" />
-                    </Button>
-                    {active.decisions[rec.id] && <span className="muted">{active.decisions[rec.id]}</span>}
-                  </div>
-                </Card>
-              ))}
-              <Field label={<Bi en="Rating 1-5" fa="امتیاز ۱–۵" />}>
-                <Select value={evalRating} onChange={(e) => setEvalRating(e.target.value)}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <option key={n} value={String(n)}>{n}</option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label={<Bi en="Useful?" fa="مفید بود؟" />}>
-                <Select value={evalUseful} onChange={(e) => setEvalUseful(e.target.value)}>
-                  <option value="yes">{bi("Yes", "بله")}</option>
-                  <option value="no">{bi("No", "خیر")}</option>
-                </Select>
-              </Field>
-              <Field label={<Bi en="Note" fa="یادداشت" />}>
-                <TextArea rows={2} value={evalNote} onChange={(e) => setEvalNote(e.target.value)} />
-              </Field>
-              <Button type="button" onClick={() => evalMut.mutate()} disabled={evalMut.isPending}>
-                <Bi en="Save evaluation" fa="ذخیرهٔ ارزیابی" />
-              </Button>
-            </>
+            <AiLabResultView
+              result={active.result}
+              decisions={active.decisions}
+              bi={bi}
+              decidePending={decideMut.isPending}
+              onDecide={(recId, decision) => decideMut.mutate({ recId, decision })}
+              evalSlot={
+                <>
+                  <Field label={<Bi en="Rating 1-5" fa="امتیاز ۱–۵" />}>
+                    <Select value={evalRating} onChange={(e) => setEvalRating(e.target.value)}>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <option key={n} value={String(n)}>{n}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label={<Bi en="Useful?" fa="مفید بود؟" />}>
+                    <Select value={evalUseful} onChange={(e) => setEvalUseful(e.target.value)}>
+                      <option value="yes">{bi("Yes", "بله")}</option>
+                      <option value="no">{bi("No", "خیر")}</option>
+                    </Select>
+                  </Field>
+                  <Field label={<Bi en="Note" fa="یادداشت" />}>
+                    <TextArea rows={2} value={evalNote} onChange={(e) => setEvalNote(e.target.value)} />
+                  </Field>
+                  <Button type="button" onClick={() => evalMut.mutate()} disabled={evalMut.isPending}>
+                    <Bi en="Save evaluation" fa="ذخیرهٔ ارزیابی" />
+                  </Button>
+                </>
+              }
+            />
           )}
           </>
           )}
