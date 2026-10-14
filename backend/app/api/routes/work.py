@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import AuthContext, get_current_user, handle_authz
 from app.api.pagination import page
 from app.core.permissions import AuthorizationError, PermissionCode, require_permission
+from app.core.vehicle_labels import fa_vehicle_name
 from app.db.session import get_db
 from app.models import Notification
 from app.models.enums import CaseStatus, CaseType
@@ -787,7 +788,7 @@ async def create_inquiry(
         )
     if owner_id is None:
         owner_id = ctx.user.id
-    label = f"{vehicle.brand} {vehicle.model}".strip()
+    label = fa_vehicle_name(vehicle.brand, vehicle.model) or f"{vehicle.brand} {vehicle.model}".strip()
     subject = f"استعلام خرید — {label}"
     if body.note.strip():
         subject = f"{subject} — {body.note.strip()[:120]}"

@@ -7,6 +7,16 @@ import { Icon, type IconName } from "./Icon";
 
 export type Tone = "neutral" | "accent" | "ok" | "warn" | "danger" | "ai";
 
+export function TitleCode({ title, code }: { title: ReactNode; code?: string | null }) {
+  if (!code) return <>{title}</>;
+  return (
+    <>
+      {title}{" "}
+      <span className="mono muted" dir="ltr">{code}</span>
+    </>
+  );
+}
+
 export function StatCard({
   icon,
   label,

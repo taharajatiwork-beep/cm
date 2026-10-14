@@ -19,7 +19,14 @@ import {
 } from "../components/ui";
 import { canSeeProjects } from "../lib/access";
 import { useToast } from "../components/ui/Toast";
-import { filledWorkBuckets, workEmptyTarget, WORK_BUCKETS, type WorkBucket } from "../lib/focus";
+import {
+  filledWorkBuckets,
+  flattenMyWorkTasks,
+  myWorkProjectsWithoutTasks,
+  workEmptyTarget,
+  WORK_BUCKETS,
+  type WorkBucket,
+} from "../lib/focus";
 import { Bi, useBi, useLocale } from "../i18n";
 import { canFinishTask, formatDeadline, isOverdue } from "../lib/collaboration";
 import { DateText } from "../components/DateText";
@@ -304,7 +311,36 @@ export function MyWorkPage() {
     );
   }
 
-  const allQueueCount = priceJobs.length + pendingAi.length + openSorted.length;
+  const bucketTasks = flattenMyWorkTasks(buckets.data);
+  const bucketProjects = myWorkProjectsWithoutTasks(buckets.data);
+  const unifiedTasks = (() => {
+    const seen = new Set<string>();
+    const merged: Row[] = [];
+    for (const row of bucketTasks) {
+      const id = String(row.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      merged.push(row as Row);
+    }
+    for (const row of openSorted) {
+      const id = String(row.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      merged.push(row);
+    }
+    return merged.sort((a, b) => {
+      const ra = taskUrgencyRank(a);
+      const rb = taskUrgencyRank(b);
+      if (ra !== rb) return ra - rb;
+      if (a.deadline && b.deadline) return String(a.deadline).localeCompare(String(b.deadline));
+      if (a.deadline) return -1;
+      if (b.deadline) return 1;
+      return String(a.title ?? "").localeCompare(String(b.title ?? ""), "fa");
+    });
+  })();
+
+  const allQueueCount =
+    priceJobs.length + pendingAi.length + unifiedTasks.length + bucketProjects.length;
 
   const bucketRows =
     queueFilter === "all" ? [] : (buckets.data?.[queueFilter] ?? []) as Array<Record<string, string>>;
@@ -340,19 +376,6 @@ export function MyWorkPage() {
                 titleFa="صف شما خالی است"
                 bodyEn="Nothing is late, due today, or waiting on someone else."
                 bodyFa="نه کار عقب‌افتاده دارید، نه کار امروز، نه چیزی که منتظر دیگران باشد."
-                action={
-                  <Button to={nextPlace}>
-                    <Bi en={nextPlaceLabel.en} fa={nextPlaceLabel.fa} />
-                  </Button>
-                }
-              />
-            ) : null}
-            {!listLoading && unifiedEmpty && filledWorkBuckets(bucketCounts).length > 0 ? (
-              <EmptyState
-                titleEn="Nothing to do right now"
-                titleFa="فعلاً کاری ندارید"
-                bodyEn="When someone gives you a job, or a post needs a price, it shows up here."
-                bodyFa="وقتی کاری به شما سپرده شود، یا پستی به قیمت نیاز داشته باشد، اینجا نمایش داده می‌شود."
                 action={
                   <Button to={nextPlace}>
                     <Bi en={nextPlaceLabel.en} fa={nextPlaceLabel.fa} />
@@ -460,14 +483,53 @@ export function MyWorkPage() {
                     </div>
                   </li>
                 ))}
-                {openSorted.length > 0 ? (
+                {unifiedTasks.length > 0 ? (
                   <li className="row-section-head" aria-hidden>
                     <SectionHeader icon="check" title={<Bi en="Tasks" fa="کارها" />} />
                   </li>
                 ) : null}
-                {openSorted.map((t) => (
-                  <TaskRow key={String(t.id)} t={t} late={isOverdue(t.deadline, t.status)} />
+                {unifiedTasks.map((t) => (
+                  <TaskRow
+                    key={String(t.id)}
+                    t={t}
+                    late={isOverdue(t.deadline as string | null | undefined, String(t.status))}
+                  />
                 ))}
+                {bucketProjects.length > 0 ? (
+                  <li className="row-section-head" aria-hidden>
+                    <SectionHeader
+                      icon="layers"
+                      title={<Bi en="Projects without tasks yet" fa="پروژه بدون کار" />}
+                    />
+                  </li>
+                ) : null}
+                {bucketProjects.map((row) => {
+                  const projectId = row.project_id ?? row.id;
+                  const title = row.title ?? row.project_title ?? "";
+                  return (
+                    <li key={`project-${row.id}`} className="row-item">
+                      <div className="row-main">
+                        <span className="row-title">
+                          {projectId && showProjectLink ? (
+                            <Link to={`/projects/${projectId}`}>{title}</Link>
+                          ) : (
+                            title
+                          )}
+                        </span>
+                        <WorkParentContext
+                          kind="project"
+                          origin={row.origin}
+                          projectId={projectId}
+                          requestId={row.request_id}
+                          projectCode={row.project_code ?? row.code}
+                          projectTitle={row.project_title ?? row.title}
+                          requestCode={row.request_code}
+                          requestTitle={row.request_title}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
             {!listLoading && !showUnified && !bucketEmpty ? (

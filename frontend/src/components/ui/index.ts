@@ -20,6 +20,7 @@ export { Icon, type IconName } from "./Icon";
 export { Dialog, type DialogProps } from "./Dialog";
 export {
   StatCard,
+  TitleCode,
   Disclosure,
   MoreMenu,
   Segmented,

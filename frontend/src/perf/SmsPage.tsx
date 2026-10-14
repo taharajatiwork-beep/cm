@@ -15,6 +15,7 @@ import {
   Select,
   Table,
   TextArea,
+  TitleCode,
 } from "../components/ui";
 import { isForbiddenError } from "../lib/apiError";
 import { useConfirm } from "../components/ui/ConfirmDialog";
@@ -732,7 +733,7 @@ function SmsSummary({
     <Card className="sms-flow-summary-card">
       <SectionHeader icon="sparkles" title={<Bi en="Summary" fa="خلاصه" />} />
       <ul className="sms-flow-summary-list">
-        <li><strong>کمپین:</strong> {campaign ? `${campaign.code} — ${campaign.title}` : "—"}</li>
+        <li><strong>کمپین:</strong> {campaign ? <TitleCode title={campaign.title} code={campaign.code} /> : "—"}</li>
         <li><strong>متن:</strong> {toman(shape.chars)} نویسه · {toman(shape.pages)} صفحه</li>
         <li><strong>لغو۱۱:</strong> {hasCancel ? <Badge tone="ok">بله</Badge> : <Badge tone="warn">خیر</Badge>}</li>
         <li><strong>مخاطب:</strong> {audienceLabel} · {toman(recipientCount)} نفر</li>

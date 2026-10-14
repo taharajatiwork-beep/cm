@@ -384,3 +384,51 @@ async def test_static_request_paths_not_captured_as_uuid(client, seeded, db):
     one = await client.get(f"/requests/{request_id}", headers=manager)
     assert one.status_code == 200, one.text
     assert one.json()["request"]["id"] == request_id
+
+
+async def test_team_work_report_lists_projects_of_team_requests(client, seeded, db):
+    from app.services import OrgService
+
+    svc = OrgService(db)
+    rep_role = await svc.create_role(
+        seeded["org"].id, "گزارشگر پروژه", "rep_proj_role", [PermissionCode.REPORT_READ], "team"
+    )
+    await svc.create_user(
+        organization_id=seeded["org"].id,
+        email="rep-proj@autoco.example",
+        full_name="گزارشگر پروژه",
+        password="password",
+        role_id=rep_role.id,
+        branch_id=seeded["branch"].id,
+        team_id=seeded["mkt_team"].id,
+    )
+    await _request_user(db, seeded, "triage-proj@autoco.example", "ترییج پروژه", [PermissionCode.REQUEST_TRIAGE])
+    await _request_user(db, seeded, "mgr-proj@autoco.example", "مدیر پروژه", [PermissionCode.REQUEST_CREATE])
+    await db.commit()
+
+    manager = auth(await login(client, "mgr-proj@autoco.example"))
+    triage = auth(await login(client, "triage-proj@autoco.example"))
+    reporter = auth(await login(client, "rep-proj@autoco.example"))
+
+    created = await client.post(
+        "/requests",
+        headers=manager,
+        json={"title": "درخواست بهمن", "team_id": str(seeded["mkt_team"].id)},
+    )
+    assert created.status_code == 201, created.text
+    request_id = created.json()["id"]
+
+    project = await client.post(
+        f"/requests/{request_id}/projects",
+        headers=triage,
+        json={"title": "طراحی بنر", "kind": "طراحی", "team_id": str(seeded["sales_team"].id)},
+    )
+    assert project.status_code == 201, project.text
+    project_id = project.json()["id"]
+
+    report = await client.get(f"/reports/work?scope=team&request_id={request_id}", headers=reporter)
+    assert report.status_code == 200, report.text
+    body = report.json()
+    assert body["projects"] >= 1
+    row = next(item for item in body["request_rows"] if item["id"] == request_id)
+    assert any(child["id"] == project_id for child in row["projects"])

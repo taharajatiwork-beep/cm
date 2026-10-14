@@ -39,6 +39,7 @@ const VALUE_LABELS: Record<string, [string, string]> = {
   tucson: ["Tucson", "توسان"],
   sportage: ["Sportage", "اسپورتیج"],
   cerato: ["Cerato", "سراتو"],
+  elantra: ["Elantra", "النترا"],
 };
 
 const HISTORY_NOTE_LABELS: Record<string, [string, string]> = {

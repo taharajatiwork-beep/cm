@@ -51,7 +51,12 @@ async def work_report(
         ]
     elif scope in ("team", "team_tree") and team_ids is not None:
         requests = [row for row in requests if row.team_id in team_ids]
-        projects = [row for row in projects if row.team_id in team_ids]
+        scoped_request_ids = {row.id for row in requests}
+        projects = [
+            row
+            for row in projects
+            if row.team_id in team_ids or row.request_id in scoped_request_ids
+        ]
     if request_id is not None:
         requests = [row for row in requests if row.id == request_id]
         projects = [row for row in projects if row.request_id == request_id]

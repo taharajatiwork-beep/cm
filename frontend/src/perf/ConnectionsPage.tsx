@@ -111,13 +111,13 @@ export function ConnectionsPage() {
       refreshSaved();
       setOutcome({
         ok: true,
-        title: result.saved ? "ذخیرهٔ توکن موفق بود" : "پاک‌کردن توکن موفق بود",
+        title: result.saved ? "ذخیرهٔ کلید دسترسی موفق بود" : "پاک‌کردن کلید دسترسی موفق بود",
         detail: result.saved
-          ? `توکن روی سرور این سازمان ماند${result.hint ? ` (${result.hint})` : ""}. برای دیدن وضعیت زنده «بررسی همین حالا» را بزنید.`
-          : "توکن از سرور پاک شد. تا توکن تازه بچسبانید، خواندن میزیتو انجام نمی‌شود.",
+          ? `کلید دسترسی روی سرور این سازمان ماند${result.hint ? ` (${result.hint})` : ""}. برای دیدن وضعیت زنده «بررسی همین حالا» را بزنید.`
+          : "کلید دسترسی از سرور پاک شد. تا کلید تازه بچسبانید، خواندن میزیتو انجام نمی‌شود.",
       });
     }).catch((error: unknown) => {
-      setOutcome({ ok: false, title: "ذخیرهٔ توکن ناموفق بود", detail: exactError(error) });
+      setOutcome({ ok: false, title: "ذخیرهٔ کلید دسترسی ناموفق بود", detail: exactError(error) });
     });
   }
 
@@ -339,7 +339,7 @@ export function ConnectionsPage() {
           <SectionHeader icon="send" title={<Bi en="Telegram" fa="تلگرام" />} />
           <article className="conn-tile" data-tone="warn">
             <p className="conn-help">
-              ربات تلگرام در این صفحه صدا زده نمی‌شود. توکن و چت‌ها در تنظیمات است. اگر ربات خاموش باشد، اعلان به تلگرام نمی‌رسد و خود درخواست در پنل می‌ماند.
+              ربات تلگرام در این صفحه صدا زده نمی‌شود. کلید دسترسی و چت‌ها در تنظیمات است. اگر ربات خاموش باشد، اعلان به تلگرام نمی‌رسد و خود درخواست در پنل می‌ماند.
             </p>
             <Link to="/settings"><Bi en="Open settings" fa="تنظیم در صفحهٔ تنظیمات" /></Link>
           </article>

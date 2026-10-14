@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { DateText } from "../components/DateText";
-import { Button, Card, Checkbox, Disclosure, EmptyState, ErrorMessage, Field, Icon, Input, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, StatCard } from "../components/ui";
+import { Button, Card, Checkbox, Disclosure, EmptyState, ErrorMessage, Field, Icon, Input, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, StatCard, TitleCode } from "../components/ui";
 import { Donut, HBars } from "../components/charts";
 import { faNum, tomanText } from "../fa";
 import { useAuth } from "../auth";
@@ -478,8 +478,7 @@ export function ProjectPage() {
                 <li key={`${item.kind}-${index}`}>
                   <Muted>{item.at ? <DateText value={item.at} withTime /> : "—"}</Muted>
                   {" · "}
-                  {item.code ? `${item.code} — ` : ""}
-                  {item.label}
+                  <TitleCode title={item.label} code={item.code ? String(item.code) : null} />
                   {item.status ? ` (${spineStatusLabel(item.kind, item.status)})` : ""}
                 </li>
               ))}
@@ -552,8 +551,7 @@ function PeopleAndCampaigns({
           {campaigns.map((campaign) => (
             <li key={campaign.id}>
               <Link className="record-sub" to={`/perf/campaigns/${campaign.id}`}>
-                <span className="record-code" dir="ltr">{campaign.code}</span>
-                <strong>{campaign.title}</strong>
+                <strong><TitleCode title={campaign.title} code={campaign.code} /></strong>
                 <span />
               </Link>
             </li>
@@ -640,8 +638,7 @@ function CampaignPick({
           {selected.map((campaign) => (
             <li key={campaign.id} className="campaign-row">
               <Link className="record-sub" to={`/perf/campaigns/${campaign.id}`}>
-                <span className="record-code" dir="ltr">{campaign.code}</span>
-                <strong>{campaign.title}</strong>
+                <strong><TitleCode title={campaign.title} code={campaign.code} /></strong>
                 <span />
               </Link>
               <Button
@@ -676,8 +673,7 @@ function CampaignPick({
                   className="record-sub"
                   onClick={() => setIds((cur) => (cur.includes(campaign.id) ? cur : [...cur, campaign.id]))}
                 >
-                  <span className="record-code" dir="ltr">{campaign.code}</span>
-                  <strong>{campaign.title}</strong>
+                  <strong><TitleCode title={campaign.title} code={campaign.code} /></strong>
                   <span><Bi en="Add" fa="افزودن" /></span>
                 </button>
               </li>

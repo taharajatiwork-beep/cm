@@ -6,6 +6,7 @@ import {
   dailyPaths,
   defaultWorkTab,
   filledWorkBuckets,
+  flattenMyWorkTasks,
   groupDailyNav,
   partitionMarketingNav,
   PERF_HUB_PATH,
@@ -161,5 +162,16 @@ describe("request defaults", () => {
 describe("project sections", () => {
   it("keeps three primary sections", () => {
     expect(PROJECT_TABS).toEqual(["tasks", "overview", "resources"]);
+  });
+});
+
+describe("flattenMyWorkTasks", () => {
+  it("dedupes tasks across buckets in priority order", () => {
+    const rows = flattenMyWorkTasks({
+      overdue: [{ kind: "task", id: "a", title: "late" }],
+      later: [{ kind: "task", id: "a", title: "late" }, { kind: "task", id: "b", title: "soon" }],
+      projects_without_tasks: [{ kind: "project", id: "p1", title: "empty project" }],
+    });
+    expect(rows.map((row) => row.id)).toEqual(["a", "b"]);
   });
 });

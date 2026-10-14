@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Badge, Button, Card, EmptyState, ErrorMessage, ForbiddenState, List, ListItem, LoadingState, MoreMenu, PageHeader, SectionHeader, StatCard } from "../components/ui";
+import { Badge, Button, Card, EmptyState, ErrorMessage, ForbiddenState, List, ListItem, LoadingState, MoreMenu, PageHeader, SectionHeader, StatCard, TitleCode } from "../components/ui";
 import { isForbiddenError } from "../lib/apiError";
 import { FaText } from "../components/FaText";
 import { Bi, useBi } from "../i18n";
@@ -80,7 +80,7 @@ export function PerfHomePage() {
           <List>
             {[...campaigns.data].sort((a, b) => (b.cost_toman || 0) - (a.cost_toman || 0)).slice(0, 8).map((row) => (
               <ListItem key={row.id}>
-                <Link to={`/perf/campaigns/${row.id}`}>{row.code} — {row.title}</Link>
+                <Link to={`/perf/campaigns/${row.id}`}><TitleCode title={row.title} code={row.code} /></Link>
                 <span className="muted">{row.brand} · {toman(row.cost_toman)} · <Bi en="CPL" fa="هزینه هر ورودی" /> {row.cpl ? toman(row.cpl) : "—"}</span>
               </ListItem>
             ))}

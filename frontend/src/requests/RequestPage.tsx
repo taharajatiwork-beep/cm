@@ -13,6 +13,7 @@ import {
   Muted,
   PageHeader,
   SectionHeader,
+  TitleCode,
 } from "../components/ui";
 import { ApiError } from "../api";
 import { useAuth } from "../auth";
@@ -97,7 +98,7 @@ export function RequestPage() {
     <>
       <PageHeader
         title={row.title}
-        description={`${row.code} · ${row.kind}`}
+        description={<TitleCode title={row.kind} code={row.code} />}
         actions={
           <Button variant="secondary" to="/requests">
             <Bi en="All requests" fa="همهٔ درخواست‌ها" />
@@ -145,8 +146,7 @@ export function RequestPage() {
             {projects.map((project) => (
               <li key={project.id}>
                 <Link className="record-sub" to={`/projects/${project.id}`}>
-                  <span className="record-code" dir="ltr">{project.code}</span>
-                  <strong>{project.title}</strong>
+                  <strong><TitleCode title={project.title} code={project.code} /></strong>
                   <Badge tone={project.status === "done" ? "ok" : "warn"}>
                     {PROJECT_STATUS_LABEL[project.status] || project.status}
                   </Badge>
@@ -185,8 +185,7 @@ export function RequestPage() {
                 <li key={`${item.kind}-${index}`}>
                   <Muted>{item.at ? <DateText value={item.at} withTime /> : "—"}</Muted>
                   {" · "}
-                  {item.code ? `${item.code} — ` : ""}
-                  {item.label}
+                  <TitleCode title={item.label} code={item.code ? String(item.code) : null} />
                   {item.status ? ` (${spineStatusText(String(item.kind), String(item.status))})` : ""}
                 </li>
               ))}

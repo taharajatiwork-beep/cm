@@ -259,6 +259,8 @@ async def my_work(db: AsyncSession, organization_id: UUID, user_id: UUID) -> dic
                 "status": task.status.value if hasattr(task.status, "value") else str(task.status),
                 "deadline": task.deadline.isoformat() if task.deadline else None,
                 "origin": origin,
+                "owner_id": str(task.owner_id),
+                "assignee_ids": [str(uid) for uid in sorted(people)],
                 "project_id": str(task.project_id) if task.project_id else None,
                 "request_id": str(task.request_id) if task.request_id else None,
                 **parent_meta(task),

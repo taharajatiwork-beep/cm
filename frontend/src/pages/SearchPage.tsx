@@ -17,9 +17,11 @@ import {
 } from "../components/ui";
 import { Bi, useBi } from "../i18n";
 import { isForbiddenError } from "../lib/apiError";
+import { useVehicleLabel } from "../lib/vehicleLabels";
 
 export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
   const bi = useBi();
+  const vehicleLabel = useVehicleLabel();
   const [q, setQ] = useState(initialQuery);
   const [submitted, setSubmitted] = useState(initialQuery);
   const searchQuery = useQuery({
@@ -109,10 +111,16 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
           <List>
             {hits.map((h, i) => {
               const href = openHref(h);
+              const meta = (h.metadata ?? {}) as Record<string, unknown>;
+              const title =
+                String(h.entity_type) === "vehicle" && (meta.brand || meta.model)
+                  ? `${vehicleLabel(String(meta.brand ?? ""))} ${vehicleLabel(String(meta.model ?? ""))}`.trim() +
+                    (meta.stock_number ? ` #${String(meta.stock_number)}` : "")
+                  : String(h.title || h.entity_id);
               return (
                 <ListItem key={`${h.entity_type}-${h.entity_id}-${i}`}>
                   <div>
-                    <strong>{String(h.title || h.entity_id)}</strong>
+                    <strong>{title}</strong>
                     <div>
                       <Muted>{typeLabel(String(h.entity_type))}</Muted>
                     </div>

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { Button, Card, EmptyState, ErrorMessage, LoadingState, Muted, PageHeader, SectionHeader, StatCard } from "../components/ui";
+import { Button, Card, EmptyState, ErrorMessage, LoadingState, Muted, PageHeader, SectionHeader, StatCard, TitleCode } from "../components/ui";
 import { Bi } from "../i18n";
 import { faNum } from "../fa";
 import { ApiError } from "../api";
@@ -100,9 +100,9 @@ export function TeamHomePage() {
               {(data.campaigns ?? []).map((row) => (
                 <li key={row.id}>
                   {canOpenCampaigns ? (
-                    <Link to={`/perf/campaigns/${row.id}`}>{row.code} — {row.title}</Link>
+                    <Link to={`/perf/campaigns/${row.id}`}><TitleCode title={row.title} code={row.code} /></Link>
                   ) : (
-                    <span>{row.code} — {row.title}</span>
+                    <TitleCode title={row.title} code={row.code} />
                   )}
                 </li>
               ))}

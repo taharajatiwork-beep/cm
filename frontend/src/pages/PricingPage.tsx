@@ -22,6 +22,7 @@ import { useToast } from "../components/ui/Toast";
 import { DateText } from "../components/DateText";
 import { SheetsSyncCard } from "../components/SheetsSyncCard";
 import { Bi, useBi } from "../i18n";
+import { useVehicleLabel } from "../lib/vehicleLabels";
 
 type Slot = {
   id: string;
@@ -119,6 +120,7 @@ function waitingStatus(status: string): boolean {
 export function PricingPage() {
   const { has } = useAuth();
   const bi = useBi();
+  const vehicleLabel = useVehicleLabel();
   const toast = useToast();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -475,9 +477,9 @@ export function PricingPage() {
                       render: (slot) => (
                         <Link to={`/vehicles/${slot.vehicle_id}`} onClick={(e) => e.stopPropagation()}>
                           <strong>
-                            {slot.brand} {slot.model}
+                            {vehicleLabel(slot.brand)} {vehicleLabel(slot.model)}
                           </strong>
-                          {slot.color ? <div className="cell-sub">{slot.color}</div> : null}
+                          {slot.color ? <div className="cell-sub">{vehicleLabel(slot.color)}</div> : null}
                         </Link>
                       ),
                     },
@@ -599,10 +601,10 @@ export function PricingPage() {
                     render: (row) => (
                       <Link to={`/vehicles/${row.id}`} onClick={(e) => e.stopPropagation()}>
                         <strong>
-                          {row.brand} {row.model}
+                          {vehicleLabel(row.brand)} {vehicleLabel(row.model)}
                         </strong>
                         <div className="cell-sub">
-                          {[row.color, row.year, row.delivery_note].filter(Boolean).join(" · ") || "—"}
+                          {[row.color ? vehicleLabel(row.color) : null, row.year, row.delivery_note].filter(Boolean).join(" · ") || "—"}
                         </div>
                       </Link>
                     ),

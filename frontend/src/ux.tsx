@@ -84,6 +84,16 @@ export function StatusLabel({ status }: { status: string }) {
     URGENT: ["Urgent", "فوری", "danger"],
     MEDIUM: ["Medium", "متوسط", ""],
     LOW: ["Low", "پایین", ""],
+    new: ["New", "جدید", ""],
+    in_review: ["In review", "در بررسی", "warn"],
+    converted: ["Converted to project", "تبدیل به پروژه", "ok"],
+    rejected: ["Rejected", "رد شده", "danger"],
+    done: ["Done", "انجام شد", "ok"],
+    in_progress: ["In progress", "در جریان", "warn"],
+    requested: ["Requested", "درخواست شده", ""],
+    approved: ["Approved", "تأیید شده", "ok"],
+    paid: ["Paid", "پرداخت شده", "ok"],
+    planned: ["Planned", "برنامه‌ریزی‌شده", ""],
   };
   const [en, fa, tone] = map[status] || [status, status, ""];
   return <Badge tone={tone as "" | "ok" | "warn" | "danger"}>{bi(en, fa)}</Badge>;

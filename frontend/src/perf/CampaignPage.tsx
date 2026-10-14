@@ -2,7 +2,8 @@ import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Donut, LineTrend } from "../components/charts";
-import { Badge, Button, Card, ErrorMessage, List, ListItem, LoadingState, MoreMenu, Muted, PageHeader, SectionHeader, Select, StatCard, Table, type Tone } from "../components/ui";
+import { Badge, Button, Card, EmptyState, ErrorMessage, ForbiddenState, List, ListItem, LoadingState, MoreMenu, Muted, PageHeader, SectionHeader, Select, StatCard, Table, TitleCode, type Tone } from "../components/ui";
+import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { useToast } from "../components/ui/Toast";
 import { Bi } from "../i18n";
@@ -31,6 +32,7 @@ export function CampaignPage() {
     onError: (error: Error) => toast(error.message),
   });
   if (row.isLoading) return <LoadingState />;
+  if (row.isError && isForbiddenError(row.error)) return <ForbiddenState />;
   if (row.error || !row.data) return <ErrorMessage error={row.error instanceof Error ? row.error.message : "کمپین پیدا نشد"} />;
   const data = row.data;
   const report: Report = {
@@ -57,6 +59,8 @@ export function CampaignPage() {
   const leadRate = report.views > 0 && report.leads > 0 ? (report.leads / report.views) * 100 : null;
   const shownRate = leadRate != null && leadRate >= 0.5 ? leadRate : null;
   const budgetWarn = report.budget_warning || (report.budget_over ? "هزینه از بودجه بیشتر شده است." : "");
+  const reportEmpty =
+    !report.views && !report.leads && !report.cost_toman && !report.trend.length;
   return (
     <div className="perf-report">
       {budgetWarn ? (
@@ -65,7 +69,7 @@ export function CampaignPage() {
         </p>
       ) : null}
       <PageHeader
-        title={`${data.code} — ${data.title}`}
+        title={<TitleCode title={data.title} code={data.code} />}
         description={
           <>
             {data.brand ? <span>{data.brand}</span> : null}
@@ -137,6 +141,21 @@ export function CampaignPage() {
           hint={<>هزینهٔ هر نمایش · از {toman(report.views)} نمایش</>}
         />
       </div>
+      {reportEmpty ? (
+        <Card>
+          <EmptyState
+            titleEn="No numbers for this campaign yet"
+            titleFa="هنوز عددی برای این کمپین ثبت نشده"
+            bodyEn="Add costs or sync the sheet to see performance here."
+            bodyFa="هزینه ثبت کنید یا شیت را به‌روز کنید تا آمار اینجا دیده شود."
+            action={
+              <Button variant="secondary" to={`/perf/money?campaign=${data.id}`}>
+                <Bi en="This campaign's costs" fa="هزینه‌های این کمپین" />
+              </Button>
+            }
+          />
+        </Card>
+      ) : null}
       <MizitoCards code={data.code} />
       {lines.length ? (
         <Card>

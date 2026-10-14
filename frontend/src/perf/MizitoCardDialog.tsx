@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Dialog, List, ListItem, Muted, SectionHeader } from "../components/ui";
+import { Dialog, List, ListItem, Muted, SectionHeader, TitleCode } from "../components/ui";
 import { DateText } from "../components/DateText";
 import { Bi, useBi } from "../i18n";
 import { mizitoCode, mizitoStatus, perfApi, toman, triageLabel, type MizitoCard } from "./api";
@@ -84,7 +84,11 @@ export function MizitoCardDialog({ card, flags, onClose }: { card: MizitoCardLik
             {full.code ? <>{full.code}{full.code_source === "notes" ? <span className="muted"> (از یادداشت کارت)</span> : full.code_source === "title" ? <span className="muted"> (از عنوان)</span> : null}</> : "—"}
           </Fact>
           <Fact label="کمپین در پنل">
-            {campaign ? <Link to={`/perf/campaigns/${campaign.id}`} onClick={onClose}>{campaign.code} — {campaign.title}</Link> : code ? "این کد در پنل نیست" : "—"}
+            {campaign ? (
+              <Link to={`/perf/campaigns/${campaign.id}`} onClick={onClose}>
+                <TitleCode title={campaign.title} code={campaign.code} />
+              </Link>
+            ) : code ? "این کد در پنل نیست" : "—"}
           </Fact>
           <Fact label="پروژه">{full.project || "—"}</Fact>
           <Fact label="برد">

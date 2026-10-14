@@ -333,7 +333,7 @@ export function VehiclesPage() {
   }
 
   async function removeVehicle(v: Record<string, unknown>) {
-    const name = `${String(v.brand)} ${String(v.model)}`.trim();
+    const name = `${vehicleLabel(String(v.brand))} ${vehicleLabel(String(v.model))}`.trim();
     const ok = await confirm(
       bi("Delete this vehicle?", "این خودرو حذف شود؟"),
       bi(`${name} will be removed from the list.`, `${name} از فهرست حذف می‌شود.`),
@@ -415,7 +415,7 @@ export function VehiclesPage() {
       .map((row) => {
         const price =
           row.sale_price != null ? Math.round(Number(row.sale_price) / 1_000_000).toLocaleString("fa-IR") : "—";
-        return `${String(row.brand)} ${String(row.model)}${row.color ? ` ${String(row.color)}` : ""} ${row.year} — ${price}`;
+        return `${vehicleLabel(String(row.brand))} ${vehicleLabel(String(row.model))}${row.color ? ` ${vehicleLabel(String(row.color))}` : ""} ${row.year} — ${price}`;
       });
     const text = [`موجودی خودرو`, ...lines].join("\n");
     await navigator.clipboard.writeText(text);
@@ -700,7 +700,7 @@ export function VehiclesPage() {
               <label key={`row-${index}`} className="check-row">
                 <input type="checkbox" checked={Boolean(row.apply)} onChange={() => togglePreview("rows", index)} />
                 <span>
-                  {String(row.action)} · {String(row.brand || "")} {String(row.model || "")} · {row.price_million != null ? String(row.price_million) : ""}
+                  {String(row.action)} · {vehicleLabel(String(row.brand || ""))} {vehicleLabel(String(row.model || ""))} · {row.price_million != null ? String(row.price_million) : ""}
                 </span>
               </label>
             ))}
@@ -708,7 +708,7 @@ export function VehiclesPage() {
               <label key={`miss-${index}`} className="check-row">
                 <input type="checkbox" checked={Boolean(row.apply)} onChange={() => togglePreview("missing", index)} />
                 <span>
-                  <Bi en="Missing from the list — mark sold" fa="در لیست نیست — فروخته‌شده" /> · {String(row.brand)} {String(row.model)}
+                  <Bi en="Missing from the list — mark sold" fa="در لیست نیست — فروخته‌شده" /> · {vehicleLabel(String(row.brand))} {vehicleLabel(String(row.model))}
                 </span>
               </label>
             ))}

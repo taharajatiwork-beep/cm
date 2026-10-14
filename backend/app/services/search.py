@@ -17,6 +17,7 @@ from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import PermissionCode, require_permission
+from app.core.vehicle_labels import fa_vehicle_name
 from app.core.scope import scope_clause
 from app.models import CommunicationCase, User, WorkItem
 from app.models.enums import CaseStatus, VehicleStatus, WorkItemStatus
@@ -248,7 +249,7 @@ class SearchService:
                 SearchHit(
                     entity_type=SearchEntityType.VEHICLE,
                     entity_id=v.id,
-                    title=f"{v.brand} {v.model}"
+                    title=fa_vehicle_name(v.brand, v.model)
                     + (f" #{v.stock_number}" if v.stock_number else ""),
                     subtitle=f"VIN {v.vin} · {v.status.value}"
                     + (f" · {v.year}" if v.year else ""),

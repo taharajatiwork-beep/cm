@@ -318,6 +318,31 @@ export function filledWorkBuckets(counts: Partial<Record<WorkBucket, number>>): 
   return WORK_BUCKETS.filter((key) => (counts[key] ?? 0) > 0);
 }
 
+/** Tasks from /requests/my-work buckets (owner or assignee), deduped in bucket priority order. */
+export function flattenMyWorkTasks(
+  data: Partial<Record<WorkBucket, Array<Record<string, string>>>> | undefined,
+): Array<Record<string, unknown>> {
+  const seen = new Set<string>();
+  const out: Array<Record<string, unknown>> = [];
+  for (const key of WORK_BUCKETS) {
+    if (key === "projects_without_tasks") continue;
+    for (const row of data?.[key] ?? []) {
+      if (row.kind === "project") continue;
+      const id = String(row.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(row);
+    }
+  }
+  return out;
+}
+
+export function myWorkProjectsWithoutTasks(
+  data: Partial<Record<WorkBucket, Array<Record<string, string>>>> | undefined,
+): Array<Record<string, string>> {
+  return data?.projects_without_tasks ?? [];
+}
+
 export function defaultWorkTab(overdueCount: number): "tasks" | "overdue" {
   return overdueCount > 0 ? "overdue" : "tasks";
 }

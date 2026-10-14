@@ -234,6 +234,8 @@ export function HomePage() {
     permissions: user?.permissions ?? [],
     teamId: user?.team_id,
   });
+  const isRequester =
+    has("request.create") && !has("request.triage") && !has("request.manage") && !has("task.read");
 
   return (
     <>
@@ -267,6 +269,11 @@ export function HomePage() {
               <Button variant="secondary" to="/communication">
                 <Icon name="message" size={14} />
                 <Bi en="Messages" fa="پیام‌ها" />
+              </Button>
+            ) : null}
+            {isRequester ? (
+              <Button variant="secondary" to="/requests">
+                <Bi en="My request status" fa="وضعیت درخواست‌های من" />
               </Button>
             ) : null}
             {has("inquiry.create") ? (
