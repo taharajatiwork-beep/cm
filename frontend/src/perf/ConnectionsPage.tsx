@@ -391,7 +391,7 @@ export function ConnectionsPage() {
         />
         <article className="conn-tile" data-tone={checking && !liveReady ? "busy" : novinhub.connected ? "ok" : "danger"}>
           <p className="conn-help">
-            فقط خواندن از API نوین‌هاب (کامنت، دایرکت، گزارش). توکن وب‌سرویس در دیتابیس همین سرور رمزنگاری می‌شود؛ CM هیچ پاسخ یا انتشاری به نوین‌هاب نمی‌فرستد.
+            فقط GET از API نوین‌هاب: اکانت، کامنت و دایرکت برای اتوماسیون. توکن در دیتابیس رمزنگاری می‌شود؛ CM به نوین‌هاب POST نمی‌زند.
           </p>
           {novinhub.connected ? (
             <Muted>
@@ -451,7 +451,7 @@ export function ConnectionsPage() {
         />
         <article className="conn-tile" data-tone={checking && !liveReady ? "busy" : vardast.connected ? "ok" : "danger"}>
           <p className="conn-help">
-            فقط خواندن از Public API وردست (لیست کانال‌ها و مصرف). کلید در دیتابیس رمزنگاری می‌شود؛ CM پیامی به وردست ارسال نمی‌کند.
+            Public API وردست (فقط GET): کانال، مخاطب، گفتگو، گزارش و مصرف — برای اتوماسیون و مانیتورینگ. کلید در دیتابیس رمزنگاری می‌شود.
           </p>
           {vardast.connected ? (
             <Muted>

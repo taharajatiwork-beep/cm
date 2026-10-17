@@ -102,7 +102,20 @@ from app.perf.services.connections import (
     save_novinhub_token,
     save_vardast_token,
 )
-from app.perf.services.vardast import read_vardast
+from app.perf.services.novinhub import (
+    list_novinhub_comments,
+    list_novinhub_conversations,
+    novinhub_automation_summary,
+    read_novinhub,
+)
+from app.perf.services.vardast import (
+    list_vardast_assistants,
+    list_vardast_channel_contacts,
+    list_vardast_contacts,
+    list_vardast_messages,
+    list_vardast_usage_activity,
+    read_vardast,
+)
 from app.perf.services.payments import advance, notify_requested
 from app.perf.services.remove import drop_campaign, drop_list, drop_page, drop_payment, drop_send, drop_story
 from app.perf.services.reports import booked_cost, build_report, load_settlement, placement_live, story_rates
@@ -2010,6 +2023,119 @@ async def vardast_integration(
 ):
     _read(ctx)
     return await read_vardast(db, ctx.organization_id)
+
+
+@router.get("/integrations/vardast/contacts")
+async def vardast_contacts(
+    channel_ids: str | None = None,
+    platform: str | None = None,
+    page: int = 1,
+    size: int = 20,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await list_vardast_contacts(
+        db,
+        ctx.organization_id,
+        channel_ids=channel_ids,
+        platform=platform,
+        page=page,
+        size=size,
+    )
+
+
+@router.get("/integrations/vardast/assistants")
+async def vardast_assistants(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await list_vardast_assistants(db, ctx.organization_id)
+
+
+@router.get("/integrations/vardast/messages")
+async def vardast_messages(
+    channel_id: str,
+    contact_id: str,
+    page: int = 1,
+    size: int = 20,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await list_vardast_messages(
+        db,
+        ctx.organization_id,
+        channel_id=channel_id,
+        contact_id=contact_id,
+        page=page,
+        size=size,
+    )
+
+
+@router.get("/integrations/vardast/usage-activity")
+async def vardast_usage_activity(
+    feature: str | None = None,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await list_vardast_usage_activity(db, ctx.organization_id, feature=feature)
+
+
+@router.get("/integrations/vardast/channel-contacts")
+async def vardast_channel_contacts(
+    channel_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await list_vardast_channel_contacts(
+        db, ctx.organization_id, channel_id=channel_id, page=page, page_size=page_size
+    )
+
+
+@router.get("/integrations/novinhub")
+async def novinhub_integration(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await read_novinhub(db, ctx.organization_id)
+
+
+@router.get("/integrations/novinhub/automation")
+async def novinhub_automation(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await novinhub_automation_summary(db, ctx.organization_id)
+
+
+@router.get("/integrations/novinhub/comments")
+async def novinhub_comments(
+    status: str | None = None,
+    limit: int = 30,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await list_novinhub_comments(db, ctx.organization_id, status=status, limit=limit)
+
+
+@router.get("/integrations/novinhub/conversations")
+async def novinhub_conversations(
+    status: str | None = None,
+    limit: int = 30,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await list_novinhub_conversations(db, ctx.organization_id, status=status, limit=limit)
 
 
 @router.get("/integrations/mizito")

@@ -196,6 +196,33 @@ export const perfApi = {
   saveVardast: (token: string) =>
     request<{ saved: boolean; hint: string }>("/perf/connections/vardast", { method: "PUT", body: JSON.stringify({ token }) }),
   vardast: () => request<VardastSnapshot>("/perf/integrations/vardast"),
+  vardastContacts: (params?: { channel_ids?: string; platform?: string; page?: number; size?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.channel_ids) q.set("channel_ids", params.channel_ids);
+    if (params?.platform) q.set("platform", params.platform);
+    if (params?.page) q.set("page", String(params.page));
+    if (params?.size) q.set("size", String(params.size));
+    const suffix = q.toString() ? `?${q}` : "";
+    return request<VardastList<VardastContact>>(`/perf/integrations/vardast/contacts${suffix}`);
+  },
+  vardastAssistants: () => request<VardastList<VardastAssistant>>("/perf/integrations/vardast/assistants"),
+  vardastMessages: (channelId: string, contactId: string, page = 1, size = 30) =>
+    request<VardastList<VardastMessage>>(
+      `/perf/integrations/vardast/messages?channel_id=${encodeURIComponent(channelId)}&contact_id=${encodeURIComponent(contactId)}&page=${page}&size=${size}`,
+    ),
+  vardastUsageActivity: (feature?: string) =>
+    request<VardastList<Record<string, unknown>>>(
+      `/perf/integrations/vardast/usage-activity${feature ? `?feature=${encodeURIComponent(feature)}` : ""}`,
+    ),
+  vardastChannelContacts: (channelId: string, page = 1, pageSize = 20) =>
+    request<VardastList<VardastReportContact>>(
+      `/perf/integrations/vardast/channel-contacts?channel_id=${encodeURIComponent(channelId)}&page=${page}&page_size=${pageSize}`,
+    ),
+  novinhub: () => request<NovinHubSnapshot>("/perf/integrations/novinhub"),
+  novinhubAutomation: () => request<NovinHubAutomationSnapshot>("/perf/integrations/novinhub/automation"),
+  novinhubComments: (limit = 30) => request<NovinHubList<NovinHubComment>>(`/perf/integrations/novinhub/comments?limit=${limit}`),
+  novinhubConversations: (limit = 30) =>
+    request<NovinHubList<NovinHubConversation>>(`/perf/integrations/novinhub/conversations?limit=${limit}`),
   isms: (body: Record<string, unknown>) =>
     request<Record<string, unknown>>("/perf/integrations/isms", { method: "POST", body: JSON.stringify(body) }),
   pishgamBalance: (panelId: string) =>
@@ -521,6 +548,50 @@ export type MizitoSnapshot = {
 
 export type VardastChannel = { id: string; name: string; platform: string };
 
+export type NovinHubAccount = {
+  id: string;
+  name: string;
+  type: string;
+  login_required: boolean;
+  automation_status: string;
+  can_send_direct: boolean | null;
+};
+
+export type NovinHubSnapshot = {
+  connected: boolean;
+  reason: string;
+  accounts: NovinHubAccount[];
+};
+
+export type NovinHubComment = {
+  id: string;
+  text: string;
+  date: string;
+  account_id: string;
+  account_name: string;
+  status: number | string | null;
+  social: string;
+};
+
+export type NovinHubConversation = {
+  id: string;
+  last_message: string;
+  update_date: string;
+  account_id: string;
+  account_name: string;
+  status: number | string | null;
+};
+
+export type NovinHubList<T> = { ok: boolean; reason: string; items: T[]; total?: number | null };
+
+export type NovinHubAutomationSnapshot = {
+  fetched_at: string;
+  comments: NovinHubList<NovinHubComment>;
+  conversations: NovinHubList<NovinHubConversation>;
+};
+
+export type VardastReportContact = { id: string; name: string; phone: string };
+
 export type VardastSnapshot = {
   connected: boolean;
   reason: string;
@@ -528,6 +599,10 @@ export type VardastSnapshot = {
   usage: Record<string, unknown> | null;
 };
 
+export type VardastContact = { id: string; name: string; platform: string; channel_id: string };
+export type VardastAssistant = { id: string; name: string; channel_id: string };
+export type VardastMessage = { id: string; text: string; created_at: string; role: string };
+export type VardastList<T> = { ok: boolean; reason: string; items: T[]; total?: number | null };
 export type SheetLink = { configured: boolean; connected: boolean; title: string; reason: string };
 
 export type SheetSyncState = {
