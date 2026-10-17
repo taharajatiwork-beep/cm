@@ -112,6 +112,7 @@ ROLE_TEMPLATES: dict[str, tuple[str, str, tuple[str, ...]]] = {
         (
             PermissionCode.TASK_READ,
             PermissionCode.TASK_WRITE,
+            PermissionCode.CASE_READ,
             PermissionCode.CONVERSATION_READ,
             PermissionCode.CONVERSATION_WRITE,
             PermissionCode.NOTIFICATION_READ,

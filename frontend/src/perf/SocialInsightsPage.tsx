@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Card, ErrorMessage, Muted, PageHeader, SectionHeader, StatCard, Table } from "../components/ui";
 import { Bi } from "../i18n";
 import { faNum } from "../fa";
+import { formatJalaliDateTime } from "../jalali";
 import { perfApi } from "./api";
 import { SocialLinksEditor } from "./SocialLinksEditor";
 import { SocialOverviewPanel } from "./SocialOverview";
@@ -71,8 +72,8 @@ export function SocialInsightsPage() {
         title={<Bi en="Social insights" fa="تحلیل سوشال" />}
         description={
           <Bi
-            en="KPIs and 7-day trend from scheduled GET sync. Drill down on Novin Hub / Vardast pages."
-            fa="شاخص و روند ۷ روزه از sync دوره‌ای (فقط GET). جزئیات در صفحات نوین‌هاب و وردست."
+            en="KPIs and 7-day trend from periodic hub sync. Drill down on Novin Hub / Vardast pages."
+            fa="شاخص و روند ۷ روزه از همگام‌سازی دوره‌ای. جزئیات در صفحات نوین‌هاب و وردست."
           />
         }
         actions={
@@ -83,14 +84,17 @@ export function SocialInsightsPage() {
               <Bi en="Sync now" fa="همگام‌سازی الان" />
             </Button>
             <Button type="button" onClick={() => setRefreshKey((k) => k + 1)}>
-              <Bi en="Refresh cache" fa="تازه‌سازی cache" />
+              <Bi en="Refresh data" fa="تازه‌سازی داده" />
             </Button>
           </>
         }
       />
       {overview.data?.last_sync_at ? (
         <Muted>
-          <Bi en={`Last sync: ${overview.data.last_sync_at}`} fa={`آخرین sync: ${overview.data.last_sync_at}`} />
+          <Bi
+            en={`Last sync: ${overview.data.last_sync_at}`}
+            fa={`آخرین همگام‌سازی: ${formatJalaliDateTime(overview.data.last_sync_at)}`}
+          />
         </Muted>
       ) : null}
       {syncMut.error ? <ErrorMessage error={syncMut.error} /> : null}
@@ -110,8 +114,8 @@ export function SocialInsightsPage() {
         ) : !report.data?.days.length ? (
           <p className="muted fine">
             <Bi
-              en="No daily history yet — run Sync now or wait for the hourly worker."
-              fa="هنوز تاریخچهٔ روزانه نیست — «همگام‌سازی الان» بزنید یا worker ساعتی صبر کنید."
+              en="No daily history yet — run Sync now or wait for the next scheduled sync."
+              fa="هنوز تاریخچهٔ روزانه نیست — «همگام‌سازی الان» بزنید یا همگام‌سازی بعدی را صبر کنید."
             />
           </p>
         ) : (

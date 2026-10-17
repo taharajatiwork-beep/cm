@@ -32,7 +32,7 @@ import { Bi, useBi } from "../i18n";
 import { useToast } from "../components/ui/Toast";
 import { nextCursor } from "../lib/pagination";
 import { queryKeys } from "../lib/queryKeys";
-import { useVehicleHistoryNote, useVehicleLabel } from "../lib/vehicleLabels";
+import { formatEngine, useVehicleHistoryNote, useVehicleLabel } from "../lib/vehicleLabels";
 import { InquiryDialog } from "../components/InquiryDialog";
 import { StatusLabel } from "../ux";
 
@@ -541,8 +541,8 @@ export function VehiclesPage() {
                         {vehicleLabel(String(v.brand))} {vehicleLabel(String(v.model))}
                       </strong>
                       <div className="cell-sub">
-                        {String(v.year)}
-                        {v.trim ? ` · ${String(v.trim)}` : ""}
+                        {faNum(Number(v.year))}
+                        {v.trim ? ` · ${vehicleLabel(String(v.trim))}` : ""}
                         {v.stock_number ? ` · #${String(v.stock_number)}` : ""}
                       </div>
                     </div>
@@ -556,7 +556,7 @@ export function VehiclesPage() {
                   <span className="cell-sub">
                     {[
                       v.color ? vehicleLabel(String(v.color)) : null,
-                      v.mileage != null ? `${faNum(Number(v.mileage))} km` : null,
+                      v.mileage != null ? `${faNum(Number(v.mileage))} کیلومتر` : null,
                       v.transmission ? vehicleLabel(String(v.transmission)) : null,
                       v.fuel_type ? vehicleLabel(String(v.fuel_type)) : null,
                     ]
@@ -829,7 +829,7 @@ export function VehicleDetailPage() {
     createWorkMutation.mutate({
       title: bi(
         `Sell ${v.brand} ${v.model} #${v.stock_number || ""}`.trim(),
-        `فروش ${v.brand} ${v.model} #${v.stock_number || ""}`.trim(),
+        `فروش ${vehicleLabel(String(v.brand))} ${vehicleLabel(String(v.model))}${v.stock_number ? ` #${v.stock_number}` : ""}`.trim(),
       ),
       vehicle_id: id,
       priority: "HIGH",
@@ -858,7 +858,7 @@ export function VehicleDetailPage() {
             </span>
             <span>
               {vehicleLabel(String(v.brand))} {vehicleLabel(String(v.model))}{" "}
-              <Muted>{String(v.year)}</Muted>
+              <Muted>{faNum(Number(v.year))}</Muted>
             </span>
           </span>
         }
@@ -874,7 +874,7 @@ export function VehicleDetailPage() {
             {v.trim ? (
               <>
                 <span className="dot" />
-                <span>{String(v.trim)}</span>
+                <span>{vehicleLabel(String(v.trim))}</span>
               </>
             ) : null}
           </span>
@@ -931,13 +931,13 @@ export function VehicleDetailPage() {
           <Card>
             <SectionHeader icon="layers" title={<Bi en="Specifications" fa="مشخصات" />} />
             <dl className="spec-grid">
-              <Spec label={bi("Mileage", "کیلومتر")} value={v.mileage != null ? `${faNum(Number(v.mileage))} km` : null} />
+              <Spec label={bi("Mileage", "کیلومتر")} value={v.mileage != null ? `${faNum(Number(v.mileage))} کیلومتر` : null} />
               <Spec label={bi("Body", "بدنه")} value={v.body_type} formatValue={vehicleLabel} />
               <Spec label={bi("Transmission", "گیربکس")} value={v.transmission} formatValue={vehicleLabel} />
               <Spec label={bi("Fuel", "سوخت")} value={v.fuel_type} formatValue={vehicleLabel} />
-              <Spec label={bi("Engine", "موتور")} value={v.engine} />
+              <Spec label={bi("Engine", "موتور")} value={v.engine} formatValue={formatEngine} />
               <Spec label={bi("Plate", "پلاک")} value={v.plate_number} />
-              <Spec label={bi("Doors", "درب")} value={v.doors} />
+              <Spec label={bi("Doors", "درب")} value={v.doors != null ? faNum(Number(v.doors)) : null} />
               <Spec label={bi("Seats", "صندلی")} value={v.seats} />
               <Spec label={bi("Exterior", "بیرونی")} value={v.exterior_condition} />
               <Spec label={bi("Interior", "داخلی")} value={v.interior_condition} />

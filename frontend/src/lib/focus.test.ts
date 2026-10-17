@@ -41,6 +41,7 @@ describe("dailyPaths", () => {
     });
     expect(paths).toContain("/perf");
     expect(paths).toContain("/perf/campaigns");
+    expect(paths).toContain("/perf/money");
     expect(paths).toContain("/perf/sheet");
     expect(paths.length).toBeLessThanOrEqual(12);
   });

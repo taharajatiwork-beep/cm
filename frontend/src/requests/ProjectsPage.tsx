@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import "../perf/perf.css";
 import { Button, Card, Dialog, EmptyState, Field, Input, Muted, PageHeader, SectionHeader, Select } from "../components/ui";
@@ -41,12 +41,6 @@ export function ProjectsPage() {
     queryFn: () => requestsApi.mizitoLanes(true),
     enabled: allowed,
   });
-
-  useEffect(() => {
-    if (!url.lane && lanes.data?.[0]?.slug) {
-      patch({ lane: lanes.data[0].slug });
-    }
-  }, [url.lane, lanes.data, patch]);
 
   const syncStatus = useQuery({
     queryKey: ["requests", "mizito-sync"],

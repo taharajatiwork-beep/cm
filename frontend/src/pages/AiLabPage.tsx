@@ -255,27 +255,45 @@ export function AiLabPage() {
       return <EmptyState titleEn="No access" titleFa="دسترسی ندارید" bodyEn="" bodyFa="" />;
     }
     if (aiLabDisabledMessage(config.error)) {
-      return (
-        <EmptyState
-          titleEn="AI Lab is off"
-          titleFa="آزمایشگاه AI غیرفعال است"
-          bodyEn="An admin can enable AI_LAB_ENABLED on the server."
-          bodyFa="ادمین می‌تواند AI_LAB_ENABLED=true را روی سرور بگذارد."
-        />
-      );
+      return has("org.admin")
+        ? (
+          <EmptyState
+            titleEn="AI Lab is off"
+            titleFa="آزمایشگاه AI غیرفعال است"
+            bodyEn="An admin can enable AI_LAB_ENABLED on the server."
+            bodyFa="ادمین می‌تواند AI_LAB_ENABLED=true را روی سرور بگذارد."
+          />
+        )
+        : (
+          <EmptyState
+            titleEn="AI Lab is off"
+            titleFa="این بخش فعلاً روشن نیست"
+            bodyEn=""
+            bodyFa=""
+          />
+        );
     }
     return <ErrorMessage error={config.error} />;
   }
 
   if (!config.data?.enabled) {
-    return (
-      <EmptyState
-        titleEn="AI Lab is off"
-        titleFa="آزمایشگاه AI غیرفعال است"
-        bodyEn="The feature is disabled in server settings (AI_LAB_ENABLED)."
-        bodyFa="این بخش در تنظیمات سرور خاموش است (AI_LAB_ENABLED)."
-      />
-    );
+    return has("org.admin")
+      ? (
+        <EmptyState
+          titleEn="AI Lab is off"
+          titleFa="آزمایشگاه AI غیرفعال است"
+          bodyEn="The feature is disabled in server settings (AI_LAB_ENABLED)."
+          bodyFa="این بخش در تنظیمات سرور خاموش است (AI_LAB_ENABLED)."
+        />
+      )
+      : (
+        <EmptyState
+          titleEn="AI Lab is off"
+          titleFa="این بخش فعلاً روشن نیست"
+          bodyEn=""
+          bodyFa=""
+        />
+      );
   }
 
   const mode = config.data?.mode ?? "manual";

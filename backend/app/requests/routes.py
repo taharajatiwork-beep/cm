@@ -721,8 +721,11 @@ async def list_projects(
         query = query.where(WorkProject.request_id == request_id)
     if status:
         query = query.where(WorkProject.status == status)
-    if mizito_lane.strip():
-        query = query.where(WorkProject.mizito_lane == mizito_lane.strip())
+    lane = mizito_lane.strip()
+    if lane == "none":
+        query = query.where(WorkProject.mizito_lane.is_(None))
+    elif lane:
+        query = query.where(WorkProject.mizito_lane == lane)
     if source == "mizito":
         query = query.where(WorkProject.mizito_card_id.is_not(None))
     elif source == "cm":
@@ -784,8 +787,11 @@ async def list_projects_page(
         PermissionCode.ORG_ADMIN,
     )
     query = base_visible_projects(ctx.organization_id)
-    if mizito_lane.strip():
-        query = query.where(WorkProject.mizito_lane == mizito_lane.strip())
+    lane = mizito_lane.strip()
+    if lane == "none":
+        query = query.where(WorkProject.mizito_lane.is_(None))
+    elif lane:
+        query = query.where(WorkProject.mizito_lane == lane)
     if status:
         query = query.where(WorkProject.status == status)
     if source == "mizito":

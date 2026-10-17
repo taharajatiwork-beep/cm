@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Badge, Button, Card, ErrorMessage, Field, Input, LoadingState, Muted, PageHeader, SectionHeader } from "../components/ui";
+import { Badge, Button, Card, ErrorMessage, Field, ForbiddenState, Input, LoadingState, Muted, PageHeader, SectionHeader } from "../components/ui";
+import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { useAuth } from "../auth";
 import { Bi } from "../i18n";
@@ -141,13 +142,13 @@ export function ConnectionsPage() {
       refreshSaved();
       setOutcome({
         ok: true,
-        title: result.saved ? "ذخیرهٔ توکن نوین‌هاب موفق بود" : "پاک‌کردن توکن نوین‌هاب موفق بود",
+        title: result.saved ? "ذخیرهٔ کلید وب‌سرویس نوین‌هاب موفق بود" : "پاک‌کردن کلید وب‌سرویس نوین‌هاب موفق بود",
         detail: result.saved
-          ? `توکن در دیتابیس این سازمان رمزنگاری شد${result.hint ? ` (${result.hint})` : ""}. با «بررسی همین حالا» اتصال را تست کنید.`
-          : "توکن نوین‌هاب از سرور پاک شد.",
+          ? `کلید در دیتابیس این سازمان رمزنگاری شد${result.hint ? ` (${result.hint})` : ""}. با «بررسی همین حالا» اتصال را تست کنید.`
+          : "کلید وب‌سرویس نوین‌هاب از سرور پاک شد.",
       });
     }).catch((error: unknown) => {
-      setOutcome({ ok: false, title: "ذخیرهٔ توکن نوین‌هاب ناموفق بود", detail: exactError(error) });
+      setOutcome({ ok: false, title: "ذخیرهٔ کلید وب‌سرویس نوین‌هاب ناموفق بود", detail: exactError(error) });
     });
   }
 
@@ -159,7 +160,7 @@ export function ConnectionsPage() {
         ok: true,
         title: result.saved ? "ذخیرهٔ کلید دسترسی موفق بود" : "پاک‌کردن کلید دسترسی موفق بود",
         detail: result.saved
-          ? `کلید در دیتابیس این سازمان رمزنگاری شد${result.hint ? ` (${result.hint})` : ""}. نیازی به .env یا دادن دستی توکن نیست — «خواندن کارت‌ها» و همگام‌سازی پروژه‌ها از همین کلید استفاده می‌کنند.`
+          ? `کلید در دیتابیس این سازمان رمزنگاری شد${result.hint ? ` (${result.hint})` : ""}. «خواندن کارت‌ها» و همگام‌سازی پروژه‌ها از همین کلید استفاده می‌کنند.`
           : "کلید دسترسی از سرور پاک شد. تا کلید تازه بچسبانید، خواندن میزیتو انجام نمی‌شود.",
       });
     }).catch((error: unknown) => {
@@ -202,6 +203,7 @@ export function ConnectionsPage() {
   }
   if (!saved.data && !live.data) {
     const error = live.error || saved.error;
+    if (isForbiddenError(error)) return <ForbiddenState />;
     return <ErrorMessage error={error ?? "اتصالات خوانده نشد"} />;
   }
   const data: Connections = live.data ?? saved.data!;
@@ -328,7 +330,7 @@ export function ConnectionsPage() {
         />
         <article className="conn-tile" data-tone={checking && !liveReady ? "busy" : mizito.connected ? "ok" : "danger"}>
           <p className="conn-help">
-            میزیتو فقط خوانده می‌شود. x-token در دیتابیس همین سرور ذخیره می‌شود. همگام‌سازی پروژه‌ها هر ۱۵ دقیقه در worker سرور انجام می‌شود؛ «همگام‌سازی پروژه‌ها» همان کار را همین حالا اجرا می‌کند.
+            میزیتو فقط خوانده می‌شود. کلید اتصال در دیتابیس همین سرور ذخیره می‌شود. همگام‌سازی خودکار هر ۱۵ دقیقه روی سرور انجام می‌شود؛ «همگام‌سازی پروژه‌ها» همان کار را همین حالا اجرا می‌کند.
           </p>
           {mizito.connected ? (
             <Muted>
@@ -352,7 +354,7 @@ export function ConnectionsPage() {
           </ol>
           {canEditSecrets ? (
             <div className="form-grid">
-              <Field label={<Bi en="Connection key" fa="کلید اتصال (x-token)" />}>
+              <Field label={<Bi en="Connection key" fa="کلید اتصال" />}>
                 <Input type="password" autoComplete="off" value={token} placeholder="از هدر درخواست کپی شود" onChange={(event) => setToken(event.target.value)} />
               </Field>
               <div className="row perf-actions">
@@ -372,7 +374,7 @@ export function ConnectionsPage() {
         <SectionHeader
           icon="message"
           title={<Bi en="Novin Hub" fa="نوین هاب" />}
-          hint={novinhub.saved ? <Bi en={`Saved ${novinhub.hint}`} fa={`توکن ذخیره شده ${novinhub.hint}`} /> : <Bi en="No token yet" fa="هنوز توکنی ذخیره نشده" />}
+          hint={novinhub.saved ? <Bi en={`Saved ${novinhub.hint}`} fa={`کلید ذخیره شده ${novinhub.hint}`} /> : <Bi en="No key yet" fa="هنوز کلیدی ذخیره نشده" />}
           action={checking && !liveReady
             ? <Badge tone="warn"><Bi en="Checking" fa="در حال بررسی" /></Badge>
             : novinhub.connected
@@ -385,13 +387,13 @@ export function ConnectionsPage() {
             novinhub.connected
               ? `نوین‌هاب وصل است — ${toman(novinhub.account_count ?? 0)} اکانت در آخرین بررسی.`
               : novinhub.saved
-                ? "توکن ذخیره شده اما آخرین بررسی وصل نبود."
-                : "توکن وب‌سرویس ذخیره نشده — از جزئیات فنی بچسبانید."
+                ? "کلید ذخیره شده اما آخرین بررسی وصل نبود."
+                : "کلید وب‌سرویس ذخیره نشده — از جزئیات فنی بچسبانید."
           }
         />
         <article className="conn-tile" data-tone={checking && !liveReady ? "busy" : novinhub.connected ? "ok" : "danger"}>
           <p className="conn-help">
-            فقط GET از API نوین‌هاب: اکانت، کامنت و دایرکت برای اتوماسیون. توکن در دیتابیس رمزنگاری می‌شود؛ CM به نوین‌هاب POST نمی‌زند.
+            فقط خواندن از API نوین‌هاب: اکانت، کامنت و دایرکت برای اتوماسیون. کلید در دیتابیس رمزنگاری می‌شود.
           </p>
           {novinhub.connected ? (
             <Muted>
@@ -414,8 +416,8 @@ export function ConnectionsPage() {
           </ol>
           {canEditSecrets ? (
             <div className="form-grid">
-              <Field label={<Bi en="Web service token" fa="توکن وب‌سرویس" />}>
-                <Input type="password" autoComplete="off" value={novinhubToken} placeholder="Bearer توکن نوین‌هاب" onChange={(event) => setNovinhubToken(event.target.value)} />
+              <Field label={<Bi en="Web service key" fa="کلید وب‌سرویس" />}>
+                <Input type="password" autoComplete="off" value={novinhubToken} placeholder="کلید وب‌سرویس نوین‌هاب" onChange={(event) => setNovinhubToken(event.target.value)} />
               </Field>
               <div className="row perf-actions">
                 <Button type="button" disabled={!novinhubToken.trim()} onClick={() => saveNovinhub(novinhubToken)}><Bi en="Save" fa="ذخیره" /></Button>
@@ -423,7 +425,7 @@ export function ConnectionsPage() {
               </div>
             </div>
           ) : (
-            <Muted>ذخیرهٔ توکن فقط برای سرپرست و ادمین است.</Muted>
+            <Muted>ذخیرهٔ کلید فقط برای سرپرست و ادمین است.</Muted>
           )}
         </details>
       </Card> : null}

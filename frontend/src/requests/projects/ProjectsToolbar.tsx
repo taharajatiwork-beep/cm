@@ -45,16 +45,18 @@ export function ProjectsToolbar({
 
   return (
     <div className="projects-toolbar">
-      {lanes.length > 0 ? (
-        <div className="projects-lanes">
-          <Segmented
-            ariaLabel="دستهٔ میزیتو"
-            value={url.lane || lanes[0]?.slug || ""}
-            onChange={(lane) => onPatch({ lane, page: 1 })}
-            items={lanes.map((lane) => ({ key: lane.slug, label: lane.title, count: lane.project_count }))}
-          />
-        </div>
-      ) : null}
+      <div className="projects-lanes">
+        <Segmented
+          ariaLabel="دستهٔ پروژه"
+          value={url.lane === "" ? "__all__" : url.lane || "__all__"}
+          onChange={(lane) => onPatch({ lane: lane === "__all__" ? "" : lane, page: 1 })}
+          items={[
+            { key: "__all__", label: "همه" },
+            { key: "none", label: "بدون دسته" },
+            ...lanes.map((lane) => ({ key: lane.slug, label: lane.title, count: lane.project_count })),
+          ]}
+        />
+      </div>
       <div className="projects-toolbar-row">
         <div className="projects-search">
           <Icon name="search" size={14} />

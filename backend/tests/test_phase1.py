@@ -6,7 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.permissions import PermissionCode
+from app.core.permissions import PermissionCode, ROLE_TEMPLATES
 from app.models import Event
 from app.models.enums import (
     AssignmentTargetType,
@@ -16,7 +16,7 @@ from app.models.enums import (
     SlaState,
     TaskStatus,
 )
-from app.services import SlaService, WorkService
+from app.services import OrgService, SlaService, WorkService
 from tests.conftest import auth, login
 
 
@@ -398,3 +398,45 @@ async def test_conversation_with_customer_link(client: AsyncClient, seeded):
     )
     assert conv.status_code == 200
     assert conv.json()["customer_id"] == cust_id
+
+
+@pytest.mark.asyncio
+async def test_member_role_template_can_list_owned_case(client: AsyncClient, seeded, db: AsyncSession):
+    svc = OrgService(db)
+    member_codes = [code.value for code in ROLE_TEMPLATES["member"][2]]
+    role = await svc.create_role(
+        seeded["org"].id,
+        "عضو تست",
+        "member_case_read_r8",
+        member_codes,
+        ROLE_TEMPLATES["member"][1],
+    )
+    member = await svc.create_user(
+        organization_id=seeded["org"].id,
+        email="member-case@autoco.example",
+        full_name="عضو پرونده",
+        password="password",
+        role_id=role.id,
+        branch_id=seeded["branch"].id,
+        team_id=seeded["mkt_team"].id,
+    )
+    await db.commit()
+
+    admin = auth(await login(client, "ali@autoco.example"))
+    created = await client.post(
+        "/cases",
+        headers=admin,
+        json={
+            "subject": "پیگیری نما",
+            "type": CaseType.FOLLOW_UP.value,
+            "owner_id": str(member.id),
+        },
+    )
+    assert created.status_code == 200
+    case_id = created.json()["id"]
+
+    member_headers = auth(await login(client, "member-case@autoco.example"))
+    listed = await client.get("/cases", headers=member_headers)
+    assert listed.status_code == 200
+    ids = {row["id"] for row in listed.json()}
+    assert case_id in ids

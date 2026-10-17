@@ -25,6 +25,7 @@ import { faDigits, faNum } from "../fa";
 import { formatJalaliShort } from "../jalali";
 import { buildPersonMap, personName } from "../lib/collaboration";
 import { messageDisplayText, parseMessageMedia } from "../lib/messageMedia";
+import { useAuthedBlobUrl } from "../lib/useAuthedBlobUrl";
 import { queryKeys } from "../lib/queryKeys";
 import { perfApi } from "../perf/api";
 import { campaignFromText } from "../perf/fromMessage";
@@ -927,7 +928,7 @@ export function CommunicationPage() {
                   onClick={() => void toggleVoiceRecord()}
                   aria-label={bi("Voice message", "پیام صوتی")}
                 >
-                  <Icon name="upload" size={14} />
+                  <Icon name="mic" size={14} />
                 </Button>
                 <TextArea
                   rows={1}
@@ -954,22 +955,33 @@ export function CommunicationPage() {
 
 function MessageBody({ text, messageType }: { text: string; messageType: string }) {
   const media = parseMessageMedia(text);
+  const blob = useAuthedBlobUrl(media?.url ?? null);
   if (!media) return <div>{text}</div>;
   const upper = messageType.toUpperCase();
   const audio =
     upper === "VOICE" || /\.(webm|ogg|mp3|m4a|wav)$/i.test(media.filename) || media.filename.startsWith("voice-");
-  if (upper === "IMAGE" || (!audio && /\.(png|jpe?g|gif|webp)$/i.test(media.filename))) {
+  const isImage = upper === "IMAGE" || (!audio && /\.(png|jpe?g|gif|webp)$/i.test(media.filename));
+
+  if (blob.status === "loading" || blob.status === "idle") {
+    return <span className="muted">در حال بارگذاری…</span>;
+  }
+  if (blob.status === "error") {
+    return <span className="muted">فایل باز نشد</span>;
+  }
+
+  const src = blob.url ?? undefined;
+  if (isImage) {
     return (
-      <a href={media.url} target="_blank" rel="noreferrer">
-        <img className="msg-media-img" src={media.url} alt={media.filename} />
+      <a href={src} target="_blank" rel="noreferrer">
+        <img className="msg-media-img" src={src} alt={media.filename} />
       </a>
     );
   }
   if (audio) {
-    return <audio className="msg-media-audio" controls preload="metadata" src={media.url} />;
+    return <audio className="msg-media-audio" controls preload="metadata" src={src} />;
   }
   return (
-    <a className="msg-media-file" href={media.url} download={media.filename}>
+    <a className="msg-media-file" href={src} download={media.filename}>
       <Bi en="Download" fa="دانلود" /> {media.filename}
     </a>
   );

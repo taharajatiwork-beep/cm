@@ -1,6 +1,6 @@
 import { faDigits } from "../fa";
 import { gregorianToJalali, jalaliToGregorian, PERSIAN_MONTHS } from "../jalali";
-import { Button, Card, Checkbox, Field, MoreMenu, Segmented, Select } from "../components/ui";
+import { Button, Card, Checkbox, Disclosure, Field, MoreMenu, Segmented, Select } from "../components/ui";
 import { Bi } from "../i18n";
 import { LAYER_OPTIONS, VIEW_OPTIONS, type CalendarViewKey } from "./constants";
 
@@ -65,6 +65,40 @@ export function CalendarToolbar({
 
   const primaryValue = PRIMARY_VIEWS.includes(view) ? view : "month";
 
+  const filtersPanel = (
+    <div className="cal2-toolbar-filters row">
+      <div className="cal2-layer-row row">
+        <span className="cal2-filter-label muted">لایه‌ها</span>
+        <div className="cal2-layer-chips">
+          {LAYER_OPTIONS.map((layer) => {
+            const on = layers.length === 0 || layers.includes(layer.key);
+            const count = layerCounts[layer.key];
+            return (
+              <button
+                key={layer.key}
+                type="button"
+                className={`cal2-layer${on ? " is-on" : ""}`}
+                onClick={() => toggleLayer(layer.key)}
+              >
+                {layer.label}
+                {count ? ` ${faDigits(String(count))}` : ""}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <Field label="شخص" className="cal2-toolbar-person">
+        <Select value={person} onChange={(e) => onPerson(e.target.value)}>
+          <option value="">همه</option>
+          {people.map(([id, name]) => (
+            <option key={id} value={id}>{name}</option>
+          ))}
+        </Select>
+      </Field>
+      <Checkbox label="فقط من" checked={mine} onChange={(e) => onMine(e.target.checked)} />
+    </div>
+  );
+
   return (
     <Card className="cal2-toolbar stack">
       <div className="cal2-toolbar-primary row">
@@ -83,7 +117,7 @@ export function CalendarToolbar({
           <Button type="button" variant="ghost" className="btn-sm" onClick={onPrev}>قبل</Button>
           <strong className="cal2-toolbar-title">{monthName}</strong>
           <Button type="button" variant="ghost" className="btn-sm" onClick={onNext}>بعد</Button>
-          <Field label="پرش به ماه" className="cal2-toolbar-month">
+          <Field label="پرش به ماه" className="cal2-toolbar-month cal2-toolbar-month--desktop">
             <Select
               value={`${jy}-${jm}`}
               onChange={(e) => {
@@ -98,7 +132,7 @@ export function CalendarToolbar({
           </Field>
         </div>
         <div className="cal2-toolbar-end row">
-          {secondaryLabel ? <span className="cal2-view-pill">{secondaryLabel}</span> : null}
+          {secondaryLabel ? <span className="cal2-view-pill cal2-view-pill--desktop">{secondaryLabel}</span> : null}
           <MoreMenu label={secondaryLabel ? "نمای دیگر" : "هفته / روز / جدول"}>
             {SECONDARY_VIEWS.map((row) => (
               <Button
@@ -119,34 +153,9 @@ export function CalendarToolbar({
           ) : null}
         </div>
       </div>
-      <div className="cal2-toolbar-filters row">
-        <span className="cal2-filter-label muted">لایه‌ها</span>
-        <div className="cal2-layer-chips">
-          {LAYER_OPTIONS.map((layer) => {
-            const on = layers.length === 0 || layers.includes(layer.key);
-            const count = layerCounts[layer.key];
-            return (
-              <button
-                key={layer.key}
-                type="button"
-                className={`cal2-layer${on ? " is-on" : ""}`}
-                onClick={() => toggleLayer(layer.key)}
-              >
-                {layer.label}
-                {count ? ` ${faDigits(String(count))}` : ""}
-              </button>
-            );
-          })}
-        </div>
-        <Field label="شخص" className="cal2-toolbar-person">
-          <Select value={person} onChange={(e) => onPerson(e.target.value)}>
-            <option value="">همه</option>
-            {people.map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
-            ))}
-          </Select>
-        </Field>
-        <Checkbox label="فقط من" checked={mine} onChange={(e) => onMine(e.target.checked)} />
+      <div className="cal2-toolbar-filters-desktop">{filtersPanel}</div>
+      <div className="cal2-toolbar-filters-mobile">
+        <Disclosure label="فیلترها">{filtersPanel}</Disclosure>
       </div>
     </Card>
   );

@@ -192,3 +192,58 @@ async def test_projects_page_search_and_total(db, seeded, client):
     body = res.json()
     assert body["total"] >= 1
     assert any(item["code"] == "MZ-SEARCH" for item in body["items"])
+
+
+async def test_projects_page_mizito_lane_none_filter(db, seeded, client):
+    org = seeded["org"].id
+    db.add(
+        WorkProject(
+            organization_id=org,
+            code="CM-NOLANE",
+            title="پروژه بدون دسته",
+            kind="عمومی",
+            status="new",
+            mizito_lane=None,
+            team_id=seeded["mkt_team"].id,
+        )
+    )
+    db.add(
+        WorkProject(
+            organization_id=org,
+            code="MZ-LANED",
+            title="پروژه با دسته",
+            kind="عمومی",
+            status="new",
+            mizito_lane="content",
+            team_id=seeded["mkt_team"].id,
+        )
+    )
+    triage = await _triage_user(db, seeded)
+    await db.commit()
+    token = await login(client, triage.email)
+    headers = auth(token)
+
+    all_res = await client.get("/requests/projects/page", params={"source": "cm"}, headers=headers)
+    assert all_res.status_code == 200
+    codes_all = {item["code"] for item in all_res.json()["items"]}
+    assert "CM-NOLANE" in codes_all
+
+    none_res = await client.get(
+        "/requests/projects/page",
+        params={"source": "cm", "mizito_lane": "none"},
+        headers=headers,
+    )
+    assert none_res.status_code == 200
+    codes_none = {item["code"] for item in none_res.json()["items"]}
+    assert "CM-NOLANE" in codes_none
+    assert "MZ-LANED" not in codes_none
+
+    lane_res = await client.get(
+        "/requests/projects/page",
+        params={"mizito_lane": "content"},
+        headers=headers,
+    )
+    assert lane_res.status_code == 200
+    codes_lane = {item["code"] for item in lane_res.json()["items"]}
+    assert "CM-NOLANE" not in codes_lane
+    assert "MZ-LANED" in codes_lane

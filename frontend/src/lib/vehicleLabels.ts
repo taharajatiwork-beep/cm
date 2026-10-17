@@ -1,3 +1,4 @@
+import { faNum } from "../fa";
 import { useBi } from "../i18n";
 
 const VALUE_LABELS: Record<string, [string, string]> = {
@@ -40,7 +41,20 @@ const VALUE_LABELS: Record<string, [string, string]> = {
   sportage: ["Sportage", "اسپورتیج"],
   cerato: ["Cerato", "سراتو"],
   elantra: ["Elantra", "النترا"],
+  le: ["LE", "ال‌ای"],
+  premium: ["Premium", "پرمیوم"],
+  smart: ["Smart", "اسمارت"],
+  full: ["Full", "فول"],
+  base: ["Base", "پایه"],
 };
+
+export function formatEngine(value: string | null | undefined): string {
+  if (!value) return "—";
+  const raw = value.trim();
+  const match = raw.match(/^(\d+(?:\.\d+)?)\s*L$/i);
+  if (match) return `${faNum(Number(match[1]), 1)} لیتر`;
+  return raw;
+}
 
 const HISTORY_NOTE_LABELS: Record<string, [string, string]> = {
   "Vehicle created": ["Vehicle created", "خودرو ثبت شد"],

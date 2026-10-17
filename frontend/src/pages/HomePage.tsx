@@ -76,7 +76,7 @@ export function HomePage() {
         }
 
         const isRequester =
-          has("request.create") && !has("request.triage") && !has("request.manage") && !has("task.read");
+          has("request.create") && !has("request.triage") && !has("request.manage");
         const canSeeProjects =
           has("request.create") || has("request.triage") || has("request.manage") || has("task.read");
         let loadPartial = false;
@@ -240,7 +240,7 @@ export function HomePage() {
     teamId: user?.team_id,
   });
   const isRequester =
-    has("request.create") && !has("request.triage") && !has("request.manage") && !has("task.read");
+    has("request.create") && !has("request.triage") && !has("request.manage");
 
   return (
     <>

@@ -64,13 +64,13 @@ function CmStatusBoard({
     queryKey: ["requests", "cm-status-board", lane, q, hide_done],
     queryFn: () =>
       requestsApi.projectsPage({
-        mizito_lane: lane,
+        mizito_lane: lane === "none" ? "none" : lane || undefined,
         source: "cm",
         q,
         limit: 200,
         offset: 0,
       }),
-    enabled: Boolean(lane),
+    enabled: true,
   });
   const grouped = useMemo(() => {
     const map: Record<string, MizitoKanbanCardBrief[]> = { new: [], in_progress: [], done: [] };

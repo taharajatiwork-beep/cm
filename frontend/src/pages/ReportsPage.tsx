@@ -22,6 +22,7 @@ import { DateText } from "../components/DateText";
 import { SheetsSyncCard } from "../components/SheetsSyncCard";
 import { useAuth } from "../auth";
 import { faNum, tomanText } from "../fa";
+import { formatJalaliShort } from "../jalali";
 import { Bi, useBi } from "../i18n";
 import { canSeeNavPath } from "../lib/access";
 import { caughtUpTarget } from "../lib/focus";
@@ -313,7 +314,7 @@ function WorkReportCharts({
   const byKind = chartBars(data.projects_by_kind, {});
   const trendRaw = Array.isArray(data.trend) ? (data.trend as TrendPoint[]) : [];
   const trend = trendRaw.map((row) => ({
-    label: String(row.label || "").slice(5),
+    label: formatJalaliShort(String(row.label || "")) || String(row.label || ""),
     values: [Number(row.requests ?? 0), Number(row.projects ?? 0), Number(row.done_tasks ?? 0)],
   }));
   if (byStatus.length === 0 && byKind.length === 0 && trend.length === 0) return null;

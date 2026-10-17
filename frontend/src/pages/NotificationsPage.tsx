@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import {
   Button,
   Card,
@@ -19,6 +20,7 @@ import { useNotificationTitle } from "../lib/notificationTitles";
 import { notificationHref } from "../lib/notificationLinks";
 
 export function NotificationsPage() {
+  const { has } = useAuth();
   const qc = useQueryClient();
   const formatTitle = useNotificationTitle();
   const q = useQuery({
@@ -68,7 +70,11 @@ export function NotificationsPage() {
         ) : (
           <List variant="timeline">
             {rows.map((n) => {
-              const href = notificationHref(String(n.entity_type || ""), n.entity_id ? String(n.entity_id) : null);
+              const href = notificationHref(
+                String(n.entity_type || ""),
+                n.entity_id ? String(n.entity_id) : null,
+                has,
+              );
               const id = String(n.id);
               const body = (
                 <>

@@ -20,6 +20,7 @@ import {
 import { useToast } from "../components/ui/Toast";
 import { DateText } from "../components/DateText";
 import { SheetsSyncCard } from "../components/SheetsSyncCard";
+import { faNum } from "../fa";
 import { Bi, useBi } from "../i18n";
 import { useVehicleLabel } from "../lib/vehicleLabels";
 
@@ -413,7 +414,7 @@ export function PricingPage() {
                       onClick={() => setPostFilterUrl(key)}
                     >
                       {bi(en, fa)}
-                      <span className="chip-count">{count}</span>
+                      <span className="chip-count">{faNum(count)}</span>
                     </button>
                   ))}
                 </div>

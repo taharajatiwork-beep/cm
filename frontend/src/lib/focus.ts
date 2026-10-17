@@ -74,6 +74,7 @@ export function dailyPaths(user: FocusNavUser): string[] {
   if (perf) {
     push("/perf");
     push("/perf/campaigns");
+    push("/perf/money", has("perf.write") || has("expense.request"));
     push("/perf/sheet");
     push(teamPath(user), canSeeMarketingHome(access));
     push("/perf/sms");

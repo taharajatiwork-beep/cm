@@ -48,7 +48,7 @@ export function SocialOverviewPanel({
           <div className="toolbar">
             {showAiLink ? (
               <Button variant="ghost" to="/ai-lab?kind=social_inbox_review">
-                <Bi en="Analyze in AI Lab" fa="تحلیل در AI Lab" />
+                <Bi en="Analyze in AI Lab" fa="آزمایشگاه هوش مصنوعی" />
               </Button>
             ) : null}
             {!compact ? (
