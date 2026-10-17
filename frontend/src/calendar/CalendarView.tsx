@@ -277,7 +277,6 @@ export function CalendarView() {
       <div className="cal2-screen stack">
         <SectionHeader
           title={bi("Calendar", "تقویم")}
-          hint={bi("Content plan plus everyone's work", "برنامهٔ محتوا و کار همه")}
           action={
             !readOnly ? (
               <MoreMenu label={bi("More", "بیشتر")}>

@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import type { CalendarEntry, CalendarMonth } from "../calendarApi";
-import { Badge, Button, Card, Dialog, Field, Input } from "../components/ui";
+import { Badge, Button, Card, Dialog, Disclosure, Field, Input } from "../components/ui";
 import { Bi } from "../i18n";
 
 type Props = {
@@ -38,25 +38,29 @@ export function MonthHeaderCard({ header, entries, title, goal, readOnly, onTitl
             </Button>
           ) : null}
         </div>
-        {(header?.goal || goal) ? <p>{header?.goal || goal}</p> : null}
-        {header?.mix?.length ? (
-          <div className="cal2-mix">
-            <span className="muted">برنامه:</span>
-            {header.mix.map((row) => (
-              <Badge key={row.label}>{row.label} {row.share}٪</Badge>
-            ))}
-          </div>
-        ) : null}
-        {content.length ? (
-          <div className="cal2-mix">
-            <span className="muted">واقعی:</span>
-            {[...byFormat.entries()].map(([label, count]) => (
-              <Badge key={label}>{label} ×{count}</Badge>
-            ))}
-            {[...byTier.entries()].map(([label, count]) => (
-              <Badge key={`t-${label}`}>{label} ×{count}</Badge>
-            ))}
-          </div>
+        {(header?.goal || goal) ? <p className="cal2-header-goal">{header?.goal || goal}</p> : null}
+        {(header?.mix?.length || content.length) ? (
+          <Disclosure label="جزئیات برنامه ماه">
+            {header?.mix?.length ? (
+              <div className="cal2-mix">
+                <span className="muted">برنامه:</span>
+                {header.mix.map((row) => (
+                  <Badge key={row.label}>{row.label} {row.share}٪</Badge>
+                ))}
+              </div>
+            ) : null}
+            {content.length ? (
+              <div className="cal2-mix">
+                <span className="muted">واقعی:</span>
+                {[...byFormat.entries()].map(([label, count]) => (
+                  <Badge key={label}>{label} ×{count}</Badge>
+                ))}
+                {[...byTier.entries()].map(([label, count]) => (
+                  <Badge key={`t-${label}`}>{label} ×{count}</Badge>
+                ))}
+              </div>
+            ) : null}
+          </Disclosure>
         ) : null}
       </Card>
       {editOpen && !readOnly ? (
