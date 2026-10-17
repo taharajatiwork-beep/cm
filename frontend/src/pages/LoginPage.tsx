@@ -40,13 +40,6 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (loading) return <LoadingState />;
-  // بعد از ورود (یا اگر از قبل لاگین بودیم) به صفحه‌ای که از آن آمدیم برمی‌گردیم، نه همیشه خانه
-  if (user) {
-    const from = (location.state as { from?: LoginFrom } | null)?.from;
-    return <Navigate to={loginRedirectTarget(from)} replace />;
-  }
-
   useEffect(() => {
     try {
       if (rememberSlug && slug.trim()) localStorage.setItem(SLUG_KEY, slug.trim());
@@ -55,6 +48,13 @@ export function LoginPage() {
       /* ignore */
     }
   }, [rememberSlug, slug]);
+
+  if (loading) return <LoadingState />;
+  // بعد از ورود (یا اگر از قبل لاگین بودیم) به صفحه‌ای که از آن آمدیم برمی‌گردیم، نه همیشه خانه
+  if (user) {
+    const from = (location.state as { from?: LoginFrom } | null)?.from;
+    return <Navigate to={loginRedirectTarget(from)} replace />;
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
