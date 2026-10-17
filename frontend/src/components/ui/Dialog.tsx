@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEventHandler, type ReactNode } from "react";
+import { Icon } from "./Icon";
 
 /**
  * One shared modal dialog.
@@ -217,18 +218,34 @@ export function Dialog({
     tabIndex: -1,
   } as const;
 
+  const closeBtn =
+    !busy && !sheet ? (
+      <button
+        type="button"
+        className="detail-pop-close"
+        onClick={() => onCloseRef.current()}
+        aria-label={`${closeLabel} · پنجره`}
+        title={closeLabel}
+      >
+        <Icon name="x" size={18} />
+      </button>
+    ) : null;
+
   const panel =
     as === "form" ? (
       <form ref={setPanel} {...panelProps} onSubmit={onSubmit}>
         {children}
+        {closeBtn}
       </form>
     ) : as === "aside" ? (
       <aside ref={setPanel} {...panelProps}>
         {children}
+        {closeBtn}
       </aside>
     ) : (
       <div ref={setPanel} {...panelProps}>
         {children}
+        {closeBtn}
       </div>
     );
 

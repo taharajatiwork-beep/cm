@@ -112,12 +112,13 @@ describe("Dialog", () => {
     render(<Harness />);
     openDialog();
     const first = screen.getByRole("button", { name: "first" });
-    const last = screen.getByRole("button", { name: "last" });
-    last.focus();
+    const close = screen.getByRole("button", { name: "بستن · پنجره" });
+    close.focus();
     fireEvent.keyDown(document.activeElement ?? document, { key: "Tab" });
     expect(document.activeElement).toBe(first);
+    first.focus();
     fireEvent.keyDown(document.activeElement ?? document, { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(last);
+    expect(document.activeElement).toBe(close);
   });
 
   it("pulls focus back if something outside gets focus", () => {

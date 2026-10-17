@@ -1513,8 +1513,10 @@ a.record-line:hover {
   position: absolute;
   inset: 0;
   border: 0;
-  background: rgba(16, 24, 40, 0.45);
+  background: color-mix(in srgb, var(--ink) 48%, transparent);
+  backdrop-filter: blur(3px);
   cursor: pointer;
+  animation: fade 0.15s ease;
 }
 
 .detail-pop-card {
@@ -1525,10 +1527,91 @@ a.record-line:hover {
   width: min(52rem, 100%);
   max-height: min(36rem, calc(100vh - 2rem));
   overflow: auto;
-  padding: var(--space-4);
-  border-radius: var(--radius);
+  padding: var(--space-5);
+  padding-top: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
   background: var(--surface);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), var(--shadow-brand);
+  animation: pop-in 0.18s var(--ease);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.detail-pop-close {
+  position: absolute;
+  top: var(--space-3);
+  inset-inline-end: var(--space-3);
+  z-index: 1;
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.detail-pop-close:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.detail-pop-close:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.detail-pop-card > .section-head:first-child,
+.detail-pop-card > h2:first-child,
+.detail-pop-card > .confirm-title:first-child {
+  margin-top: 0;
+  padding-inline-end: 2.25rem;
+}
+
+.detail-pop-card .section-head {
+  margin-bottom: var(--space-1);
+}
+
+.detail-pop-card .section-hint {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  max-width: 36rem;
+}
+
+.detail-pop-card .advanced {
+  border-style: solid;
+  border-color: var(--line);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.detail-pop-card .advanced-toggle {
+  font-size: 0.78rem;
+}
+
+.detail-pop-card .perf-actions,
+.detail-pop-card .confirm-actions {
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
 }
 
 /* پنجره خودش فقط وقتی فوکوس می‌گیرد که هیچ کنترلی داخلش نباشد؛ حلقهٔ فوکوس لازم نیست. */
@@ -1539,9 +1622,28 @@ a.record-line:hover {
 
 /* ساخت و ویرایش کوتاه در پنجره باز می‌شود، نه به‌صورت فرم کشیده روی صفحه. */
 .form-pop .detail-pop-card {
-  width: min(24rem, 100%);
+  width: min(30rem, 100%);
   max-height: min(36rem, calc(100dvh - 2rem));
   overflow: auto;
+}
+
+.form-pop .form-grid {
+  grid-template-columns: 1fr;
+  width: 100%;
+}
+
+.form-pop .form-grid .span-2,
+.form-pop .form-grid .span-all {
+  grid-column: 1 / -1;
+}
+
+.form-pop .field,
+.form-pop .control,
+.form-pop select.control,
+.form-pop textarea.control,
+.form-pop input.control {
+  width: 100%;
+  max-width: 100%;
 }
 
 .brief-pop .detail-pop-card {
@@ -3133,7 +3235,8 @@ button.row-title-btn:hover {
 .sheet-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(16, 24, 40, 0.32);
+  background: color-mix(in srgb, var(--ink) 42%, transparent);
+  backdrop-filter: blur(3px);
   animation: fade 0.15s ease;
 }
 
@@ -3146,7 +3249,8 @@ button.row-title-btn:hover {
   flex-direction: column;
   width: min(34rem, 100vw);
   background: var(--surface);
-  box-shadow: var(--shadow-lg);
+  border-inline-start: 1px solid var(--line);
+  box-shadow: var(--shadow-lg), var(--shadow-brand);
   animation: slide-in 0.18s ease;
 }
 
@@ -5047,10 +5151,15 @@ html[dir="rtl"] .tag-list li {
 }
 
 /* پنجرهٔ پرسش (تأیید / حذف) */
+.confirm-pop .detail-pop-card {
+  width: min(22rem, 100%);
+}
+
 .confirm-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 600;
+  color: var(--ink);
 }
 
 .confirm-body {
