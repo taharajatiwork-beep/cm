@@ -59,6 +59,45 @@ async def test_requester_cannot_open_project_or_team_home(client, seeded, db):
     assert opened.json()["team"]["name"] == seeded["mkt_team"].name
 
 
+async def test_requester_with_task_read_sees_projects_from_own_requests(client, seeded, db):
+    """مدیرانی مثل علی که task.read هم دارند باید پروژهٔ درخواست خودشان را در فهرست ببینند."""
+    await _user(
+        db,
+        seeded,
+        "mgr-task@autoco.example",
+        [PermissionCode.REQUEST_CREATE, PermissionCode.TASK_READ, PermissionCode.CONVERSATION_READ],
+        seeded["sales_team"].id,
+        "self",
+    )
+    await _user(
+        db,
+        seeded,
+        "lead2@autoco.example",
+        [PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE],
+        seeded["mkt_team"].id,
+        "team_tree",
+    )
+    mgr = auth(await login(client, "mgr-task@autoco.example"))
+    lead = auth(await login(client, "lead2@autoco.example"))
+    created = await client.post(
+        "/requests",
+        headers=mgr,
+        json={"title": "کمپین", "team_id": str(seeded["mkt_team"].id)},
+    )
+    assert created.status_code == 201, created.text
+    project = await client.post(
+        f"/requests/{created.json()['id']}/projects",
+        headers=lead,
+        json={"title": "اجرای کمپین", "kind": "عمومی", "status": "new", "team_id": str(seeded["mkt_team"].id)},
+    )
+    assert project.status_code == 201, project.text
+    pid = project.json()["id"]
+    page = await client.get("/requests/projects/page", headers=mgr)
+    assert page.status_code == 200, page.text
+    ids = {row["id"] for row in page.json()["items"]}
+    assert pid in ids
+
+
 async def test_member_does_not_see_sibling_team(client, seeded, db):
     from app.services import OrgService
 

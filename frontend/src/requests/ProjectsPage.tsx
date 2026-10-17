@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import "../perf/perf.css";
 import { Button, Card, Dialog, EmptyState, Field, Input, Muted, PageHeader, SectionHeader, Select } from "../components/ui";
@@ -36,10 +36,19 @@ export function ProjectsPage() {
   const [requestId, setRequestId] = useState("");
   const [laneChoice, setLaneChoice] = useState("");
 
+  useEffect(() => {
+    if (!requester) return;
+    const next: Partial<typeof url> = {};
+    if (url.view !== "list") next.view = "list";
+    if (url.lane) next.lane = "";
+    if (url.source === "mizito") next.source = "";
+    if (Object.keys(next).length) patch(next);
+  }, [requester, url.view, url.lane, url.source, patch]);
+
   const lanes = useQuery({
     queryKey: ["requests", "mizito-lanes", "counts"],
     queryFn: () => requestsApi.mizitoLanes(true),
-    enabled: allowed,
+    enabled: allowed && !requester,
   });
 
   const syncStatus = useQuery({

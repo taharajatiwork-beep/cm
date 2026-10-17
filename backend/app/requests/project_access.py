@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext
@@ -63,16 +63,20 @@ async def apply_project_visibility(query: Select, db: AsyncSession, ctx: AuthCon
     """Restrict a WorkProject select to rows the user may see."""
     if is_triage(ctx):
         pass
-    elif PermissionCode.REQUEST_CREATE in ctx.permissions and PermissionCode.TASK_READ not in ctx.permissions:
-        mine = select(WorkRequest.id).where(
-            WorkRequest.organization_id == ctx.organization_id,
-            WorkRequest.requested_by == ctx.user.id,
-        )
-        query = query.where(WorkProject.request_id.in_(mine))
     else:
-        visible = await member_project_ids(db, ctx)
-        if visible:
-            query = query.where(WorkProject.id.in_(visible))
+        clauses = []
+        if PermissionCode.REQUEST_CREATE in ctx.permissions:
+            mine = select(WorkRequest.id).where(
+                WorkRequest.organization_id == ctx.organization_id,
+                WorkRequest.requested_by == ctx.user.id,
+            )
+            clauses.append(WorkProject.request_id.in_(mine))
+        if PermissionCode.TASK_READ in ctx.permissions:
+            visible = await member_project_ids(db, ctx)
+            if visible:
+                clauses.append(WorkProject.id.in_(visible))
+        if clauses:
+            query = query.where(or_(*clauses))
         else:
             query = query.where(WorkProject.id.is_(None))
     if is_triage(ctx) and ctx.user.team_id and PermissionCode.ORG_ADMIN not in ctx.permissions:
