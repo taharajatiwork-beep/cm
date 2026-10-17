@@ -1,6 +1,6 @@
 import { faDigits } from "../fa";
 import { gregorianToJalali, jalaliToGregorian, PERSIAN_MONTHS } from "../jalali";
-import { Button, Field, Segmented, Select } from "../components/ui";
+import { Button, Checkbox, Field, Segmented, Select } from "../components/ui";
 import { LAYER_OPTIONS, VIEW_OPTIONS, type CalendarViewKey } from "./constants";
 type Props = {
   view: CalendarViewKey;
@@ -59,12 +59,12 @@ export function CalendarToolbar({
 
   return (
     <div className="cal2-toolbar stack">
-      <div className="row cal2-toolbar-nav">
+      <div className="row cal2-toolbar-nav toolbar">
         <Button type="button" variant="ghost" className="btn-sm" onClick={onToday}>امروز</Button>
         <Button type="button" variant="ghost" className="btn-sm" onClick={onPrev}>قبل</Button>
         <strong>{monthName}</strong>
         <Button type="button" variant="ghost" className="btn-sm" onClick={onNext}>بعد</Button>
-        <Field label="ماه">
+        <Field label="ماه" className="cal2-toolbar-month">
           <Select
             value={`${jy}-${jm}`}
             onChange={(e) => {
@@ -87,7 +87,7 @@ export function CalendarToolbar({
         ariaLabel="نمای تقویم"
         items={VIEW_OPTIONS.map((row) => ({ key: row.key, label: row.label }))}
       />
-      <div className="row cal2-layers">
+      <div className="row cal2-layers toolbar">
         {LAYER_OPTIONS.map((layer) => (
           <button
             key={layer.key}
@@ -99,7 +99,7 @@ export function CalendarToolbar({
             {layerCounts[layer.key] ? ` (${layerCounts[layer.key]})` : ""}
           </button>
         ))}
-        <Field label="شخص">
+        <Field label="شخص" className="cal2-toolbar-person">
           <Select value={person} onChange={(e) => onPerson(e.target.value)}>
             <option value="">همه</option>
             {people.map(([id, name]) => (
@@ -107,10 +107,7 @@ export function CalendarToolbar({
             ))}
           </Select>
         </Field>
-        <label className="row">
-          <input type="checkbox" checked={mine} onChange={(e) => onMine(e.target.checked)} />
-          فقط من
-        </label>
+        <Checkbox label="فقط من" checked={mine} onChange={(e) => onMine(e.target.checked)} />
       </div>
     </div>
   );

@@ -5701,6 +5701,38 @@ html[dir="rtl"] .tag-list li {
 .cal2-toolbar-nav {
   flex-wrap: wrap;
   width: 100%;
+  align-items: flex-end;
+}
+
+.cal2-toolbar .toolbar {
+  align-items: flex-end;
+}
+
+.cal2-toolbar .field {
+  width: auto;
+  max-width: none;
+}
+
+.cal2-toolbar .field:has(select) {
+  width: auto;
+  max-width: none;
+}
+
+.cal2-toolbar .field select,
+.cal2-toolbar select.control {
+  min-width: 6.5rem;
+}
+
+.cal2-toolbar .cal2-toolbar-month {
+  min-width: 5.5rem;
+}
+
+.cal2-toolbar .cal2-toolbar-person {
+  min-width: 7rem;
+}
+
+.cal2-layers {
+  align-items: flex-end;
 }
 
 .cal2-grid {
