@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,7 @@ from app.core.permissions import AuthorizationError, PermissionCode, require_per
 from app.core.vehicle_labels import fa_vehicle_name
 from app.db.session import get_db
 from app.models import Notification
-from app.models.enums import CaseStatus, CaseType
+from app.models.enums import CaseStatus, CaseType, MessageType
 from app.schemas import (
     CaseCreate,
     CaseOut,
@@ -116,6 +116,67 @@ async def post_message(
         message_type=body.message_type,
         reply_to_message_id=body.reply_to_message_id,
     )
+
+
+@router.post("/conversations/{conversation_id}/messages/media", status_code=201, response_model=MessageOut)
+async def post_conversation_media(
+    conversation_id: UUID,
+    file: UploadFile = File(...),
+    message_type: str = Form("DOCUMENT"),
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.files import UploadRejected, save_upload
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.CONVERSATION_WRITE)
+    except AuthorizationError as exc:
+        raise handle_authz(exc) from exc
+    await _member_conversation(db, ctx, conversation_id)
+    raw = await file.read()
+    try:
+        stored = save_upload(file.filename or "upload", file.content_type, raw)
+    except UploadRejected as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    key = stored.name if not stored.is_absolute() else stored.name
+    label = (file.filename or "file").replace(":", "_")
+    kind = MessageType.DOCUMENT
+    upper = message_type.strip().upper()
+    if upper in MessageType.__members__:
+        kind = MessageType[upper]
+    elif (file.content_type or "").startswith("audio/"):
+        kind = MessageType.VOICE
+    elif (file.content_type or "").startswith("image/"):
+        kind = MessageType.IMAGE
+    text = f"cm-media:{key}:{label}"
+    return await CommunicationService(db).post_message(
+        organization_id=ctx.organization_id,
+        conversation_id=conversation_id,
+        sender_id=ctx.user.id,
+        text=text,
+        message_type=kind,
+    )
+
+
+@router.get("/conversations/media/{storage_key}")
+async def download_conversation_media(
+    storage_key: str,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.files import read_upload
+
+    try:
+        require_permission(ctx.permissions, PermissionCode.CONVERSATION_READ)
+    except AuthorizationError as exc:
+        raise handle_authz(exc) from exc
+    if not storage_key or "/" in storage_key or ".." in storage_key or len(storage_key) > 200:
+        raise HTTPException(status_code=404, detail="فایل پیدا نشد")
+    try:
+        data = read_upload(storage_key)
+    except OSError as exc:
+        raise HTTPException(status_code=404, detail="فایل پیدا نشد") from exc
+    return Response(content=data, media_type="application/octet-stream")
 
 
 @router.post("/conversations/{conversation_id}/messages/{message_id}/task")

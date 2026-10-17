@@ -649,13 +649,13 @@ def test_checklist_items_are_capped_truncated_and_optional():
     card = read_cards(PROJECTS, [task])["cards"][0]
     assert card["checklist_total"] == 35
     assert len(card["checklist_items"]) == 30
-    assert card["checklist_items"][0] == {"title": "م" * 120, "checked": True}
-    assert card["checklist_items"][1] == {"title": "قدم 1", "checked": False}
-    assert set(card["checklist_items"][0]) == {"title", "checked"}
+    assert card["checklist_items"][0] == {"id": "c0", "title": "م" * 120, "checked": True}
+    assert card["checklist_items"][1] == {"id": "c1", "title": "قدم 1", "checked": False}
+    assert set(card["checklist_items"][0]) == {"id", "title", "checked"}
     bare = read_cards(PROJECTS, [{"_id": "t-x", "title": "بی‌چک‌لیست", "project": "p-money", "kanban_board": "b-ask"}])
     assert bare["cards"][0]["checklist_items"] == []
     odd = read_cards(PROJECTS, [{**TASKS[0], "checklist": [{"_id": "c", "checked": True}]}])
-    assert odd["cards"][0]["checklist_items"] == [{"title": "", "checked": True}]
+    assert odd["cards"][0]["checklist_items"] == [{"id": "c", "title": "", "checked": True}]
 
 
 def test_missing_codes_carry_the_newest_card_id():

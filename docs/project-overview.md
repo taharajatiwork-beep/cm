@@ -212,7 +212,7 @@ cm/
 
 ### تقویم محتوا و کار
 
-ماژول `backend/app/calendar` — API و UI `/calendar` **فقط `org.admin`** (`canSeeCalendar` در `access.ts`). ردیف دستی ماه جلالی، رویداد از کار و مارکتینگ، لایه‌های long/mid/short/reactive؛ seed آبان ۱۴۰۵ در `calendar/seed.py`.
+ماژول `backend/app/calendar` — API `GET /calendar` و UI `/calendar` برای نقش‌هایی که `canSeeCalendar` در `access.ts` اجازه می‌دهد (ادمین، `request.triage` / `request.manage` / `perf.write`، یا `calendar.read` فقط‌خواندنی). **لایه‌ها** در یک پاسخ: ردیف محتوا/رویداد CM (`content` / `event`)، کار (تسک، work item، پروژه، درخواست)، **مهلت میزیتو** (`mizito`), مارکتینگ (کمپین، استوری، SMS، فیلم‌برداری)، و **مناسبت‌ها** (تعطیل رسمی + مناسبت‌های بازاریابی؛ seed جهانی ۱۴۰۵ + CRUD مناسبت سازمانی برای `org.admin`). نوشتن ردیف تقویم همان قوانین قبلی؛ اکسل و پیش‌نویس LLM فقط `org.admin`. رویداد تکرارشونده روی سرور باز می‌شود؛ ویرایش «فقط این بار» با `scope: this` و ردیف exception. seed محتوای آبان ۱۴۰۵: `calendar/seed.py`.
 
 ### تیم‌های زیرمجموعه
 

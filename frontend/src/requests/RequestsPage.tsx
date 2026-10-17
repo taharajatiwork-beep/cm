@@ -402,7 +402,7 @@ function RequestCard({
     <Card as="article" className="record-card" stack>
       <div className="record-head">
         <div>
-          <div className="record-code" dir="ltr">{row.code}</div>
+          <div className="record-code record-code--subtle" dir="ltr">{row.code}</div>
           <h3 className="record-title">
             <Link to={`/requests/${row.id}`}>{row.title}</Link>
           </h3>

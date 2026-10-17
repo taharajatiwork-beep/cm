@@ -28,6 +28,7 @@ _ISMS_LOCKED: dict[str, datetime] = {}
 
 
 async def mizito_token_for(db: AsyncSession, organization_id: UUID) -> str:
+    """منبع اصلی: توکن ذخیره‌شده از پنل (رمزنگاری در pm_integration). PERF_MIZITO_TOKEN فقط اگر DB خالی باشد."""
     row = await db.scalar(select(PmIntegration).where(PmIntegration.organization_id == organization_id))
     saved = (row.mizito_token if row else "").strip()
     if saved:

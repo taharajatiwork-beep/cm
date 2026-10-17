@@ -7,6 +7,7 @@ export function isForbiddenError(error: unknown): boolean {
     s.includes("403") ||
     s.includes("not authorized") ||
     s.includes("missing permission") ||
-    s.includes("missing one of permissions")
+    s.includes("missing one of permissions") ||
+    s.includes("دسترسی به این کمپین")
   );
 }

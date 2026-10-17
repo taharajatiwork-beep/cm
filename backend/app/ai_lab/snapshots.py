@@ -11,7 +11,23 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai_lab.history import build_history
-from app.ai_lab.schemas import CampaignReviewIn, ChannelBudgetIn, PeriodReviewIn, SmsCopyReviewIn
+from app.ai_lab.schemas import (
+    CampaignReviewIn,
+    ChannelBudgetIn,
+    FinanceReconcileIn,
+    MyWorkReviewIn,
+    PeriodReviewIn,
+    ProjectsHealthIn,
+    SmsCopyReviewIn,
+    TeamLoadIn,
+)
+from app.ai_lab.snapshots_work import (
+    finance_reconcile_snapshot,
+    my_work_review_snapshot,
+    projects_health_snapshot,
+    team_load_snapshot,
+)
+from app.api.deps import AuthContext
 from app.perf.models import PmCampaign, PmCost, PmLead, PmPage, PmSmsSend, PmStory
 from app.perf.services.reports import build_report, load_settlement, placement_live
 
@@ -41,7 +57,14 @@ def _sms_in_range(sent_at: datetime | None, start: date, end: date) -> bool:
     return _in_range(sent_at.date(), start, end)
 
 
-async def build_snapshot(db: AsyncSession, organization_id: UUID, kind: str, raw_input: dict) -> dict:
+async def build_snapshot(
+    db: AsyncSession,
+    organization_id: UUID,
+    kind: str,
+    raw_input: dict,
+    *,
+    auth: AuthContext | None = None,
+) -> dict:
     if kind == "period_review":
         snap = await _period_review(db, organization_id, PeriodReviewIn(**raw_input))
     elif kind == "campaign_review":
@@ -50,10 +73,19 @@ async def build_snapshot(db: AsyncSession, organization_id: UUID, kind: str, raw
         snap = await _channel_budget(db, organization_id, ChannelBudgetIn(**raw_input))
     elif kind == "sms_copy_review":
         snap = await _sms_copy_review(db, organization_id, SmsCopyReviewIn(**raw_input))
+    elif kind == "projects_health":
+        snap = await projects_health_snapshot(db, organization_id, ProjectsHealthIn(**raw_input))
+    elif kind == "team_load":
+        snap = await team_load_snapshot(db, organization_id, TeamLoadIn(**raw_input))
+    elif kind == "finance_reconcile":
+        snap = await finance_reconcile_snapshot(db, organization_id, FinanceReconcileIn(**raw_input))
+    elif kind == "my_work_review":
+        snap = await my_work_review_snapshot(db, auth, MyWorkReviewIn(**raw_input))
     else:
         raise HTTPException(status_code=400, detail="Unknown task kind")
     scope = dict(raw_input)
-    snap["history"] = await build_history(db, organization_id, kind, scope)
+    viewer = auth.user.id if auth else None
+    snap["history"] = await build_history(db, organization_id, kind, scope, viewer_id=viewer)
     return snap
 
 

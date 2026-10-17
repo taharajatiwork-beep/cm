@@ -15,6 +15,10 @@ _ALLOWED = {
     "image/png",
     "image/jpeg",
     "image/webp",
+    "audio/webm",
+    "audio/ogg",
+    "audio/mpeg",
+    "audio/mp4",
 }
 
 
@@ -28,7 +32,7 @@ def _check(filename: str, content_type: str | None, data: bytes) -> str:
         raise UploadRejected(f"File exceeds {settings.upload_max_bytes} bytes")
     ct = (content_type or "application/octet-stream").split(";")[0].strip().lower()
     allowed_ext = (filename or "").lower().endswith(
-        (".csv", ".xlsx", ".txt", ".pdf", ".png", ".jpg", ".jpeg", ".webp")
+        (".csv", ".xlsx", ".txt", ".pdf", ".png", ".jpg", ".jpeg", ".webp", ".webm", ".ogg", ".mp3", ".m4a")
     )
     if ct not in _ALLOWED and not allowed_ext:
         raise UploadRejected(f"File type not allowed: {ct}")

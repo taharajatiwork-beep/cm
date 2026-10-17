@@ -7,7 +7,27 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-TASK_KINDS = ("period_review", "campaign_review", "channel_budget", "sms_copy_review")
+TASK_KINDS = (
+    "period_review",
+    "campaign_review",
+    "channel_budget",
+    "sms_copy_review",
+    "projects_health",
+    "team_load",
+    "finance_reconcile",
+    "my_work_review",
+)
+
+TaskKindLiteral = Literal[
+    "period_review",
+    "campaign_review",
+    "channel_budget",
+    "sms_copy_review",
+    "projects_health",
+    "team_load",
+    "finance_reconcile",
+    "my_work_review",
+]
 
 
 class PeriodReviewIn(BaseModel):
@@ -32,13 +52,30 @@ class SmsCopyReviewIn(BaseModel):
     brand: str = ""
 
 
+class ProjectsHealthIn(BaseModel):
+    lane: str = ""
+    stale_days: int = Field(default=14, ge=1, le=90)
+
+
+class TeamLoadIn(BaseModel):
+    lane: str = ""
+
+
+class FinanceReconcileIn(BaseModel):
+    pass
+
+
+class MyWorkReviewIn(BaseModel):
+    pass
+
+
 class SnapshotIn(BaseModel):
-    kind: Literal["period_review", "campaign_review", "channel_budget", "sms_copy_review"]
+    kind: TaskKindLiteral
     input: dict[str, Any]
 
 
 class TaskCreateIn(BaseModel):
-    kind: Literal["period_review", "campaign_review", "channel_budget", "sms_copy_review"]
+    kind: TaskKindLiteral
     input: dict[str, Any]
 
 

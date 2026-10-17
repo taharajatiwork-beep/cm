@@ -65,9 +65,10 @@ export function canSeeMarketingHome(user: AccessUser | null | undefined): boolea
 export function canSeeAiLab(user: AccessUser | null | undefined, has: (perm: string) => boolean): boolean {
   if (!user) return false;
   if (isSiteAdmin(user, has)) return true;
-  if (user.roleCode === "finance") return false;
+  if (user.roleCode === "finance") return true;
   if (isPerformanceUser(user) || user.roleCode === "performance_marketing") return true;
   if (has("perf.write") || has("perf.approve")) return true;
+  if (isMarketingMemberReadOnly(user)) return true;
   return false;
 }
 
@@ -148,4 +149,12 @@ export function canSeeNavPath(
   }
 
   return false;
+}
+
+/** جلوگیری از fetch پرفورمنس وقتی مسیر در منو نیست. */
+export function canSeePerfApi(
+  user: AccessUser | null | undefined,
+  has: (perm: string) => boolean,
+): boolean {
+  return canSeeNavPath("/perf", user, has) || canSeeNavPath("/perf/campaigns/sample", user, has);
 }

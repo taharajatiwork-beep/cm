@@ -19,6 +19,7 @@ import { PricingPage } from "./pages/PricingPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { CasesPage } from "./pages/CasesPage";
 import { VehiclesPage, VehicleDetailPage } from "./pages/VehiclesPage";
 import { PerfRoutes } from "./perf/PerfRoutes";
 import { ProjectPage } from "./requests/ProjectPage";
@@ -65,7 +66,7 @@ export default function App() {
           <Route path="work-items" element={<Navigate to="/projects" replace />} />
           <Route path="work-items/:id" element={<Navigate to="/projects" replace />} />
           <Route path="communication" element={<CommunicationPage />} />
-          <Route path="cases" element={<Navigate to="/" replace />} />
+          <Route path="cases" element={<CasesPage />} />
           <Route path="people" element={<PeoplePage />} />
           <Route path="teams" element={<Navigate to="/settings" replace />} />
           <Route path="branches" element={<Navigate to="/settings" replace />} />

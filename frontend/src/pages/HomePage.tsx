@@ -26,7 +26,7 @@ import {
   isOverdue,
   taskMark,
 } from "../lib/collaboration";
-import { caughtUpTarget, onboardingCue, visibleHomeKpis, type HomeKpi } from "../lib/focus";
+import { caughtUpTarget, filterOnboardingCue, onboardingCue, visibleHomeKpis, type HomeKpi } from "../lib/focus";
 import { useVehicleLabel } from "../lib/vehicleLabels";
 import { OnboardingBanner, dismissOnboarding, recallOnboarding, shouldShowOnboarding } from "../ux";
 
@@ -35,7 +35,7 @@ export function HomePage() {
   const bi = useBi();
   const vehicleLabel = useVehicleLabel();
   const { locale } = useLocale();
-  const [showOnboard, setShowOnboard] = useState(shouldShowOnboarding);
+  const [showOnboard, setShowOnboard] = useState(() => shouldShowOnboarding(user?.id));
   const [inquiryOpen, setInquiryOpen] = useState(false);
   const sellerVehicles = useQuery({
     queryKey: ["seller-vehicles"],
@@ -221,7 +221,13 @@ export function HomePage() {
   const atRisk = stories.filter((s) => s.tone === "danger").length;
   const sharedCount = stories.filter((s) => s.kind === "shared").length;
   const next = stories[0];
-  const cue = onboardingCue(roleHint);
+  const accessUser = {
+    roleCode: user?.roleCode,
+    permissions: user?.permissions ?? [],
+    teamId: user?.team_id,
+    teamHomeTeamId: user?.team_home_team_id,
+  };
+  const cue = filterOnboardingCue(onboardingCue(roleHint, user?.roleCode), accessUser, has);
   const kpis = visibleHomeKpis({
     roleHint,
     roleCode: user?.roleCode,
@@ -258,7 +264,7 @@ export function HomePage() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  recallOnboarding();
+                  recallOnboarding(user?.id);
                   setShowOnboard(true);
                 }}
               >
@@ -287,15 +293,15 @@ export function HomePage() {
 
       <InquiryDialog open={inquiryOpen} onClose={() => setInquiryOpen(false)} vehicles={inquiryVehicles} />
 
-      {showOnboard && (
+      {showOnboard && cue.steps.length > 0 ? (
         <OnboardingBanner
           {...cue}
           onDismiss={() => {
-            dismissOnboarding();
+            dismissOnboarding(user?.id);
             setShowOnboard(false);
           }}
         />
-      )}
+      ) : null}
 
       <ErrorMessage error={error} />
       {!loading && loadPartial ? (

@@ -4,12 +4,23 @@ import { Badge, Button, Card, EmptyState, ErrorMessage, ForbiddenState, List, Li
 import { isForbiddenError } from "../lib/apiError";
 import { FaText } from "../components/FaText";
 import { Bi, useBi } from "../i18n";
+import { useAuth } from "../auth";
+import { canSeePerfApi } from "../lib/access";
 import { perfApi, toman, type Panel } from "./api";
 
 export function PerfHomePage() {
   const bi = useBi();
-  const home = useQuery({ queryKey: ["perf", "home"], queryFn: perfApi.home });
-  const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
+  const { user, has } = useAuth();
+  const accessUser = {
+    roleCode: user?.roleCode,
+    permissions: user?.permissions ?? [],
+    teamId: user?.team_id,
+    teamHomeTeamId: user?.team_home_team_id,
+  };
+  const perfOk = canSeePerfApi(accessUser, has);
+  const home = useQuery({ queryKey: ["perf", "home"], queryFn: perfApi.home, enabled: perfOk });
+  const campaigns = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns, enabled: perfOk });
+  if (!perfOk) return <ForbiddenState />;
   if (home.isLoading) return <LoadingState />;
   if (home.error) {
     if (isForbiddenError(home.error)) return <ForbiddenState />;

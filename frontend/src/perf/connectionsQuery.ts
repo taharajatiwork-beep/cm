@@ -28,8 +28,8 @@ export const liveConnectionsQuery = queryOptions({
   refetchOnReconnect: false,
 });
 
-export function useSavedConnections() {
-  return useQuery(savedConnectionsQuery);
+export function useSavedConnections(enabled = true) {
+  return useQuery({ ...savedConnectionsQuery, enabled });
 }
 
 export function useLiveConnections() {

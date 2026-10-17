@@ -17,6 +17,8 @@ from app.ai_lab.polling import due_for_poll, is_poll_timeout, task_age_seconds
 from app.ai_lab.schemas import BotCallbackIn
 from app.ai_lab.signing import sign
 from app.ai_lab.snapshots import build_snapshot
+from app.ai_lab.workspaces import workspace_for_kind
+from app.api.deps import AuthContext
 from app.core.config import get_settings
 
 
@@ -76,8 +78,9 @@ async def create_ai_task(
     kind: str,
     input_data: dict,
     trigger: str = "manual",
+    auth: AuthContext | None = None,
 ) -> AiTask:
-    snap = await build_snapshot(db, organization_id, kind, input_data)
+    snap = await build_snapshot(db, organization_id, kind, input_data, auth=auth)
     row = AiTask(
         organization_id=organization_id,
         created_by=user_id,
@@ -111,6 +114,7 @@ async def send_outbound_webhook(row: AiTask) -> None:
     body: dict = {
         "task_id": str(row.id),
         "kind": row.kind,
+        "workspace": workspace_for_kind(row.kind),
         "input": json.loads(row.input_json or "{}"),
         "snapshot": json.loads(row.snapshot_json or "{}"),
         "created_at": row.created_at.isoformat() if row.created_at else datetime.now(UTC).isoformat(),

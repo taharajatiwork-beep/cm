@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai_lab.models import AiRecFollowup, AiTask
+from app.ai_lab.workspaces import is_private_kind
 
 HISTORY_MAX_BYTES = 4096
 
@@ -18,6 +19,7 @@ async def build_history(
     organization_id: UUID,
     kind: str,
     scope: dict,
+    viewer_id: UUID | None = None,
 ) -> list[dict]:
     """Last 3 done tasks of same kind (campaign scoped when applicable)."""
     q = (
@@ -30,6 +32,8 @@ async def build_history(
         .order_by(AiTask.completed_at.desc())
         .limit(20)
     )
+    if is_private_kind(kind) and viewer_id is not None:
+        q = q.where(AiTask.created_by == viewer_id)
     rows = list((await db.scalars(q)).all())
     if kind == "campaign_review":
         camp_id = scope.get("campaign_id")

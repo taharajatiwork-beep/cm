@@ -1,0 +1,28 @@
+# Cloudflare Tunnel — فقط callback آزمایشگاه AI (+ health برای چک)
+#
+# 1) دامنه روی Cloudflare + Tunnel در Zero Trust dashboard
+# 2) credentials-file را از cloudflared tunnel create کپی کنید
+# 3) DNS: CNAME cm-api → <tunnel-id>.cfargotunnel.com
+# 4) روی سرور داخلی (مثلاً 192.168.17.4):
+#      cloudflared tunnel --config /home/didar/CM/deploy/cloudflared/config.yml run
+#
+# CM .env:
+#   AI_LAB_CALLBACK_BASE=https://cm-api.YOUR_DOMAIN.com
+# (بدون /api — مستقیم به uvicorn :8001)
+
+tunnel: cm-ai-lab
+credentials-file: /home/didar/.cloudflared/REPLACE_TUNNEL_ID.json
+
+ingress:
+  - hostname: cm-api.YOUR_DOMAIN.com
+    path: /ai-lab/results
+    service: http://127.0.0.1:8001
+  - hostname: cm-api.YOUR_DOMAIN.com
+    path: /health
+    service: http://127.0.0.1:8001
+  - hostname: cm-api.YOUR_DOMAIN.com
+    path: /health/ready
+    service: http://127.0.0.1:8001
+  - hostname: cm-api.YOUR_DOMAIN.com
+    service: http_status:404
+  - service: http_status:404

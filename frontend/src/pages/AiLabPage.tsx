@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import "../ai-lab/ai-lab.css";
 import { AiLabResultView, statusBadgeClass } from "../ai-lab/AiLabResultView";
-import { aiLabApi, type AiTask, type AiTaskKind, type AiTaskTrigger } from "../ai-lab/api";
+import { aiLabApi, type AiLabWorkspace, type AiTask, type AiTaskKind, type AiTaskTrigger } from "../ai-lab/api";
 import { perfApi } from "../perf/api";
 import {
   Button,
@@ -14,6 +15,7 @@ import {
   Input,
   LoadingState,
   PageHeader,
+  Segmented,
   SectionHeader,
   Select,
   TextArea,
@@ -46,6 +48,10 @@ const KIND_LABEL: Record<AiTaskKind, { en: string; fa: string }> = {
   campaign_review: { en: "Campaign review", fa: "تحلیل کمپین" },
   channel_budget: { en: "Budget split", fa: "تقسیم بودجه" },
   sms_copy_review: { en: "SMS copy review", fa: "بررسی متن پیامک" },
+  projects_health: { en: "Project health", fa: "سلامت پروژه‌ها" },
+  team_load: { en: "Team load", fa: "بار کاری تیم" },
+  finance_reconcile: { en: "Finance reconcile", fa: "تطبیق مالی" },
+  my_work_review: { en: "My work", fa: "کارهای من" },
 };
 
 const TRIGGER_LABEL: Record<AiTaskTrigger, { en: string; fa: string }> = {
@@ -84,12 +90,22 @@ export function AiLabPage() {
     [user?.roleCode, user?.permissions, user?.team_id, user?.team_home_team_id],
   );
   const mayUse = canSeeAiLab(accessUser, has);
+  const [params, setParams] = useSearchParams();
   const config = useQuery({
     queryKey: ["ai-lab", "config"],
     queryFn: aiLabApi.config,
     enabled: mayUse && !authLoading,
     retry: false,
   });
+  const workspaces = useQuery({
+    queryKey: ["ai-lab", "workspaces"],
+    queryFn: aiLabApi.workspaces,
+    enabled: Boolean(config.data?.enabled),
+  });
+  const wsList = workspaces.data?.workspaces ?? [];
+  const wsKey = params.get("ws") || wsList[0]?.key || "performance";
+  const activeWs = wsList.find((w) => w.key === wsKey) ?? wsList[0];
+  const wsKinds = activeWs?.kinds ?? [];
   const [filterKind, setFilterKind] = useState("");
   const [filterTrigger, setFilterTrigger] = useState("");
   const tasks = useQuery({
@@ -105,12 +121,14 @@ export function AiLabPage() {
   const campaigns = useQuery({
     queryKey: ["perf", "campaigns"],
     queryFn: perfApi.campaigns,
-    enabled: config.data?.enabled,
+    enabled: config.data?.enabled && wsKinds.includes("campaign_review"),
   });
 
   const [createOpen, setCreateOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [kind, setKind] = useState<AiTaskKind>("period_review");
+  const [lane, setLane] = useState("");
+  const [staleDays, setStaleDays] = useState("14");
   const [fromDate, setFromDate] = useState(weekAgoIso());
   const [toDate, setToDate] = useState(todayIso());
   const [brand, setBrand] = useState("");
@@ -125,15 +143,31 @@ export function AiLabPage() {
   const [evalNote, setEvalNote] = useState("");
   const [toTaskDeadline, setToTaskDeadline] = useState("");
 
+  useEffect(() => {
+    if (!activeWs?.kinds.length) return;
+    if (!activeWs.kinds.includes(kind)) {
+      setKind(activeWs.kinds[0]);
+    }
+    setFilterKind("");
+  }, [activeWs?.key, activeWs?.kinds, kind]);
+
   const inputPayload = useMemo(() => {
     if (kind === "period_review" || kind === "sms_copy_review") return { from_date: fromDate, to_date: toDate, brand };
     if (kind === "campaign_review") return { campaign_id: campaignId };
-    return {
-      next_budget_toman: Number(nextBudget) || 0,
-      reference_from: refFrom,
-      reference_to: refTo,
-    };
-  }, [kind, fromDate, toDate, brand, campaignId, nextBudget, refFrom, refTo]);
+    if (kind === "channel_budget") {
+      return {
+        next_budget_toman: Number(nextBudget) || 0,
+        reference_from: refFrom,
+        reference_to: refTo,
+      };
+    }
+    if (kind === "projects_health") {
+      return { lane, stale_days: Number(staleDays) || 14 };
+    }
+    if (kind === "team_load") return { lane };
+    if (kind === "finance_reconcile" || kind === "my_work_review") return {};
+    return {};
+  }, [kind, fromDate, toDate, brand, campaignId, nextBudget, refFrom, refTo, lane, staleDays]);
 
   const previewMut = useMutation({
     mutationFn: () => aiLabApi.previewSnapshot(kind, inputPayload),
@@ -235,7 +269,8 @@ export function AiLabPage() {
     const pair = STATUS_LABEL[s] ?? { en: s, fa: s };
     return bi(pair.en, pair.fa);
   };
-  const rows = tasks.data ?? [];
+  const rows = (tasks.data ?? []).filter((r) => wsKinds.includes(r.kind));
+  const summaryKinds = Object.entries(summary.data?.by_kind ?? {}).filter(([k]) => wsKinds.includes(k as AiTaskKind));
   const active: AiTask | undefined = detail.data ?? rows.find((r) => r.id === detailId);
 
   return (
@@ -255,11 +290,31 @@ export function AiLabPage() {
         }
       />
 
-      {summary.data && Object.keys(summary.data.by_kind).length > 0 && (
+      {wsList.length > 1 && (
+        <div className="ai-lab-ws-tabs" style={{ marginBottom: "1rem" }}>
+          <Segmented
+            ariaLabel={bi("AI Lab workspace", "فضای آزمایشگاه")}
+            value={activeWs?.key ?? wsKey}
+            onChange={(key) => {
+              setParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.set("ws", key);
+                return next;
+              });
+            }}
+            items={wsList.map((w: AiLabWorkspace) => ({
+              key: w.key,
+              label: bi(w.label_en, w.label_fa),
+            }))}
+          />
+        </div>
+      )}
+
+      {summary.data && summaryKinds.length > 0 && (
         <Card>
           <SectionHeader icon="activity" title={<Bi en="Evaluation" fa="ارزیابی" />} />
           <div className="form-grid">
-            {Object.entries(summary.data.by_kind).map(([k, v]) => (
+            {summaryKinds.map(([k, v]) => (
               <div key={k} className="muted">
                 <strong>{bi(KIND_LABEL[k as AiTaskKind]?.en ?? k, KIND_LABEL[k as AiTaskKind]?.fa ?? k)}</strong>
                 <div>
@@ -279,7 +334,7 @@ export function AiLabPage() {
         <div className="toolbar" style={{ marginBottom: "0.75rem" }}>
           <Select value={filterKind} onChange={(e) => setFilterKind(e.target.value)}>
             <option value="">{bi("All kinds", "همهٔ نوع‌ها")}</option>
-            {(Object.keys(KIND_LABEL) as AiTaskKind[]).map((k) => (
+            {wsKinds.map((k) => (
               <option key={k} value={k}>{bi(KIND_LABEL[k].en, KIND_LABEL[k].fa)}</option>
             ))}
           </Select>
@@ -309,7 +364,7 @@ export function AiLabPage() {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td>{bi(KIND_LABEL[row.kind].en, KIND_LABEL[row.kind].fa)}</td>
+                  <td>{bi(KIND_LABEL[row.kind]?.en ?? row.kind, KIND_LABEL[row.kind]?.fa ?? row.kind)}</td>
                   <td>{bi(TRIGGER_LABEL[(row.trigger as AiTaskTrigger) || "manual"].en, TRIGGER_LABEL[(row.trigger as AiTaskTrigger) || "manual"].fa)}</td>
                   <td><span className={statusBadgeClass(row.status)}>{statusLabel(row.status)}</span></td>
                   <td>{row.rating ?? "—"}</td>
@@ -331,10 +386,9 @@ export function AiLabPage() {
           <h2 id="ai-lab-create-title"><Bi en="New analysis" fa="تحلیل جدید" /></h2>
           <Field label={<Bi en="Kind" fa="نوع کار" />}>
             <Select value={kind} onChange={(e) => setKind(e.target.value as AiTaskKind)}>
-              <option value="period_review">{bi("Period review", "بررسی بازه")}</option>
-              <option value="campaign_review">{bi("Campaign review", "تحلیل کمپین")}</option>
-              <option value="channel_budget">{bi("Budget split", "تقسیم بودجه")}</option>
-              <option value="sms_copy_review">{bi("SMS copy review", "بررسی متن پیامک")}</option>
+              {wsKinds.map((k) => (
+                <option key={k} value={k}>{bi(KIND_LABEL[k].en, KIND_LABEL[k].fa)}</option>
+              ))}
             </Select>
           </Field>
           {(kind === "period_review" || kind === "sms_copy_review") && (
@@ -362,6 +416,21 @@ export function AiLabPage() {
               <Field label={<Bi en="Reference from" fa="مرجع از" />}><Input type="date" value={refFrom} onChange={(e) => setRefFrom(e.target.value)} /></Field>
               <Field label={<Bi en="Reference to" fa="مرجع تا" />}><Input type="date" value={refTo} onChange={(e) => setRefTo(e.target.value)} /></Field>
             </>
+          )}
+          {(kind === "projects_health" || kind === "team_load") && (
+            <Field label={<Bi en="Lane (optional)" fa="لاین (اختیاری)" />}>
+              <Input value={lane} onChange={(e) => setLane(e.target.value)} placeholder={bi("e.g. performance", "مثلاً performance")} />
+            </Field>
+          )}
+          {kind === "projects_health" && (
+            <Field label={<Bi en="Stale after (days)" fa="راکد بعد از (روز)" />}>
+              <Input type="number" min={1} max={90} value={staleDays} onChange={(e) => setStaleDays(e.target.value)} />
+            </Field>
+          )}
+          {(kind === "finance_reconcile" || kind === "my_work_review") && (
+            <p className="muted fine">
+              <Bi en="Uses server snapshot only; no extra fields." fa="فقط دادهٔ سرور؛ فیلد اضافه نمی‌خواهد." />
+            </p>
           )}
           <div className="toolbar">
             <Button variant="ghost" type="button" onClick={() => previewMut.mutate()} disabled={previewMut.isPending}>

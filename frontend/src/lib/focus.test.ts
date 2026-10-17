@@ -10,6 +10,7 @@ import {
   groupDailyNav,
   partitionMarketingNav,
   PERF_HUB_PATH,
+  filterOnboardingCue,
   onboardingCue,
   suggestTeamId,
   visibleHomeKpis,
@@ -138,6 +139,17 @@ describe("home and work focus", () => {
     expect(onboardingCue("manager").steps[0].to).toBe("/requests");
     expect(onboardingCue("marketing").steps[0].to).toBe("/perf");
     expect(onboardingCue("viewer").steps[0].to).toBe("/my-work");
+    expect(onboardingCue("marketing", "designer").steps[0].to).toBe("/projects");
+  });
+
+  it("filters onboarding steps by nav access", () => {
+    const cue = onboardingCue("marketing");
+    const filtered = filterOnboardingCue(
+      cue,
+      { roleCode: "marketing", permissions: ["task.read", "conversation.read"], teamId: "t1" },
+      (perm) => perm === "task.read" || perm === "conversation.read",
+    );
+    expect(filtered.steps.some((step) => step.to === "/perf")).toBe(false);
   });
 
   it("drops empty work buckets and opens late work first", () => {

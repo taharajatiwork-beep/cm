@@ -6,6 +6,7 @@ import { useToast } from "../components/ui/Toast";
 import { DateText } from "../components/DateText";
 import { useAuth } from "../auth";
 import { Bi } from "../i18n";
+import { requestsApi } from "../requests/api";
 import { perfApi, toman, type Connections, type SheetLink } from "./api";
 import { exactError, OutcomePop, type Outcome } from "./bits";
 import { liveConnectionsQuery, savedConnectionsQuery, useLiveConnections, useSavedConnections } from "./connectionsQuery";
@@ -76,7 +77,7 @@ export function ConnectionsPage() {
   const [token, setToken] = useState("");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // صفحه فقط وضعیت ذخیره‌شده را می‌خواند (بدون کال بیرونی). بررسی زنده فقط با دکمه.
-  const saved = useSavedConnections();
+  const saved = useSavedConnections(perfTools);
   const live = useLiveConnections();
 
   function checkNow() {
@@ -113,11 +114,25 @@ export function ConnectionsPage() {
         ok: true,
         title: result.saved ? "ذخیرهٔ کلید دسترسی موفق بود" : "پاک‌کردن کلید دسترسی موفق بود",
         detail: result.saved
-          ? `کلید دسترسی روی سرور این سازمان ماند${result.hint ? ` (${result.hint})` : ""}. برای دیدن وضعیت زنده «بررسی همین حالا» را بزنید.`
+          ? `کلید در دیتابیس این سازمان رمزنگاری شد${result.hint ? ` (${result.hint})` : ""}. نیازی به .env یا دادن دستی توکن نیست — «خواندن کارت‌ها» و همگام‌سازی پروژه‌ها از همین کلید استفاده می‌کنند.`
           : "کلید دسترسی از سرور پاک شد. تا کلید تازه بچسبانید، خواندن میزیتو انجام نمی‌شود.",
       });
     }).catch((error: unknown) => {
       setOutcome({ ok: false, title: "ذخیرهٔ کلید دسترسی ناموفق بود", detail: exactError(error) });
+    });
+  }
+
+  function syncMizitoProjects() {
+    requestsApi.syncMizitoWork(false).then((result) => {
+      void qc.invalidateQueries({ queryKey: ["requests", "work-projects"] });
+      void qc.invalidateQueries({ queryKey: ["requests", "mizito-kanban"] });
+      setOutcome({
+        ok: true,
+        title: "همگام‌سازی پروژه‌ها از میزیتو",
+        detail: `ساخته: ${String(result.created ?? 0)} · به‌روز: ${String(result.updated ?? 0)} · رد شده: ${String(result.skipped ?? 0)}`,
+      });
+    }).catch((error: unknown) => {
+      setOutcome({ ok: false, title: "همگام‌سازی پروژه‌ها ناموفق بود", detail: exactError(error) });
     });
   }
 
@@ -264,7 +279,7 @@ export function ConnectionsPage() {
         />
         <article className="conn-tile" data-tone={checking && !liveReady ? "busy" : mizito.connected ? "ok" : "danger"}>
           <p className="conn-help">
-            میزیتو فقط خوانده می‌شود. رمز عبور ذخیره نمی‌شود. خواندن کارت‌ها با دکمهٔ «خواندن کارت‌ها» یا از صفحهٔ هزینه‌ها انجام می‌شود.
+            میزیتو فقط خوانده می‌شود. x-token در دیتابیس همین سرور ذخیره می‌شود. همگام‌سازی پروژه‌ها هر ۱۵ دقیقه در worker سرور انجام می‌شود؛ «همگام‌سازی پروژه‌ها» همان کار را همین حالا اجرا می‌کند.
           </p>
           {mizito.connected ? (
             <Muted>
@@ -295,6 +310,7 @@ export function ConnectionsPage() {
                 <Button type="button" disabled={!token.trim()} onClick={() => save(token)}><Bi en="Save" fa="ذخیره" /></Button>
                 {mizito.saved ? <Button type="button" variant="secondary" onClick={() => save("")}><Bi en="Clear" fa="پاک کردن" /></Button> : null}
                 <Button type="button" variant="secondary" onClick={tryMizito}><Bi en="Read cards" fa="خواندن کارت‌ها" /></Button>
+                <Button type="button" variant="secondary" onClick={syncMizitoProjects}><Bi en="Sync projects" fa="همگام‌سازی پروژه‌ها" /></Button>
               </div>
             </div>
           ) : (

@@ -1,29 +1,20 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import "../perf/perf.css";
-import { Badge, Button, Card, Dialog, Disclosure, EmptyState, Field, Input, Muted, PageHeader, QueryState, SectionHeader, Segmented, Select } from "../components/ui";
-import { DELETE_CONFIRM_LABEL, useConfirm } from "../components/ui/ConfirmDialog";
+import { Button, Card, Dialog, EmptyState, Field, Input, Muted, PageHeader, SectionHeader, Select } from "../components/ui";
 import { useToast } from "../components/ui/Toast";
-import { DateText } from "../components/DateText";
 import { Bi, useBi } from "../i18n";
 import { useAuth } from "../auth";
 import { canSeeProjects } from "../lib/access";
-import { ConceptHint } from "../ux";
-import { ProjectParentRequestLine, WorkChainLegend } from "../lib/workContext";
-import { requestsApi, type WorkProject } from "./api";
+import { requestsApi } from "./api";
+import { MizitoKanban } from "./projects/MizitoKanban";
+import { ProjectQuickSheet } from "./projects/ProjectQuickSheet";
+import { ProjectsTable } from "./projects/ProjectsTable";
+import { ProjectsToolbar } from "./projects/ProjectsToolbar";
+import { LIST_PAGE_SIZE } from "./projects/constants";
+import { useProjectsUrlState } from "./projects/useProjectsUrlState";
 
-export const PROJECT_STATUS_LABEL: Record<string, string> = {
-  new: "تازه",
-  in_progress: "در جریان",
-  done: "تمام",
-};
-
-const STATUS_TONE: Record<string, "ok" | "warn" | "danger"> = {
-  new: "warn",
-  in_progress: "warn",
-  done: "ok",
-};
+export { PROJECT_STATUS_LABEL } from "./projects/constants";
 
 export function ProjectsPage() {
   const { has, user } = useAuth();
@@ -34,55 +25,106 @@ export function ProjectsPage() {
     teamHomeTeamId: user?.team_home_team_id,
   };
   const allowed = canSeeProjects(accessUser, has);
+  const { state: url, patch, openProject, closeProject } = useProjectsUrlState();
   const qc = useQueryClient();
   const toast = useToast();
   const triage = has("request.triage") || has("request.manage") || has("org.admin");
   const requester = has("request.create") && !triage;
-  const [statusFilter, setStatusFilter] = useState("");
-  const [view, setView] = useState<"list" | "board">("list");
+  const [reviewing, setReviewing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
   const [requestId, setRequestId] = useState("");
-  const projects = useQuery({
-    queryKey: ["requests", "work-projects", view === "board" ? "" : statusFilter],
-    queryFn: () => requestsApi.projects("", view === "board" ? "" : statusFilter),
+  const [laneChoice, setLaneChoice] = useState("");
+
+  const lanes = useQuery({
+    queryKey: ["requests", "mizito-lanes", "counts"],
+    queryFn: () => requestsApi.mizitoLanes(true),
     enabled: allowed,
+  });
+
+  useEffect(() => {
+    if (!url.lane && lanes.data?.[0]?.slug) {
+      patch({ lane: lanes.data[0].slug });
+    }
+  }, [url.lane, lanes.data, patch]);
+
+  const syncStatus = useQuery({
+    queryKey: ["requests", "mizito-sync"],
+    queryFn: () => requestsApi.mizitoSyncStatus(),
+    enabled: allowed,
+  });
+  const changes = useQuery({
+    queryKey: ["requests", "mizito-changes", "pending"],
+    queryFn: () => requestsApi.mizitoChanges("pending"),
+    enabled: allowed && reviewing,
+  });
+  const listPage = useQuery({
+    queryKey: [
+      "requests",
+      "projects-page",
+      url.q,
+      url.lane,
+      url.source,
+      url.status,
+      url.sort,
+      url.order,
+      url.page,
+    ],
+    queryFn: () =>
+      requestsApi.projectsPage({
+        q: url.q,
+        mizito_lane: url.lane,
+        source: url.source,
+        status: url.status,
+        sort: url.sort,
+        order: url.order,
+        limit: LIST_PAGE_SIZE,
+        offset: (url.page - 1) * LIST_PAGE_SIZE,
+      }),
+    enabled: allowed && url.view === "list",
   });
   const requests = useQuery({
     queryKey: ["requests", "work-requests", "picker"],
     queryFn: () => requestsApi.list(),
     enabled: allowed && triage,
   });
+
   const create = useMutation({
-    mutationFn: () => requestsApi.createStandaloneProject({ title: title.trim(), kind: "عمومی", status: "new" }, requestId),
+    mutationFn: () =>
+      requestsApi.createStandaloneProject(
+        { title: title.trim(), kind: "عمومی", status: "new", mizito_lane: laneChoice || null },
+        requestId,
+      ),
     onSuccess: () => {
       setTitle("");
       setRequestId("");
       setCreating(false);
-      void qc.invalidateQueries({ queryKey: ["requests", "work-projects"] });
+      void qc.invalidateQueries({ queryKey: ["requests"] });
       toast("پروژه ساخته شد");
     },
     onError: (error: Error) => toast(error.message),
   });
-  const patch = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) => requestsApi.patchProject(id, body),
+  const decide = useMutation({
+    mutationFn: ({ id, approve }: { id: string; approve: boolean }) => requestsApi.decideMizitoChange(id, approve),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["requests", "work-projects"] });
-      toast("پروژه به‌روز شد");
+      void qc.invalidateQueries({ queryKey: ["requests", "mizito-changes"] });
+      void qc.invalidateQueries({ queryKey: ["requests", "mizito-sync"] });
+      void qc.invalidateQueries({ queryKey: ["requests", "mizito-kanban"] });
+      toast("ثبت شد");
     },
     onError: (error: Error) => toast(error.message),
   });
-  const confirm = useConfirm();
+  const syncNow = useMutation({
+    mutationFn: () => requestsApi.syncMizitoWork(false),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["requests"] });
+      toast("همگام‌سازی انجام شد");
+    },
+    onError: (error: Error) => toast(error.message),
+  });
   const bi = useBi();
   const createTitleId = useId();
-  const remove = useMutation({
-    mutationFn: (id: string) => requestsApi.deleteProject(id),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["requests", "work-projects"] });
-      toast("پروژه حذف شد");
-    },
-    onError: (error: Error) => toast(error.message),
-  });
+  const cmBoard = url.view === "board" && url.source === "cm";
 
   if (!allowed) {
     return (
@@ -103,13 +145,7 @@ export function ProjectsPage() {
   return (
     <>
       <PageHeader
-        title={<Bi en="Projects" fa="پروژه‌ها" />}
-        description={
-          <Bi
-            en="Each project was born from a request. Campaigns of the team attach to their project."
-            fa="هر پروژه از دل یک درخواست ساخته شده است. کمپین‌های تیم به پروژهٔ خودشان وصل می‌شوند."
-          />
-        }
+        title={requester ? <Bi en="Projects from my requests" fa="پروژه‌های درخواست‌های من" /> : <Bi en="Projects" fa="پروژه‌ها" />}
         actions={
           triage ? (
             <Button type="button" onClick={() => setCreating(true)}>
@@ -118,7 +154,6 @@ export function ProjectsPage() {
           ) : null
         }
       />
-      <ConceptHint kind="task" />
       {triage && creating ? (
         <Dialog
           onClose={() => setCreating(false)}
@@ -131,6 +166,14 @@ export function ProjectsPage() {
           <div className="form-grid">
             <Field label={<Bi en="Title" fa="عنوان" />}>
               <Input value={title} onChange={(event) => setTitle(event.target.value)} />
+            </Field>
+            <Field label={<Bi en="Mizito lane" fa="دسته (اختیاری)" />}>
+              <Select value={laneChoice} onChange={(event) => setLaneChoice(event.target.value)}>
+                <option value="">بدون دسته</option>
+                {(lanes.data ?? []).map((lane) => (
+                  <option key={lane.slug} value={lane.slug}>{lane.title}</option>
+                ))}
+              </Select>
             </Field>
             <Field label={<Bi en="Request (optional)" fa="درخواست (اختیاری)" />}>
               <Select value={requestId} onChange={(event) => setRequestId(event.target.value)}>
@@ -148,244 +191,61 @@ export function ProjectsPage() {
           </div>
         </Dialog>
       ) : null}
-      <Card>
-        <SectionHeader
-          icon="layers"
-          title={
-            requester ? (
-              <Bi en="Projects from my requests" fa="پروژه‌های درخواست‌های من" />
-            ) : (
-              <Bi en="Projects" fa="پروژه‌ها" />
-            )
-          }
-          count={projects.data?.length}
-          action={
-            <div className="record-actions">
-              <Segmented
-                ariaLabel="نمای پروژه‌ها"
-                value={view}
-                onChange={setView}
-                items={[
-                  { key: "list", label: "فهرست" },
-                  { key: "board", label: "کانبان" },
-                ]}
-              />
-              {triage && view === "list" ? (
-                <Select aria-label="وضعیت" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                  <option value="">همهٔ وضعیت‌ها</option>
-                  {Object.entries(PROJECT_STATUS_LABEL).map(([key, label]) => (
-                    <option key={key} value={key}>{label}</option>
-                  ))}
-                </Select>
-              ) : null}
-            </div>
-          }
+      <Card className="projects-page">
+        <ProjectsToolbar
+          url={url}
+          onPatch={patch}
+          lanes={lanes.data ?? []}
+          triage={triage}
+          syncPending={syncStatus.data?.pending_count}
+          syncFinishedAt={syncStatus.data?.last_run?.finished_at}
+          syncOk={syncStatus.data?.last_run?.ok}
+          syncError={syncStatus.data?.last_run?.error}
+          onSyncNow={triage ? () => syncNow.mutate() : undefined}
+          onReviewChanges={() => setReviewing(true)}
         />
-        <WorkChainLegend variant="projects" />
-        <QueryState
-          isLoading={projects.isLoading}
-          error={projects.error}
-          isEmpty={projects.data?.length === 0}
-          empty={
-            statusFilter ? (
-              <EmptyState
-                titleEn="Nothing matches this filter"
-                titleFa="این فیلتر نتیجه‌ای ندارد"
-                bodyEn="Try another status, or clear the filter."
-                bodyFa="وضعیت دیگری را ببینید، یا فیلتر را پاک کنید."
-                action={
-                  <Button type="button" variant="secondary" onClick={() => setStatusFilter("")}>
-                    <Bi en="Clear filter" fa="پاک کردن فیلتر" />
-                  </Button>
-                }
-              />
-            ) : (
-              <EmptyState
-                titleEn="No projects yet"
-                titleFa="هنوز پروژه‌ای نیست"
-                bodyEn="Projects usually come from a request. You can also start one directly."
-                bodyFa="پروژه معمولاً از یک درخواست ساخته می‌شود. می‌توانید مستقیم هم شروع کنید."
-                action={
-                  triage ? (
-                    <Button type="button" onClick={() => setCreating(true)}>
-                      <Bi en="New project" fa="پروژهٔ تازه" />
-                    </Button>
-                  ) : undefined
-                }
-              />
-            )
-          }
-        >
-          {projects.data && projects.data.length > 0 && view === "board" ? (
-            <ProjectBoard
-              rows={projects.data}
-              triage={triage}
-              onMove={(id, status) => patch.mutate({ id, body: { status } })}
+        {url.view === "board" ? (
+          <MizitoKanban
+            url={url}
+            onOpenCard={openProject}
+            cmMode={cmBoard}
+            laneCount={lanes.data?.find((lane) => lane.slug === url.lane)?.project_count}
+            onShowArchive={() => patch({ archive: true })}
+          />
+        ) : (
+          <div className="projects-list">
+            <ProjectsTable
+              url={url}
+              onPatch={patch}
+              rows={listPage.data?.items ?? []}
+              total={listPage.data?.total ?? 0}
+              isLoading={listPage.isLoading}
+              error={listPage.error as Error | null}
+              onRowOpen={openProject}
             />
-          ) : null}
-          {projects.data && projects.data.length > 0 && view === "list" ? (
-          <div className="conn-grid">
-            {projects.data.map((row) => (
-              <ProjectCard
-                key={row.id}
-                row={row}
-                triage={triage}
-                onPatch={(body) => patch.mutate({ id: row.id, body })}
-                onDelete={() => {
-                  void confirm("حذف پروژه", `پروژهٔ «${row.title}» حذف شود؟`, DELETE_CONFIRM_LABEL, { danger: true }).then((ok) => {
-                    if (ok) remove.mutate(row.id);
-                  });
-                }}
-              />
-            ))}
           </div>
-          ) : null}
-        </QueryState>
+        )}
       </Card>
-    </>
-  );
-}
-
-const BOARD = ["new", "in_progress", "done"] as const;
-
-function ProjectBoard({
-  rows,
-  triage,
-  onMove,
-}: {
-  rows: WorkProject[];
-  triage: boolean;
-  onMove: (id: string, status: string) => void;
-}) {
-  const [over, setOver] = useState<string | null>(null);
-  return (
-    <div className="kanban">
-      {BOARD.map((status) => {
-        const cards = rows.filter((row) => row.status === status);
-        return (
-          <section
-            key={status}
-            className={over === status ? "kanban-col is-over" : "kanban-col"}
-            onDragOver={(event) => {
-              if (!triage) return;
-              event.preventDefault();
-              setOver(status);
-            }}
-            onDragLeave={() => setOver((current) => (current === status ? null : current))}
-            onDrop={(event) => {
-              event.preventDefault();
-              setOver(null);
-              const id = event.dataTransfer.getData("text/plain");
-              const row = rows.find((item) => item.id === id);
-              if (row && row.status !== status) onMove(id, status);
-            }}
-          >
-            <h3>
-              {PROJECT_STATUS_LABEL[status]}
-              <span className="section-count">{cards.length.toLocaleString("fa-IR")}</span>
-            </h3>
-            {cards.length === 0 ? <Muted as="p">خالی</Muted> : null}
-            {cards.map((row) => (
-              <article
-                key={row.id}
-                className="kanban-card"
-                draggable={triage}
-                onDragStart={(event) => event.dataTransfer.setData("text/plain", row.id)}
-              >
-                <span className="record-code" dir="ltr">{row.code}</span>
-                <strong>{row.title}</strong>
-                <span className="meta-chip">{row.kind}</span>
-                {row.request_code ? (
-                  <Muted as="span">
-                    <Bi en="Request" fa="درخواست" /> <span dir="ltr">{row.request_code}</span>
-                  </Muted>
-                ) : null}
-                <Button variant="ghost" className="btn-sm" to={`/projects/${row.id}`}>
-                  <Bi en="Open" fa="باز کردن" />
-                </Button>
-              </article>
-            ))}
-          </section>
-        );
-      })}
-    </div>
-  );
-}
-
-function ProjectCard({
-  row,
-  triage,
-  onPatch,
-  onDelete,
-}: {
-  row: WorkProject;
-  triage: boolean;
-  onPatch: (body: Record<string, unknown>) => void;
-  onDelete: () => void;
-}) {
-  return (
-    <Card as="article" className="record-card" stack>
-      <div className="record-head">
-        <div>
-          <div className="record-code" dir="ltr">{row.code}</div>
-          <h3 className="record-title">{row.title}</h3>
-        </div>
-        <Badge tone={STATUS_TONE[row.status] || "warn"}>{PROJECT_STATUS_LABEL[row.status] || row.status}</Badge>
-      </div>
-      {row.description ? <p className="record-body">{row.description}</p> : null}
-      <ProjectParentRequestLine
-        requestId={row.request_id}
-        requestCode={row.request_code}
-        requestTitle={row.request_title}
+      <ProjectQuickSheet
+        projectId={url.project}
+        open={Boolean(url.project)}
+        onClose={closeProject}
+        triage={triage}
+        cardUrlPrefix={syncStatus.data?.card_url_prefix}
       />
-      <div className="meta-row">
-        <span className="meta-chip">{row.kind}</span>
-        {row.team_name ? (
-          <span className="meta-chip">
-            {triage && row.team_id ? <Link to={`/teams/${row.team_id}`}>{row.team_name}</Link> : row.team_name}
-          </span>
-        ) : null}
-        <span className="meta-chip"><DateText value={row.created_at} withTime /></span>
-      </div>
-      <div className="progress-bar" aria-hidden>
-        <span
-          style={{
-            width:
-              (row.task_total ?? 0) === 0
-                ? "0%"
-                : `${Math.round(((row.task_done ?? 0) / (row.task_total ?? 1)) * 100)}%`,
-          }}
-        />
-      </div>
-      {(row.task_total ?? 0) === 0 && row.status !== "done" ? (
-        <Muted as="p"><Bi en="Not planned yet" fa="هنوز برنامه‌ریزی نشده" /></Muted>
-      ) : null}
-      <div className="record-actions">
-        <Button to={`/projects/${row.id}`}>
-          <Bi en="Open" fa="باز کردن" />
-        </Button>
-        <Button variant="ghost" to={`/reports?project=${row.id}`}>
-          <Bi en="Report" fa="گزارش" />
-        </Button>
-      </div>
-      {triage ? (
-        <Disclosure label={<Bi en="Manage" fa="مدیریت" />}>
-          <div className="stack">
-            <Field label={<Bi en="Status" fa="وضعیت" />}>
-              <Select value={row.status} onChange={(event) => onPatch({ status: event.target.value })}>
-                {Object.entries(PROJECT_STATUS_LABEL).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
-                ))}
-              </Select>
-            </Field>
-            <div className="record-actions">
-              <Button type="button" variant="danger-quiet" className="btn-sm" onClick={onDelete}>
-                <Bi en="Delete" fa="حذف" />
-              </Button>
+      {reviewing ? (
+        <Dialog onClose={() => setReviewing(false)} labelledBy="mizito-review" closeLabel={bi("Close", "بستن")}>
+          <SectionHeader title={<span id="mizito-review">تغییرهای منتظر تأیید</span>} />
+          {(changes.data ?? []).length === 0 ? <Muted>موردی نیست.</Muted> : null}
+          {(changes.data ?? []).map((change) => (
+            <div key={change.id} className="meta-row">
+              <span>{change.kind} — {change.field}: {change.old_value}</span>
+              <Button type="button" onClick={() => decide.mutate({ id: change.id, approve: true })}>آرشیو در CM</Button>
+              <Button type="button" variant="secondary" onClick={() => decide.mutate({ id: change.id, approve: false })}>نادیده بگیر</Button>
             </div>
-          </div>
-        </Disclosure>
+          ))}
+        </Dialog>
       ) : null}
-    </Card>
+    </>
   );
 }

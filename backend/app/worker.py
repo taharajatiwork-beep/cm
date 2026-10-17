@@ -430,6 +430,32 @@ async def run_ai_lab_daily(session_factory: async_sessionmaker[AsyncSession]) ->
     return {"followups": followups, **stats}
 
 
+async def run_mizito_sync(session_factory: async_sessionmaker[AsyncSession]) -> dict[str, int]:
+    """هر سازمانی که توکن میزیتو در پنل دارد: یک خواندن و diff پروژه‌ها."""
+    from app.perf.models import PmIntegration
+    from app.perf.services.connections import mizito_token_for
+    from app.requests.mizito_sync import run_org_mizito_sync
+
+    settings = get_settings()
+    if not settings.mizito_sync_enabled:
+        return {"orgs": 0}
+    synced = 0
+    async with session_factory() as db:
+        org_ids = list(
+            await db.scalars(
+                select(PmIntegration.organization_id).where(PmIntegration.mizito_token != "")
+            )
+        )
+        for organization_id in org_ids:
+            token = (await mizito_token_for(db, organization_id)).strip()
+            if not token:
+                continue
+            await run_org_mizito_sync(db, organization_id, token)
+            synced += 1
+        await db.commit()
+    return {"orgs": synced}
+
+
 async def run_ai_lab_github_poll(session_factory: async_sessionmaker[AsyncSession]) -> int:
     """Poll GitHub for AI Lab task results (when AI_LAB_RESULT_SOURCE=github)."""
     from app.ai_lab.service import poll_github_due_tasks
@@ -551,6 +577,23 @@ class Worker:
                     log.warning("worker_ai_lab_daily_loop_error", error=str(e))
                 await asyncio.sleep(3600)
 
+        async def _mizito_loop():
+            while True:
+                settings = get_settings()
+                minutes = max(5, int(settings.mizito_sync_minutes or 15))
+                try:
+                    if settings.mizito_sync_enabled and await acquire_job("mizito_sync", ttl_seconds=minutes * 60):
+                        try:
+                            stats = await run_mizito_sync(self.session_factory)
+                            log.info("mizito_sync", **stats)
+                        finally:
+                            await release_job("mizito_sync")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    log.warning("worker_mizito_sync_error", error=str(e))
+                await asyncio.sleep(minutes * 60)
+
         self._tasks.append(asyncio.create_task(_outbox_loop(), name="worker-outbox"))
         self._tasks.append(asyncio.create_task(_sla_loop(), name="worker-sla"))
         self._tasks.append(asyncio.create_task(_snapshot_loop(), name="worker-kpi-snapshot"))
@@ -572,6 +615,9 @@ class Worker:
             self._tasks.append(
                 asyncio.create_task(_ai_lab_daily_loop(), name="worker-ai-lab-daily")
             )
+
+        if settings.mizito_sync_enabled:
+            self._tasks.append(asyncio.create_task(_mizito_loop(), name="worker-mizito-sync"))
 
         log.info("worker_started", tasks=[t.get_name() for t in self._tasks])
 

@@ -7,11 +7,18 @@ import { ApiError } from "../api";
 import { requestStatusLabel } from "./labels";
 import { PROJECT_STATUS_LABEL } from "./ProjectsPage";
 import { useAuth } from "../auth";
+import { canSeeNavPath } from "../lib/access";
 import { requestsApi, type TeamHome } from "./api";
 
 export function TeamHomePage() {
-  const { has } = useAuth();
-  const canOpenCampaigns = has("campaign.read");
+  const { has, user } = useAuth();
+  const accessUser = {
+    roleCode: user?.roleCode,
+    permissions: user?.permissions ?? [],
+    teamId: user?.team_id,
+    teamHomeTeamId: user?.team_home_team_id,
+  };
+  const canOpenCampaigns = canSeeNavPath("/perf/campaigns/sample", accessUser, has);
   const { teamId = "" } = useParams();
   const home = useQuery({
     queryKey: ["team-home", teamId],

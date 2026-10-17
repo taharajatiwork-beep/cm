@@ -6,6 +6,8 @@ import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { Bi, useBi } from "../i18n";
 import { formatJalaliLong, formatJalaliText } from "../jalali";
+import { useAuth } from "../auth";
+import { canSeePerfApi } from "../lib/access";
 import { tabFromParam, withTabParam } from "../lib/tabs";
 import { leadsLabel, mizitoStatus, perfApi, toman, triageLabel, type CampaignRow, type MizitoMissing, type MizitoRequest, type MizitoTriageCard, type RegisterRow } from "./api";
 import { ArrangeBar, choices, ShowMore, useArrange, type SortOption } from "./browse";
@@ -20,17 +22,25 @@ type CampaignTab = (typeof CAMPAIGN_TABS)[number];
 
 export function CampaignsPage() {
   const bi = useBi();
+  const { user, has } = useAuth();
+  const accessUser = {
+    roleCode: user?.roleCode,
+    permissions: user?.permissions ?? [],
+    teamId: user?.team_id,
+    teamHomeTeamId: user?.team_home_team_id,
+  };
+  const perfOk = canSeePerfApi(accessUser, has);
   // تب در URL است (?tab=) تا با رفرش و دکمهٔ بازگشت بماند و بشود لینکش را فرستاد. تب کمپین‌ها پیش‌فرض است.
   const [params, setParams] = useSearchParams();
   const tab = tabFromParam(params.get("tab"), CAMPAIGN_TABS, "campaigns");
   const pickTab = (next: CampaignTab) => setParams((current) => withTabParam(current, next, "campaigns"), { replace: true });
-  const rows = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns });
+  const rows = useQuery({ queryKey: ["perf", "campaigns"], queryFn: perfApi.campaigns, enabled: perfOk });
   // شمارهٔ تب‌ها از همان کش محتوای تب‌ها؛ همه از دیتابیس پنل، بدون کال به میزیتو
-  const requests = useQuery(mizitoRequestsQuery("new"));
-  const missing = useQuery(mizitoMissingQuery);
-  const triage = useQuery(mizitoTriageQuery(null));
+  const requests = useQuery({ ...mizitoRequestsQuery("new"), enabled: perfOk });
+  const missing = useQuery({ ...mizitoMissingQuery, enabled: perfOk });
+  const triage = useQuery({ ...mizitoTriageQuery(null), enabled: perfOk });
   const undecided = (requests.data?.counts.new ?? 0) + (requests.data?.counts.duplicate ?? 0);
-  const register = useQuery({ queryKey: ["perf", "register"], queryFn: perfApi.campaignRegister });
+  const register = useQuery({ queryKey: ["perf", "register"], queryFn: perfApi.campaignRegister, enabled: perfOk });
   const listedOn = new Map([...(register.data?.rows ?? []), ...(register.data?.legacy ?? [])].map((row) => [row.code, row.when]));
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<MizitoRequest | null>(null);
@@ -94,6 +104,8 @@ export function CampaignsPage() {
       ) : null}
     </>
   );
+
+  if (!perfOk) return <ForbiddenState />;
 
   return (
     <>

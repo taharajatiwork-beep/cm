@@ -1,17 +1,19 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { DateText } from "../components/DateText";
-import { Button, Card, Checkbox, Disclosure, EmptyState, ErrorMessage, Field, Icon, Input, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, StatCard, TitleCode } from "../components/ui";
+import { Badge, Button, Card, Checkbox, Disclosure, EmptyState, ErrorMessage, Field, Icon, Input, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, StatCard, TitleCode } from "../components/ui";
 import { Donut, HBars } from "../components/charts";
 import { faNum, tomanText } from "../fa";
 import { useAuth } from "../auth";
 import { Bi, useBi } from "../i18n";
 import { canFinishTask } from "../lib/collaboration";
+import { queryKeys } from "../lib/queryKeys";
 import { PROJECT_TABS, type ProjectTab } from "../lib/focus";
 import { StatusLabel } from "../ux";
 import { requestsApi } from "./api";
+import { mizitoLaneLabel } from "./mizitoLanes";
 import { DeliveryReviewCard } from "./DeliveryReview";
 import { PROJECT_STATUS_LABEL } from "./ProjectsPage";
 
@@ -48,6 +50,7 @@ const SHOOT_STATUS: Record<string, string> = {
 
 export function ProjectPage() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const { has, user } = useAuth();
   const bi = useBi();
   const qc = useQueryClient();
@@ -62,6 +65,11 @@ export function ProjectPage() {
     queryKey: ["project", id],
     queryFn: () => requestsApi.project(id),
     enabled: Boolean(id),
+  });
+  const history = useQuery({
+    queryKey: ["requests", "mizito-changes", id],
+    queryFn: () => requestsApi.mizitoChanges("", id),
+    enabled: Boolean(id && detail.data?.mizito_card_id),
   });
   const canEdit = (has("request.triage") || has("request.manage")) && !detail.data?.readonly;
   const refresh = () => {
@@ -84,6 +92,14 @@ export function ProjectPage() {
     },
   });
   const apply = useMutation({ mutationFn: () => requestsApi.applyTemplate(id), onSuccess: refresh });
+  const openThread = useMutation({
+    mutationFn: () => requestsApi.openProjectThread(id),
+    onSuccess: (thread) => {
+      void qc.invalidateQueries({ queryKey: ["project", id] });
+      void qc.invalidateQueries({ queryKey: queryKeys.communicationRoot });
+      navigate(`/communication?c=${thread.id}`);
+    },
+  });
   const addLink = useMutation({
     mutationFn: () => requestsApi.addAttachment(id, { title: linkTitle.trim(), url: linkUrl.trim() }),
     onSuccess: () => {
@@ -127,8 +143,16 @@ export function ProjectPage() {
   return (
     <>
       <PageHeader
-        title={String(row.title || "")}
-        description={`${row.code || ""} · ${row.kind || ""} · ${PROJECT_STATUS_LABEL[String(row.status || "")] || String(row.status || "")}`}
+        title={<TitleCode code={String(row.code || "")} title={String(row.title || "")} />}
+        description={
+          <div className="meta-row meta-row--compact">
+            <Badge tone={row.mizito_card_id ? "warn" : "ok"}>{row.mizito_card_id ? "میزیتو" : "CM"}</Badge>
+            {row.mizito_lane ? <span className="meta-chip">{mizitoLaneLabel(String(row.mizito_lane))}</span> : null}
+            {row.mizito_board ? <span className="meta-chip">{String(row.mizito_board)}</span> : null}
+            <Badge>{PROJECT_STATUS_LABEL[String(row.status || "")] || String(row.status || "")}</Badge>
+            <span className="meta-chip">{String(row.kind || "")}</span>
+          </div>
+        }
         actions={
           <div className="row">
             {row.request_id ? (
@@ -194,6 +218,66 @@ export function ProjectPage() {
           ) : (
             <>
               <p>{String(row.description || "")}</p>
+              {row.mizito_card_id ? (
+                <Card className="projects-mizito-facts" stack>
+                  <p className="banner banner-warn">
+                    فیلدهای میزیتو از همگام‌سازی می‌آیند و در CM قفل هستند.
+                  </p>
+                  <dl className="projects-facts">
+                    <div><dt>دسته</dt><dd>{mizitoLaneLabel(String(row.mizito_lane || ""))}</dd></div>
+                    <div><dt>برد</dt><dd>{String(row.mizito_board || "—")}</dd></div>
+                    <div><dt>کد میزیتو</dt><dd dir="ltr">{String(row.mizito_code || "—")}</dd></div>
+                    <div>
+                      <dt>مهلت</dt>
+                      <dd>{row.mizito_deadline ? <DateText value={String(row.mizito_deadline)} /> : "—"}</dd>
+                    </div>
+                    <div>
+                      <dt>چک‌لیست</dt>
+                      <dd>
+                        {Number(row.mizito_checklist_total ?? 0) > 0 ? (
+                          <>
+                            <div className="progress-bar" aria-hidden>
+                              <span
+                                style={{
+                                  width: `${Math.round(
+                                    (Number(row.mizito_checklist_done ?? 0) / Number(row.mizito_checklist_total ?? 1)) * 100,
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                            <Muted>
+                              {String(row.mizito_checklist_done ?? 0)} از {String(row.mizito_checklist_total ?? 0)}
+                            </Muted>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </dd>
+                    </div>
+                    <div><dt>پیوست</dt><dd>{String(row.mizito_attachments ?? 0)}</dd></div>
+                    <div>
+                      <dt>آخرین تغییر</dt>
+                      <dd>
+                        {row.mizito_modified_at ? <DateText value={String(row.mizito_modified_at)} withTime /> : "—"}
+                      </dd>
+                    </div>
+                  </dl>
+                  {row.mizito_url ? (
+                    <a href={String(row.mizito_url)} target="_blank" rel="noreferrer">باز کردن در میزیتو</a>
+                  ) : null}
+                  {(history.data ?? []).length > 0 ? (
+                    <Disclosure label="تاریخچهٔ تغییرهای میزیتو">
+                      <ul className="projects-history-list">
+                        {(history.data ?? []).map((change) => (
+                          <li key={change.id}>
+                            <Muted>{change.field}: {change.old_value} → {change.new_value}</Muted>
+                          </li>
+                        ))}
+                      </ul>
+                    </Disclosure>
+                  ) : null}
+                </Card>
+              ) : null}
               {taskTotal > 0 ? (
                 <Muted as="p">
                   <Bi en={`${done} of ${taskTotal} done`} fa={`${done} از ${taskTotal} کار تمام شده`} />
@@ -231,7 +315,7 @@ export function ProjectPage() {
               refresh={refresh}
             />
           )}
-          {!row.readonly && taskTotal > 0 ? (
+          {!row.readonly && !row.mizito_card_id && taskTotal > 0 ? (
             <div className="dash-charts">
               <Card>
                 <Donut
@@ -382,9 +466,14 @@ export function ProjectPage() {
           <Card className="record-card" stack>
             <SectionHeader title={<Bi en="Conversation" fa="گفتگو" />} />
             <Muted as="p"><Bi en="Status changes land in the project thread as system messages." fa="تغییر وضعیت در رشتهٔ پروژه به‌صورت پیام سیستم می‌آید." /></Muted>
+            {openThread.error ? <ErrorMessage error={(openThread.error as Error).message} /> : null}
             <div className="record-actions">
-              <Button to={`/communication?conversation=${row.thread_id || ""}`}>
-                <Bi en="Open the thread" fa="باز کردن گفتگو" />
+              <Button type="button" disabled={openThread.isPending} onClick={() => openThread.mutate()}>
+                {row.thread_id ? (
+                  <Bi en="Open the thread" fa="باز کردن گفتگو" />
+                ) : (
+                  <Bi en="Start the thread" fa="شروع گفتگوی پروژه" />
+                )}
               </Button>
             </div>
           </Card>

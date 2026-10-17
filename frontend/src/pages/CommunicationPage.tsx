@@ -19,9 +19,10 @@ import {
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 import { Bi, useBi, useLocale } from "../i18n";
-import { faDigits } from "../fa";
+import { faDigits, faNum } from "../fa";
 import { formatJalaliShort } from "../jalali";
 import { buildPersonMap, personName } from "../lib/collaboration";
+import { messageDisplayText, parseMessageMedia } from "../lib/messageMedia";
 import { queryKeys } from "../lib/queryKeys";
 import { perfApi } from "../perf/api";
 import { campaignFromText } from "../perf/fromMessage";
@@ -57,6 +58,9 @@ export function CommunicationPage() {
   const bi = useBi();
   const { locale } = useLocale();
   const streamEnd = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunksRef = useRef<Blob[]>([]);
   const qc = useQueryClient();
   const toast = useToast();
   const confirm = useConfirm();
@@ -76,6 +80,8 @@ export function CommunicationPage() {
   const [error, setError] = useState("");
   const [sendError, setSendError] = useState("");
   const [sending, setSending] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [addUserId, setAddUserId] = useState("");
   // پیش‌پر کردن compose از URL — «گفتگو دربارهٔ ...» از صفحهٔ خودرو/مشتری/پرونده
@@ -206,6 +212,74 @@ export function CommunicationPage() {
     onError: (err) => setSendError(String((err as Error).message)),
   });
 
+  const sendMedia = useMutation({
+    mutationFn: (body: { id: string; file: File; messageType?: string }) =>
+      api.conversations.postMedia(body.id, body.file, body.messageType),
+    onSuccess: () => {
+      setSendError("");
+      void qc.invalidateQueries({ queryKey: queryKeys.conversationMessages(selected ?? "") });
+      refreshBoard();
+    },
+    onError: (err) => setSendError(String((err as Error).message)),
+  });
+
+  async function onPickFile(file: File | null) {
+    if (!selected || !file || sendMedia.isPending || uploading) return;
+    const audio = file.type.startsWith("audio/");
+    const image = file.type.startsWith("image/");
+    const messageType = audio ? "VOICE" : image ? "IMAGE" : "DOCUMENT";
+    setUploading(true);
+    try {
+      await sendMedia.mutateAsync({ id: selected, file, messageType });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function toggleVoiceRecord() {
+    if (!selected) return;
+    if (recording && recorderRef.current) {
+      recorderRef.current.stop();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setSendError(bi("Voice recording is not supported in this browser.", "ضبط صدا در این مرورگر پشتیبانی نمی‌شود."));
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      recordChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        setRecording(false);
+        recorderRef.current = null;
+        const blob = new Blob(recordChunksRef.current, { type: mime });
+        if (!blob.size) return;
+        const file = new File([blob], `voice-${Date.now()}.webm`, { type: mime });
+        void onPickFile(file);
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+    } catch (err) {
+      setSendError(String((err as Error).message));
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      recorderRef.current?.stop();
+    };
+  }, []);
+
   async function onSend(e: FormEvent) {
     e.preventDefault();
     if (!selected || !text.trim() || send.isPending) return;
@@ -330,9 +404,19 @@ export function CommunicationPage() {
     return true;
   });
 
-  const current = rows.find((r) => String(r.id) === selected) ?? null;
-  const currentSection = sections.find((s) => s.key === section)!;
+  const navActive: CommSection | "archive" = showArchived ? "archive" : section;
 
+  function selectNav(key: CommSection | "archive") {
+    if (key === "archive") {
+      setShowArchived(true);
+      setSection("threads");
+      return;
+    }
+    setShowArchived(false);
+    setSection(key);
+  }
+
+  const current = rows.find((r) => String(r.id) === selected) ?? null;
   async function makeCampaign(id: string, source: string) {
     const brief = source.trim();
     if (!brief || making) return;
@@ -481,7 +565,10 @@ export function CommunicationPage() {
             {c.last_message_text ? (
               <span className="thread-row-preview">
                 {sender ? `${sender}: ` : ""}
-                {String(c.last_message_text)}
+                {messageDisplayText(String(c.last_message_text)) ||
+                  (parseMessageMedia(String(c.last_message_text))
+                    ? bi("Attachment", "پیوست")
+                    : String(c.last_message_text))}
               </span>
             ) : null}
             {Boolean(waiting || c.project_id || c.pm_campaign_id) && (
@@ -492,16 +579,24 @@ export function CommunicationPage() {
                   </Badge>
                 ) : null}
                 {c.project_id ? (
-                  <Badge>
-                    <Icon name="layers" size={10} />
-                    <Link to={`/projects/${String(c.project_id)}`}>{bi("Project", "پروژه")}</Link>
-                  </Badge>
+                  <Link
+                    className="thread-row-link"
+                    to={`/projects/${String(c.project_id)}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Icon name="layers" size={11} />
+                    {bi("Project", "پروژه")}
+                  </Link>
                 ) : null}
                 {c.pm_campaign_id ? (
-                  <Badge>
-                    <Icon name="megaphone" size={10} />
-                    <Link to={`/perf/campaigns/${String(c.pm_campaign_id)}`}>{bi("Campaign", "کمپین")}</Link>
-                  </Badge>
+                  <Link
+                    className="thread-row-link"
+                    to={`/perf/campaigns/${String(c.pm_campaign_id)}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Icon name="megaphone" size={11} />
+                    {bi("Campaign", "کمپین")}
+                  </Link>
                 ) : null}
               </div>
             )}
@@ -548,53 +643,53 @@ export function CommunicationPage() {
       />
 
       <div className="inbox">
-        <nav className="inbox-nav">
-          {visibleSections.map((s) => (
-            <button
-              key={s.key}
-              type="button"
-              className={`inbox-nav-item${section === s.key ? " active" : ""}${
-                s.key === "needs_me" && counts.needs_me > 0 ? " is-hot" : ""
-              }`}
-              onClick={() => {
-                setSection(s.key);
-                setShowArchived(false);
-              }}
-            >
-              <Icon name={s.icon} />
-              <span>
-                <Bi en={s.en} fa={s.fa} />
-              </span>
-              <span className="inbox-count">{counts[s.key]}</span>
-            </button>
-          ))}
-        </nav>
-
         <section className="inbox-list">
           <div className="inbox-list-head">
-            <h2>
-              <Bi en={currentSection.en} fa={currentSection.fa} />
-            </h2>
-            <span className="row">
-              <Button
-                variant={showArchived ? "primary" : "ghost"}
-                className="btn-sm"
-                onClick={() => {
-                  setShowArchived((v) => !v);
-                  setSection("threads");
-                }}
+            <nav className="inbox-sections" aria-label={bi("Message sections", "بخش‌های پیام")}>
+              {visibleSections.map((s) => {
+                const active = navActive === s.key;
+                const count = counts[s.key];
+                const attention = s.key === "needs_me" && counts.needs_me > 0;
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    className={`inbox-section${active ? " active" : ""}`}
+                    aria-current={active ? "true" : undefined}
+                    onClick={() => selectNav(s.key)}
+                  >
+                    <span className="inbox-section-label">
+                      <Icon name={s.icon} size={15} />
+                      <span>{bi(s.en, s.fa)}</span>
+                    </span>
+                    {typeof count === "number" ? (
+                      <span className={attention ? "inbox-section-count attention" : "inbox-section-count"}>
+                        {faNum(count)}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                className={`inbox-section${navActive === "archive" ? " active" : ""}`}
+                aria-current={navActive === "archive" ? "true" : undefined}
+                onClick={() => selectNav("archive")}
               >
-                <Bi en="Archive" fa="بایگانی" />
-              </Button>
-              <Button
-                variant={showCompose ? "secondary" : "primary"}
-                className="btn-sm"
-                onClick={() => setShowCompose((v) => !v)}
-              >
-                <Icon name={showCompose ? "x" : "plus"} size={13} />
-                <Bi en="New message" fa="پیام جدید" />
-              </Button>
-            </span>
+                <span className="inbox-section-label">
+                  <Icon name="clock" size={15} />
+                  <span>{bi("Archive", "بایگانی")}</span>
+                </span>
+              </button>
+            </nav>
+            <Button
+              variant={showCompose ? "secondary" : "primary"}
+              className="btn-sm inbox-new-msg"
+              onClick={() => setShowCompose((v) => !v)}
+            >
+              <Icon name={showCompose ? "x" : "plus"} size={13} />
+              <Bi en="New message" fa="پیام جدید" />
+            </Button>
           </div>
           {showCompose && (
             <form className="compose-pop" onSubmit={create}>
@@ -670,7 +765,9 @@ export function CommunicationPage() {
         </section>
 
         <section className="inbox-thread">
-          {!selected || (!current && !messages.length) ? (
+          {selected && !current && (loading || thread.isLoading) ? (
+            <LoadingState />
+          ) : !selected || (!current && !messages.length) ? (
             <div className="pane-empty">
               <div>
                 <Icon name="message" size={26} />
@@ -779,7 +876,7 @@ export function CommunicationPage() {
                             <strong>{mine ? bi("You", "شما") : who}</strong>
                             <span>{shortTime(m.created_at)}</span>
                           </div>
-                          <div>{String(m.text)}</div>
+                          <MessageBody text={String(m.text ?? "")} messageType={String(m.message_type ?? "")} />
                           {has("perf.write") && String(m.text || "").trim() ? (
                             <div className="msg-actions">
                               <Button
@@ -802,6 +899,33 @@ export function CommunicationPage() {
               </div>
 
               <form className="reply-bar" onSubmit={onSend}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="sr-only"
+                  accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="btn-sm"
+                  disabled={!selected || uploading || sendMedia.isPending}
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label={bi("Attach file", "پیوست فایل")}
+                >
+                  <Icon name="paperclip" size={14} />
+                </Button>
+                <Button
+                  type="button"
+                  variant={recording ? "secondary" : "ghost"}
+                  className="btn-sm"
+                  disabled={!selected || uploading || sendMedia.isPending}
+                  onClick={() => void toggleVoiceRecord()}
+                  aria-label={bi("Voice message", "پیام صوتی")}
+                >
+                  <Icon name="upload" size={14} />
+                </Button>
                 <TextArea
                   rows={1}
                   value={text}
@@ -812,7 +936,7 @@ export function CommunicationPage() {
                     "پاسخ بنویسید… (Enter برای ارسال، Shift+Enter برای خط جدید)",
                   )}
                 />
-                <Button type="submit" disabled={!text.trim() || sending}>
+                <Button type="submit" disabled={!text.trim() || sending || uploading || recording}>
                   <Icon name="send" size={14} />
                   <Bi en="Send" fa="ارسال" />
                 </Button>
@@ -822,5 +946,28 @@ export function CommunicationPage() {
         </section>
       </div>
     </>
+  );
+}
+
+function MessageBody({ text, messageType }: { text: string; messageType: string }) {
+  const media = parseMessageMedia(text);
+  if (!media) return <div>{text}</div>;
+  const upper = messageType.toUpperCase();
+  const audio =
+    upper === "VOICE" || /\.(webm|ogg|mp3|m4a|wav)$/i.test(media.filename) || media.filename.startsWith("voice-");
+  if (upper === "IMAGE" || (!audio && /\.(png|jpe?g|gif|webp)$/i.test(media.filename))) {
+    return (
+      <a href={media.url} target="_blank" rel="noreferrer">
+        <img className="msg-media-img" src={media.url} alt={media.filename} />
+      </a>
+    );
+  }
+  if (audio) {
+    return <audio className="msg-media-audio" controls preload="metadata" src={media.url} />;
+  }
+  return (
+    <a className="msg-media-file" href={media.url} download={media.filename}>
+      <Bi en="Download" fa="دانلود" /> {media.filename}
+    </a>
   );
 }

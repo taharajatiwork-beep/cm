@@ -124,6 +124,112 @@ async def test_calendar_crud_and_events(client: AsyncClient, seeded, db):
 
 
 @pytest.mark.asyncio
+async def test_calendar_timed_event_recurrence_and_bulk(client: AsyncClient, seeded, db):
+    token = await _admin(client, seeded, db)
+    headers = auth(token)
+    event = await client.post(
+        "/calendar/entries",
+        headers=headers,
+        json={
+            "on_date": "2026-10-20",
+            "entry_type": "event",
+            "title": "جلسه هفتگی",
+            "all_day": False,
+            "start_time": "09:00",
+            "end_time": "10:00",
+            "recurrence": "weekly",
+            "recur_until": "2026-11-03",
+            "attendee_ids": [str(seeded["reza"].id)],
+        },
+    )
+    assert event.status_code == 201, event.text
+    parent_id = event.json()["entry_id"]
+    listed = await client.get("/calendar?from=2026-10-20&to=2026-11-03&year=1405&month=8", headers=headers)
+    assert listed.status_code == 200
+    titles = [row["title"] for row in listed.json()["entries"] if row["entry_type"] == "event"]
+    assert titles.count("جلسه هفتگی") >= 2
+
+    patched = await client.patch(
+        f"/calendar/entries/{parent_id}",
+        headers=headers,
+        json={"scope": "this", "occurrence_date": "2026-10-27", "title": "جلسه منتقل"},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["title"] == "جلسه منتقل"
+
+    bulk = await client.post(
+        "/calendar/entries/bulk",
+        headers=headers,
+        json={
+            "entries": [
+                {
+                    "on_date": "2026-10-21",
+                    "topic": "پست A",
+                    "tier": "long",
+                    "format": "Post",
+                    "channel": "IG",
+                    "status": "todo",
+                },
+                {
+                    "on_date": "2026-10-21",
+                    "topic": "پست B",
+                    "tier": "short",
+                    "format": "Story",
+                    "channel": "IG",
+                    "status": "todo",
+                },
+            ]
+        },
+    )
+    assert bulk.status_code == 201
+    assert bulk.json()["added"] == 2
+
+
+@pytest.mark.asyncio
+async def test_calendar_occasions_and_mizito_layer(client: AsyncClient, seeded, db):
+    from datetime import UTC, datetime
+
+    from app.requests.models import WorkProject
+
+    token = await _admin(client, seeded, db)
+    headers = auth(token)
+    db.add(
+        WorkProject(
+            organization_id=seeded["org"].id,
+            code="MZ-1",
+            title="میزیتو تست",
+            team_id=seeded["mkt_team"].id,
+            status="new",
+            mizito_deadline=datetime(2026, 10, 25, 12, 0, tzinfo=UTC),
+        )
+    )
+    await db.commit()
+
+    range_body = await client.get("/calendar?from=2026-10-20&to=2026-10-30&year=1405&month=8", headers=headers)
+    assert range_body.status_code == 200
+    body = range_body.json()
+    assert any(row.get("kind") == "mizito" for row in body["events"])
+    assert any(row.get("is_off") for row in body.get("occasions", []))
+
+    denied = await client.post(
+        "/calendar/occasions",
+        headers=auth(await login(client, "reza@autoco.example")),
+        json={"on_date": "2026-12-01", "title": "رویداد فروش", "kind": "marketing"},
+    )
+    assert denied.status_code == 403
+
+    created = await client.post(
+        "/calendar/occasions",
+        headers=headers,
+        json={"on_date": "2026-12-01", "title": "رویداد فروش", "kind": "marketing"},
+    )
+    assert created.status_code == 201
+    occ_id = created.json()["id"]
+    removed = await client.delete(f"/calendar/occasions/{occ_id}", headers=headers)
+    assert removed.status_code == 204
+
+
+@pytest.mark.asyncio
 async def test_aban_seed_is_idempotent(seeded, db):
     from app.calendar.seed import seed_content_calendar
 

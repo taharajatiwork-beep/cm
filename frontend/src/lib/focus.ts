@@ -1,6 +1,7 @@
 import {
   canSeeCalendar,
   canSeeMarketingHome,
+  canSeeNavPath,
   canSeePricing,
   canSeeProjects,
   isMarketingManager,
@@ -245,7 +246,35 @@ export type OnboardingCue = {
   steps: OnboardingStep[];
 };
 
-export function onboardingCue(role: FocusRole): OnboardingCue {
+export function filterOnboardingCue(
+  cue: OnboardingCue,
+  user: FocusNavUser,
+  has: (perm: string) => boolean,
+): OnboardingCue {
+  const access = {
+    roleCode: user.roleCode,
+    permissions: user.permissions,
+    teamId: user.teamId,
+    teamHomeTeamId: user.teamHomeTeamId,
+  };
+  const steps = cue.steps.filter((step) => canSeeNavPath(step.to, access, has));
+  return { ...cue, steps };
+}
+
+export function onboardingCue(role: FocusRole, roleCode?: string | null): OnboardingCue {
+  if (roleCode === "designer" || roleCode === "filmmaker") {
+    return {
+      titleEn: "Your design queue",
+      titleFa: "صف کار طراحی و تولید",
+      bodyEn: "Projects first, then tasks, then messages when someone needs you.",
+      bodyFa: "اول پروژه‌ها، بعد کارهای شما، بعد پیام وقتی کسی منتظر شماست.",
+      steps: [
+        { labelEn: "Projects", labelFa: "پروژه‌ها", to: "/projects" },
+        { labelEn: "My work", labelFa: "کارهای من", to: "/my-work" },
+        { labelEn: "Messages", labelFa: "پیام‌ها", to: "/communication" },
+      ],
+    };
+  }
   if (role === "admin" || role === "manager") {
     return {
       titleEn: "Three places to run the team",
@@ -263,8 +292,8 @@ export function onboardingCue(role: FocusRole): OnboardingCue {
     return {
       titleEn: "Your marketing rhythm",
       titleFa: "ریتم کار مارکتینگ",
-      bodyEn: "Performance, calendar, then prices — in that order.",
-      bodyFa: "پرفورمنس، تقویم، بعد قیمت — به این ترتیب.",
+      bodyEn: "Only steps you can open from the menu are shown.",
+      bodyFa: "فقط مسیرهایی که در منوی شما هست نشان داده می‌شود.",
       steps: [
         { labelEn: "Performance", labelFa: "پرفورمنس", to: "/perf" },
         { labelEn: "Calendar", labelFa: "تقویم", to: "/calendar" },
@@ -301,8 +330,8 @@ export function onboardingCue(role: FocusRole): OnboardingCue {
   return {
     titleEn: "Your daily trio",
     titleFa: "سه‌تایی روزانهٔ شما",
-    bodyEn: "My Work, calendar, then colleagues.",
-    bodyFa: "کارهای من، تقویم، بعد همکاران.",
+    bodyEn: "My Work first; other steps only if they appear in your menu.",
+    bodyFa: "اول کارهای من؛ بقیه فقط اگر در منوی شما هست.",
     steps: [
       { labelEn: "My work", labelFa: "کارهای من", to: "/my-work" },
       { labelEn: "Calendar", labelFa: "تقویم", to: "/calendar" },

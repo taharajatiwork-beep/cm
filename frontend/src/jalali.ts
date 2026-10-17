@@ -231,6 +231,42 @@ function jalaliCell(year: number, month: number, day: number, inMonth: boolean):
 }
 
 /** هفته‌ها از شنبه. خانه‌های بیرون ماه هم برای پر شدن ردیف هستند. */
+export function parseIsoDate(iso: string): [number, number, number] {
+  const [y, m, d] = iso.split("-").map(Number);
+  return [y, m, d];
+}
+
+export function isoFromParts(y: number, m: number, d: number): string {
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+export function addDaysIso(iso: string, delta: number): string {
+  const [y, m, d] = parseIsoDate(iso);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  return isoFromParts(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+}
+
+/** هفتۀ شمسی حاوی anchor (شنبه تا جمعه). */
+export function jalaliWeekAround(anchorIso: string): JalaliCell[] {
+  const [gy, gm, gd] = parseIsoDate(anchorIso);
+  const [jy, jm] = gregorianToJalali(gy, gm, gd);
+  const grid = jalaliMonthGrid(jy, jm);
+  for (const week of grid) {
+    const hit = week.find((cell) => cell.iso === anchorIso);
+    if (hit) return week;
+  }
+  const lead = (new Date(Date.UTC(gy, gm - 1, gd)).getUTCDay() + 1) % 7;
+  const cells: JalaliCell[] = [];
+  for (let i = 0; i < 7; i += 1) {
+    const iso = addDaysIso(anchorIso, i - lead);
+    const [y2, m2, d2] = parseIsoDate(iso);
+    const [jY, jM, jD] = gregorianToJalali(y2, m2, d2);
+    cells.push({ year: jY, month: jM, day: jD, iso, inMonth: jM === jm && jY === jy });
+  }
+  return cells;
+}
+
 export function jalaliMonthGrid(year: number, month: number): JalaliCell[][] {
   const length = jalaliMonthLength(year, month);
   const [gy, gm, gd] = jalaliToGregorian(year, month, 1);

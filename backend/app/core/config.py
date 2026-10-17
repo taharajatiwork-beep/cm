@@ -153,6 +153,8 @@ class Settings(BaseSettings):
     perf_mizito_lookback_days: int = 7
     perf_mizito_respect_unread: bool = True
     perf_mizito_history_pages: int = 20
+    mizito_sync_enabled: bool = True
+    mizito_sync_minutes: int = 15
 
     # AI Lab (Grok Bot) — isolated marketing analysis pilot; off by default.
     ai_lab_enabled: bool = False

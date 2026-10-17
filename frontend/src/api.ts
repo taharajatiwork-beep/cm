@@ -619,6 +619,31 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ text, channel: "WEB" }),
       }),
+    postMedia: async (id: string, file: File, messageType = "DOCUMENT") => {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("message_type", messageType);
+      const headers = new Headers();
+      const token = getToken();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+      const res = await fetch(`/api/conversations/${id}/messages/media`, {
+        method: "POST",
+        headers,
+        body,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const payload = await res.json();
+          detail = apiErrorDetail(payload.detail, detail);
+        } catch {
+          /* ignore */
+        }
+        throw new ApiError(res.status, String(detail));
+      }
+      return res.json() as Promise<Record<string, unknown>>;
+    },
   },
   campaigns: {
     list: (q?: string) =>

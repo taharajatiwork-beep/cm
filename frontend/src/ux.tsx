@@ -1,6 +1,6 @@
 /* Provider file intentionally exports hooks and helpers beside its components. */
 /* eslint-disable react/only-export-components */
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Bi, useBi } from "./i18n";
 import { Badge, Button, Card, EmptyState as UiEmptyState } from "./components/ui";
 
@@ -95,35 +95,42 @@ export function StatusLabel({ status }: { status: string }) {
     paid: ["Paid", "پرداخت شده", "ok"],
     planned: ["Planned", "برنامه‌ریزی‌شده", ""],
   };
-  const [en, fa, tone] = map[status] || [status, status, ""];
+  const key = status.trim();
+  const lower = key.toLowerCase();
+  const upper = key.toUpperCase();
+  const [en, fa, tone] = map[key] || map[lower] || map[upper] || [status, status, ""];
   return <Badge tone={tone as "" | "ok" | "warn" | "danger"}>{bi(en, fa)}</Badge>;
 }
 
 const ONBOARD_KEY = "cm-onboard-v2";
 
+function onboardStorageKey(userId?: string | null) {
+  return userId ? `${ONBOARD_KEY}-${userId}` : ONBOARD_KEY;
+}
+
 export function highlightNavPath(to: string) {
   window.dispatchEvent(new CustomEvent("cm-nav-highlight", { detail: to }));
 }
 
-export function shouldShowOnboarding(): boolean {
+export function shouldShowOnboarding(userId?: string | null): boolean {
   try {
-    return localStorage.getItem(ONBOARD_KEY) !== "1";
+    return localStorage.getItem(onboardStorageKey(userId)) !== "1";
   } catch {
     return false;
   }
 }
 
-export function dismissOnboarding() {
+export function dismissOnboarding(userId?: string | null) {
   try {
-    localStorage.setItem(ONBOARD_KEY, "1");
+    localStorage.setItem(onboardStorageKey(userId), "1");
   } catch {
     /* ignore */
   }
 }
 
-export function recallOnboarding() {
+export function recallOnboarding(userId?: string | null) {
   try {
-    localStorage.removeItem(ONBOARD_KEY);
+    localStorage.removeItem(onboardStorageKey(userId));
   } catch {
     /* ignore */
   }
@@ -144,8 +151,10 @@ export function OnboardingBanner({
   steps: Array<{ labelEn: string; labelFa: string; to: string }>;
   onDismiss: () => void;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
+  if (!steps.length) return null;
   return (
-    <Card className="onboard">
+    <Card className={`onboard${collapsed ? " onboard--collapsed" : ""}`}>
       <div className="onboard-cue">
         <strong>
           <Bi en={titleEn} fa={titleFa} />
@@ -173,6 +182,9 @@ export function OnboardingBanner({
         ))}
       </ol>
       <div className="row">
+        <Button type="button" variant="ghost" className="btn-sm" onClick={() => setCollapsed((value) => !value)}>
+          <Bi en={collapsed ? "Expand" : "Minimize"} fa={collapsed ? "باز کردن" : "جمع کردن"} />
+        </Button>
         <Button variant="secondary" onClick={onDismiss}>
           <Bi en="Got it" fa="متوجه شدم" />
         </Button>

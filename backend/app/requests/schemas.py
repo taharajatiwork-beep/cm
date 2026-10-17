@@ -29,6 +29,7 @@ class ProjectIn(BaseModel):
     kind: str = "عمومی"
     team_id: UUID | None = None
     status: str = "new"  # new | in_progress | done
+    mizito_lane: str | None = None
 
 
 class ProjectPatch(BaseModel):
@@ -37,3 +38,5 @@ class ProjectPatch(BaseModel):
     kind: str | None = None
     team_id: UUID | None = None
     status: str | None = None
+    mizito_lane: str | None = None
+    hidden_in_cm: bool | None = None

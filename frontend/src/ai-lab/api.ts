@@ -32,7 +32,23 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
 
 export type AiLabConfig = { enabled: boolean; mode: string; result_source?: string };
 
-export type AiTaskKind = "period_review" | "campaign_review" | "channel_budget" | "sms_copy_review";
+export type AiTaskKind =
+  | "period_review"
+  | "campaign_review"
+  | "channel_budget"
+  | "sms_copy_review"
+  | "projects_health"
+  | "team_load"
+  | "finance_reconcile"
+  | "my_work_review";
+
+export type AiLabWorkspace = {
+  key: string;
+  label_en: string;
+  label_fa: string;
+  kinds: AiTaskKind[];
+  private: boolean;
+};
 export type AiTaskTrigger = "manual" | "scheduled" | "anomaly";
 
 export type AiFollowupMetrics = {
@@ -96,6 +112,7 @@ export type EvalSummary = {
 
 export const aiLabApi = {
   config: () => request<AiLabConfig>("/ai-lab/config"),
+  workspaces: () => request<{ workspaces: AiLabWorkspace[] }>("/ai-lab/workspaces"),
   evaluationSummary: () => request<EvalSummary>("/ai-lab/evaluation-summary"),
   previewSnapshot: (kind: AiTaskKind, input: Record<string, unknown>) =>
     request<Record<string, unknown>>("/ai-lab/snapshot", { method: "POST", body: JSON.stringify({ kind, input }) }),

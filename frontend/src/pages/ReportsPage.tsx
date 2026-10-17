@@ -27,6 +27,7 @@ import { canSeeNavPath } from "../lib/access";
 import { caughtUpTarget } from "../lib/focus";
 import { requestsApi } from "../requests/api";
 import { ConceptHint, StatusLabel } from "../ux";
+import { HBars, GroupedBars } from "../components/charts";
 import { WorkChainLegend, WorkListKindBadge } from "../lib/workContext";
 
 type Kpis = Record<string, number | string>;
@@ -135,6 +136,9 @@ export function ReportsPage() {
         />
       ) : null}
       {work.error ? <ErrorMessage error={work.error instanceof Error ? work.error.message : String(work.error)} /> : null}
+      {work.data && !projectId && !requestId ? (
+        <WorkReportCharts data={work.data} statusLabels={REQUEST_STATUS} />
+      ) : null}
       {work.data ? (
         <div className="kpi-row kpi-row--4">
           <StatCard to="/requests" icon="message" label={<Bi en="Requests (asked)" fa="درخواست (خواسته)" />} value={faNum(Number(work.data.requests ?? 0))} />
@@ -285,6 +289,61 @@ const CAMPAIGN_STATUS: Record<string, string> = {
   draft: "پیش‌نویس",
 };
 
+type TrendPoint = { label: string; requests: number; projects: number; done_tasks: number };
+
+function chartBars(raw: unknown, labels: Record<string, string>): Array<{ label: string; value: number }> {
+  if (!raw || typeof raw !== "object") return [];
+  return Object.entries(raw as Record<string, number>)
+    .filter(([, value]) => Number(value) > 0)
+    .map(([key, value]) => ({ label: labels[key] || key, value: Number(value) }))
+    .sort((a, b) => b.value - a.value);
+}
+
+function WorkReportCharts({
+  data,
+  statusLabels,
+}: {
+  data: Record<string, unknown>;
+  statusLabels: Record<string, string>;
+}) {
+  const bi = useBi();
+  const byStatus = chartBars(data.requests_by_status, statusLabels);
+  const byKind = chartBars(data.projects_by_kind, {});
+  const trendRaw = Array.isArray(data.trend) ? (data.trend as TrendPoint[]) : [];
+  const trend = trendRaw.map((row) => ({
+    label: String(row.label || "").slice(5),
+    values: [Number(row.requests ?? 0), Number(row.projects ?? 0), Number(row.done_tasks ?? 0)],
+  }));
+  if (byStatus.length === 0 && byKind.length === 0 && trend.length === 0) return null;
+  return (
+    <div className="dash-charts">
+      {trend.length > 0 ? (
+        <Card stack>
+          <SectionHeader title={<Bi en="Last six weeks" fa="شش هفتهٔ اخیر" />} />
+          <GroupedBars
+            data={trend}
+            height={180}
+            legend={[bi("Requests", "درخواست"), bi("Projects", "پروژه"), bi("Tasks done", "کار تمام")]}
+            colors={["var(--accent)", "#8b5cf6", "var(--ok)"]}
+          />
+        </Card>
+      ) : null}
+      {byStatus.length > 0 ? (
+        <Card stack>
+          <SectionHeader title={<Bi en="Requests by status" fa="درخواست بر اساس وضعیت" />} />
+          <HBars data={byStatus} color="var(--warn)" format={(v) => faNum(v)} />
+        </Card>
+      ) : null}
+      {byKind.length > 0 ? (
+        <Card stack>
+          <SectionHeader title={<Bi en="Projects by type" fa="پروژه بر اساس نوع" />} />
+          <HBars data={byKind} color="var(--accent)" format={(v) => faNum(v)} />
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
 function CampaignBoard({
   scope,
   projectId,
@@ -339,7 +398,7 @@ function CampaignBoard({
               <Card key={row.id} as="article" className="record-card report-tile" stack>
                 <div className="record-head">
                   <div>
-                    <div className="record-code" dir="ltr">{row.code}</div>
+                    <div className="record-code record-code--subtle" dir="ltr">{row.code}</div>
                     <h3 className="record-title"><Link to={`/perf/campaigns/${row.id}`}>{row.title || row.code}</Link></h3>
                   </div>
                   <Badge tone={row.status === "done" ? "ok" : row.status === "active" ? "warn" : ""}>

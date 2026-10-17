@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, time
 from io import BytesIO
 from uuid import UUID
 
@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -20,11 +20,21 @@ from app.ai.llm import get_llm_client
 from app.api.deps import AuthContext, get_current_user, handle_authz
 from app.core.permissions import AuthorizationError, PermissionCode, require_any_permission, require_permission
 from app.calendar.dates import jalali_month_length, jalali_to_gregorian
-from app.calendar.models import CalendarEntry, CalendarMonth
+from app.calendar.entry_out import entry_out
+from app.calendar.events import (
+    attendee_map_for,
+    expand_entries,
+    gather_marketing_events,
+    gather_mizito_events,
+    gather_work_events,
+    mark_conflicts,
+)
+from app.calendar.models import CalendarEntry, CalendarEntryAttendee, CalendarMonth, CalendarOccasion
+from app.calendar.occasions import occasions_in_range
 from app.db.session import get_db
-from app.models import Task, TaskAssignee, User, WorkItem
-from app.perf.models import PmCampaign, PmPage, PmSmsSend, PmStory
-from app.requests.models import Shoot, WorkProject, WorkRequest
+from app.models import User
+from app.perf.models import PmCampaign
+from app.requests.models import WorkProject
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -76,9 +86,17 @@ def _team_ids_for_calendar(ctx: AuthContext) -> set[UUID]:
 
 
 def _scoped_entries_stmt(org: UUID, start: date, end: date, ctx: AuthContext):
+    in_range = and_(CalendarEntry.on_date >= start, CalendarEntry.on_date <= end)
+    recurring = and_(
+        CalendarEntry.recurrence != "none",
+        CalendarEntry.recurrence_parent_id.is_(None),
+        CalendarEntry.recur_until.is_not(None),
+        CalendarEntry.recur_until >= start,
+        CalendarEntry.on_date <= end,
+    )
     stmt = (
         select(CalendarEntry)
-        .where(CalendarEntry.organization_id == org, CalendarEntry.on_date >= start, CalendarEntry.on_date <= end)
+        .where(CalendarEntry.organization_id == org, or_(in_range, recurring))
         .order_by(CalendarEntry.on_date, CalendarEntry.created_at)
     )
     if _is_calendar_admin(ctx) or ctx.scope.is_org_wide or ctx.scope.level == "organization":
@@ -148,20 +166,39 @@ def _uuid(value: str | None) -> UUID | None:
 
 class EntryIn(BaseModel):
     on_date: str
+    entry_type: str = "content"
+    title: str = ""
+    start_time: str | None = None
+    end_time: str | None = None
+    all_day: bool = True
+    location: str = ""
+    notes: str = ""
     tier: str = "long"
     format: str = ""
     channel: str = ""
-    topic: str
+    topic: str = ""
     cta: str = ""
     kpi: str = ""
     status: str = "todo"
+    production_status: str = "idea"
+    published_url: str = ""
+    recurrence: str = "none"
+    recur_until: str | None = None
     campaign_id: str | None = None
     assignee_id: str | None = None
     project_id: str | None = None
+    attendee_ids: list[str] = Field(default_factory=list)
 
 
 class EntryPatch(BaseModel):
     on_date: str | None = None
+    entry_type: str | None = None
+    title: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    all_day: bool | None = None
+    location: str | None = None
+    notes: str | None = None
     tier: str | None = None
     format: str | None = None
     channel: str | None = None
@@ -169,9 +206,23 @@ class EntryPatch(BaseModel):
     cta: str | None = None
     kpi: str | None = None
     status: str | None = None
+    production_status: str | None = None
+    published_url: str | None = None
+    recurrence: str | None = None
+    recur_until: str | None = None
     campaign_id: str | None = None
     assignee_id: str | None = None
     project_id: str | None = None
+    attendee_ids: list[str] | None = None
+    scope: str | None = None
+    occurrence_date: str | None = None
+
+
+class OccasionIn(BaseModel):
+    on_date: str
+    title: str
+    kind: str = "marketing"
+    is_off: bool = False
 
 
 class BulkIn(BaseModel):
@@ -188,31 +239,82 @@ class MonthIn(BaseModel):
     rules: list[str] = Field(default_factory=list)
 
 
-def _check(tier: str, status: str, topic: str) -> None:
-    if tier not in TIERS:
+ENTRY_TYPES = ("content", "event")
+RECURRENCE = ("none", "daily", "weekly", "monthly")
+PRODUCTION = ("idea", "draft", "design", "review", "approved", "published")
+
+
+def _check(row: CalendarEntry) -> None:
+    if row.entry_type not in ENTRY_TYPES:
+        raise HTTPException(status_code=422, detail="نوع ردیف نامعتبر است")
+    if row.tier not in TIERS:
         raise HTTPException(status_code=422, detail="نوع کمپین نامعتبر است")
-    if status not in STATUSES:
+    if row.status not in STATUSES:
         raise HTTPException(status_code=422, detail="وضعیت نامعتبر است")
-    if not topic.strip():
-        raise HTTPException(status_code=422, detail="موضوع لازم است")
+    if row.recurrence not in RECURRENCE:
+        raise HTTPException(status_code=422, detail="تکرار نامعتبر است")
+    if row.production_status not in PRODUCTION:
+        raise HTTPException(status_code=422, detail="وضعیت تولید نامعتبر است")
+    label = (row.title or row.topic or "").strip()
+    if not label:
+        raise HTTPException(status_code=422, detail="عنوان یا موضوع لازم است")
+    if not row.topic.strip():
+        row.topic = label
 
 
-def _entry_out(row: CalendarEntry, names: dict[UUID, str]) -> dict:
+async def _entry_response(db: AsyncSession, row: CalendarEntry, names: dict[UUID, str]) -> dict:
+    amap = await attendee_map_for(db, [row.id])
+    return entry_out(row, names, amap.get(row.id, []))
+
+
+def _parse_time(value: str | None) -> time | None:
+    if not value:
+        return None
+    try:
+        parts = value.split(":")
+        return time(int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=422, detail="زمان نامعتبر است") from None
+
+
+async def _set_attendees(db: AsyncSession, entry_id: UUID, user_ids: list[UUID]) -> None:
+    existing = list((await db.scalars(select(CalendarEntryAttendee).where(CalendarEntryAttendee.entry_id == entry_id))).all())
+    for row in existing:
+        await db.delete(row)
+    for uid in user_ids:
+        db.add(CalendarEntryAttendee(entry_id=entry_id, user_id=uid))
+
+
+async def _org_user_names(db: AsyncSession, org: UUID) -> dict[UUID, str]:
     return {
-        "id": str(row.id),
-        "on_date": row.on_date.isoformat(),
-        "tier": row.tier,
-        "format": row.format,
-        "channel": row.channel,
-        "topic": row.topic,
-        "cta": row.cta,
-        "kpi": row.kpi,
-        "status": row.status,
-        "campaign_id": str(row.campaign_id) if row.campaign_id else None,
-        "assignee_id": str(row.assignee_id) if row.assignee_id else None,
-        "assignee_name": names.get(row.assignee_id, "") if row.assignee_id else "",
-        "project_id": str(row.project_id) if row.project_id else None,
+        row.id: row.full_name
+        for row in (await db.scalars(select(User).where(User.organization_id == org))).all()
     }
+
+
+def _copy_entry(dst: CalendarEntry, src: CalendarEntry) -> None:
+    for key in (
+        "entry_type",
+        "title",
+        "start_time",
+        "end_time",
+        "all_day",
+        "location",
+        "notes",
+        "tier",
+        "format",
+        "channel",
+        "topic",
+        "cta",
+        "kpi",
+        "status",
+        "production_status",
+        "published_url",
+        "campaign_id",
+        "assignee_id",
+        "project_id",
+    ):
+        setattr(dst, key, getattr(src, key))
 
 
 def _month_out(row: CalendarMonth | None) -> dict | None:
@@ -237,28 +339,14 @@ def _month_out(row: CalendarMonth | None) -> dict | None:
     }
 
 
-def _bounds(start: date, end: date) -> tuple[datetime, datetime]:
-    start_at = datetime.combine(start, time.min, tzinfo=timezone.utc)
-    end_at = datetime.combine(end + timedelta(days=1), time.min, tzinfo=timezone.utc)
-    return start_at, end_at
-
-
-def _day(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return value.date().isoformat()
-
-
-def _status(value) -> str:
-    return value.value if hasattr(value, "value") else str(value or "")
-
-
 @router.get("")
 async def calendar_range(
     date_from: str = Query(alias="from"),
     date_to: str = Query(alias="to"),
     year: int = Query(0),
     month: int = Query(0),
+    layers: str | None = Query(None),
+    mine: bool = Query(False),
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -268,11 +356,30 @@ async def calendar_range(
     if end < start or (end - start).days > 62:
         raise HTTPException(status_code=422, detail="بازه باید حداکثر دو ماه باشد")
     org = ctx.organization_id
+    layer_set = {part.strip() for part in (layers or "").split(",") if part.strip()} or None
     names = {
         row.id: row.full_name
         for row in (await db.scalars(select(User).where(User.organization_id == org))).all()
     }
-    entries = (await db.scalars(_scoped_entries_stmt(org, start, end, ctx))).all()
+    raw_entries = list((await db.scalars(_scoped_entries_stmt(org, start, end, ctx))).all())
+    if mine:
+        raw_entries = [
+            row
+            for row in raw_entries
+            if row.created_by == ctx.user.id or row.assignee_id == ctx.user.id
+        ]
+    entry_ids = [row.id for row in raw_entries]
+    amap = await attendee_map_for(db, entry_ids)
+    expanded = await expand_entries(db, raw_entries, start, end, names, amap)
+    if layer_set and "content" not in layer_set and "event" not in layer_set:
+        expanded = []
+    elif layer_set:
+        expanded = [e for e in expanded if e.get("entry_type") in layer_set or e.get("kind") in layer_set]
+    mark_conflicts(expanded)
+    work_events, load_map = await gather_work_events(db, org, start, end, names, ctx, layer_set, mine)
+    mizito = await gather_mizito_events(db, org, start, end, names, ctx, layer_set, mine)
+    marketing = await gather_marketing_events(db, org, start, end, names, ctx, layer_set, mine)
+    occasions = await occasions_in_range(db, org, start, end) if (not layer_set or "holiday" in layer_set) else []
     header = None
     if 1300 <= year <= 1500 and 1 <= month <= 12:
         header = await db.scalar(
@@ -282,282 +389,52 @@ async def calendar_range(
                 CalendarMonth.jalali_month == month,
             )
         )
+    load = [{"person_id": pid, "date": day, "count": count} for (pid, day), count in load_map.items()]
     return {
-        "entries": [_entry_out(row, names) for row in entries],
+        "entries": expanded,
         "month": _month_out(header),
-        "events": await _events(db, org, start, end, names, ctx),
+        "events": work_events + mizito + marketing,
+        "occasions": occasions,
+        "load": load,
     }
 
 
-async def _events(
-    db: AsyncSession,
-    org: UUID,
-    start: date,
-    end: date,
-    names: dict[UUID, str],
-    ctx: AuthContext,
-) -> list[dict]:
-    events: list[dict] = []
-    start_at, end_at = _bounds(start, end)
-
-    tasks = (
-        await db.scalars(
-            select(Task).where(
-                Task.organization_id == org,
-                Task.deadline.is_not(None),
-                Task.deadline >= start_at,
-                Task.deadline < end_at,
-            )
-        )
-    ).all()
-    task_ids = [row.id for row in tasks]
-    assignee_ids: dict[UUID, list[UUID]] = {}
-    if task_ids:
-        links = (await db.scalars(select(TaskAssignee).where(TaskAssignee.task_id.in_(task_ids)))).all()
-        for link in links:
-            assignee_ids.setdefault(link.task_id, []).append(link.user_id)
-    if _calendar_read_only(ctx):
-        team_ids = _team_ids_for_calendar(ctx)
-        user_id = ctx.user.id
-        project_teams: dict[UUID, UUID | None] = {}
-        project_ids = {row.project_id for row in tasks if row.project_id}
-        if project_ids:
-            for project in (
-                await db.scalars(select(WorkProject).where(WorkProject.id.in_(project_ids)))
-            ).all():
-                project_teams[project.id] = project.team_id
-        visible_tasks = []
-        for row in tasks:
-            if row.owner_id == user_id or user_id in assignee_ids.get(row.id, []):
-                visible_tasks.append(row)
-                continue
-            team_id = project_teams.get(row.project_id) if row.project_id else None
-            if team_id and team_id in team_ids:
-                visible_tasks.append(row)
-        tasks = visible_tasks
-
-    for row in tasks:
-        people = [row.owner_id, *assignee_ids.get(row.id, [])]
-        person_id = people[0] if people else None
-        label = "، ".join(dict.fromkeys(names.get(uid, "") for uid in people if names.get(uid)))
-        events.append(
-            {
-                "kind": "task",
-                "date": _day(row.deadline),
-                "title": row.title,
-                "person": label,
-                "person_id": str(person_id) if person_id else None,
-                "link": f"/projects/{row.project_id}" if row.project_id else "/my-work",
-                "status": _status(row.status),
-                "id": str(row.id),
-            }
-        )
-
-    items = (
-        await db.scalars(
-            select(WorkItem).where(
-                WorkItem.organization_id == org,
-                WorkItem.deadline.is_not(None),
-                WorkItem.deadline >= start_at,
-                WorkItem.deadline < end_at,
-            )
-        )
-    ).all()
-    for row in items:
-        events.append(
-            {
-                "kind": "work",
-                "date": _day(row.deadline),
-                "title": row.title,
-                "person": names.get(row.owner_id, ""),
-                "person_id": str(row.owner_id),
-                "link": "/projects",
-                "status": _status(row.status),
-                "id": str(row.id),
-            }
-        )
-
-    projects = (
-        await db.scalars(
-            select(WorkProject).where(
-                WorkProject.organization_id == org,
-                WorkProject.due_date.is_not(None),
-                WorkProject.due_date >= start,
-                WorkProject.due_date <= end,
-            )
-        )
-    ).all()
-    for row in projects:
-        events.append(
-            {
-                "kind": "project",
-                "date": row.due_date.isoformat() if row.due_date else None,
-                "title": row.title,
-                "person": names.get(row.lead_user_id, "") if row.lead_user_id else "",
-                "person_id": str(row.lead_user_id) if row.lead_user_id else None,
-                "link": f"/projects/{row.id}",
-                "status": row.status,
-                "id": str(row.id),
-            }
-        )
-
-    requests = (
-        await db.scalars(
-            select(WorkRequest).where(
-                WorkRequest.organization_id == org,
-                WorkRequest.due_date.is_not(None),
-                WorkRequest.due_date >= start,
-                WorkRequest.due_date <= end,
-            )
-        )
-    ).all()
-    for row in requests:
-        events.append(
-            {
-                "kind": "request",
-                "date": row.due_date.isoformat() if row.due_date else None,
-                "title": row.title,
-                "person": names.get(row.requested_by, "") if row.requested_by else "",
-                "person_id": str(row.requested_by) if row.requested_by else None,
-                "link": "/requests",
-                "status": row.status,
-                "id": str(row.id),
-            }
-        )
-
-    shoots = (
-        await db.scalars(
-            select(Shoot).where(
-                Shoot.organization_id == org,
-                Shoot.shoot_date.is_not(None),
-                Shoot.shoot_date >= start,
-                Shoot.shoot_date <= end,
-            )
-        )
-    ).all()
-    for row in shoots:
-        events.append(
-            {
-                "kind": "shoot",
-                "date": row.shoot_date.isoformat() if row.shoot_date else None,
-                "title": row.title,
-                "person": row.people,
-                "person_id": None,
-                "link": f"/projects/{row.project_id}",
-                "status": row.status,
-                "id": str(row.id),
-            }
-        )
-
-    campaigns = (
-        await db.scalars(
-            select(PmCampaign).where(
-                PmCampaign.organization_id == org,
-                (
-                    (PmCampaign.starts_on.is_not(None) & (PmCampaign.starts_on >= start) & (PmCampaign.starts_on <= end))
-                    | (PmCampaign.ends_on.is_not(None) & (PmCampaign.ends_on >= start) & (PmCampaign.ends_on <= end))
-                ),
-            )
-        )
-    ).all()
-    for row in campaigns:
-        person = names.get(row.created_by, "") if row.created_by else ""
-        person_id = str(row.created_by) if row.created_by else None
-        if row.starts_on and start <= row.starts_on <= end:
-            events.append(
-                {
-                    "kind": "campaign",
-                    "date": row.starts_on.isoformat(),
-                    "title": f"شروع {row.code} — {row.title}",
-                    "person": person,
-                    "person_id": person_id,
-                    "link": f"/perf/campaigns/{row.id}",
-                    "status": row.status,
-                    "id": f"{row.id}-start",
-                }
-            )
-        if row.ends_on and start <= row.ends_on <= end and row.ends_on != row.starts_on:
-            events.append(
-                {
-                    "kind": "campaign",
-                    "date": row.ends_on.isoformat(),
-                    "title": f"پایان {row.code} — {row.title}",
-                    "person": person,
-                    "person_id": person_id,
-                    "link": f"/perf/campaigns/{row.id}",
-                    "status": row.status,
-                    "id": f"{row.id}-end",
-                }
-            )
-
-    stories = (
-        await db.execute(
-            select(PmStory, PmPage.name)
-            .outerjoin(PmPage, PmStory.page_id == PmPage.id)
-            .where(
-                PmStory.organization_id == org,
-                PmStory.published_on.is_not(None),
-                PmStory.published_on >= start,
-                PmStory.published_on <= end,
-            )
-        )
-    ).all()
-    for row, page_name in stories:
-        events.append(
-            {
-                "kind": "story",
-                "date": row.published_on.isoformat() if row.published_on else None,
-                "title": f"{row.kind} — {page_name}" if page_name else row.kind,
-                "person": names.get(row.created_by, "") if row.created_by else "",
-                "person_id": str(row.created_by) if row.created_by else None,
-                "link": f"/perf/campaigns/{row.campaign_id}" if row.campaign_id else "/perf/social",
-                "status": row.status,
-                "id": str(row.id),
-            }
-        )
-
-    sends = (
-        await db.scalars(
-            select(PmSmsSend).where(
-                PmSmsSend.organization_id == org,
-                PmSmsSend.sent_at.is_not(None),
-                PmSmsSend.sent_at >= start_at,
-                PmSmsSend.sent_at < end_at,
-            )
-        )
-    ).all()
-    for row in sends:
-        text = (row.body or "پیامک").strip().replace("\n", " ")
-        events.append(
-            {
-                "kind": "sms",
-                "date": _day(row.sent_at),
-                "title": text[:80],
-                "person": names.get(row.created_by, "") if row.created_by else "",
-                "person_id": str(row.created_by) if row.created_by else None,
-                "link": "/perf/sms",
-                "status": "sent",
-                "id": str(row.id),
-            }
-        )
-
-    events.sort(key=lambda item: (item["date"] or "", item["kind"], item["title"]))
-    return events
-
-
 def _apply(row: CalendarEntry, body: EntryIn | EntryPatch, partial: bool) -> None:
-    data = body.model_dump(exclude_unset=partial)
+    data = body.model_dump(exclude_unset=partial, exclude={"attendee_ids", "scope", "occurrence_date"})
     if "on_date" in data and data["on_date"] is not None:
         row.on_date = _parse_date(data["on_date"], "تاریخ")
+    if "recur_until" in data:
+        row.recur_until = _parse_date(data["recur_until"], "تا تاریخ") if data["recur_until"] else None
     if "topic" in data and data["topic"] is not None:
         row.topic = data["topic"].strip()
-    for key in ("tier", "format", "channel", "cta", "kpi", "status"):
+    if "title" in data and data["title"] is not None:
+        row.title = data["title"].strip()
+    if "start_time" in data:
+        row.start_time = _parse_time(data["start_time"])
+    if "end_time" in data:
+        row.end_time = _parse_time(data["end_time"])
+    for key in (
+        "entry_type",
+        "tier",
+        "format",
+        "channel",
+        "cta",
+        "kpi",
+        "status",
+        "production_status",
+        "published_url",
+        "recurrence",
+        "location",
+        "notes",
+    ):
         if key in data and data[key] is not None:
             setattr(row, key, data[key].strip() if isinstance(data[key], str) else data[key])
+    if "all_day" in data and data["all_day"] is not None:
+        row.all_day = data["all_day"]
     for key in ("campaign_id", "assignee_id", "project_id"):
         if key in data:
             setattr(row, key, _uuid(data[key]))
-    _check(row.tier, row.status, row.topic)
+    _check(row)
 
 
 @router.post("/entries", status_code=201)
@@ -570,14 +447,13 @@ async def create_entry(
     row = CalendarEntry(organization_id=ctx.organization_id, on_date=date.today(), topic="", created_by=ctx.user.id)
     _apply(row, body, partial=False)
     db.add(row)
+    await db.flush()
+    if body.attendee_ids:
+        await _set_attendees(db, row.id, [_uuid(uid) for uid in body.attendee_ids if uid])
     await db.commit()
     await db.refresh(row)
-    names = {}
-    if row.assignee_id:
-        user = await db.get(User, row.assignee_id)
-        if user:
-            names[user.id] = user.full_name
-    return _entry_out(row, names)
+    names = await _org_user_names(db, ctx.organization_id)
+    return await _entry_response(db, row, names)
 
 
 @router.post("/entries/bulk", status_code=201)
@@ -590,20 +466,31 @@ async def create_entries(
     if len(body.entries) > 40:
         raise HTTPException(status_code=422, detail="حداکثر ۴۰ ردیف در یک بار")
     org = ctx.organization_id
-    existing = set(
-        (
-            await db.scalars(select(CalendarEntry.on_date).where(CalendarEntry.organization_id == org))
-        ).all()
-    )
+    existing_rows = (
+        await db.scalars(select(CalendarEntry).where(CalendarEntry.organization_id == org))
+    ).all()
+    existing_keys = {(row.on_date, (row.topic or row.title or "").strip().lower()) for row in existing_rows}
     added = 0
     for item in body.entries:
         on_date = _parse_date(item.on_date, "تاریخ")
-        if on_date in existing:
+        label = (item.topic or item.title or "").strip().lower()
+        if not label:
             continue
-        row = CalendarEntry(organization_id=org, on_date=on_date, topic="", created_by=ctx.user.id)
+        key = (on_date, label)
+        if key in existing_keys:
+            continue
+        row = CalendarEntry(
+            organization_id=org,
+            on_date=on_date,
+            topic="",
+            production_status=item.production_status or "idea",
+            created_by=ctx.user.id,
+        )
         _apply(row, item, partial=False)
+        if not row.production_status:
+            row.production_status = "idea"
         db.add(row)
-        existing.add(on_date)
+        existing_keys.add(key)
         added += 1
     await db.commit()
     return {"added": added}
@@ -622,15 +509,100 @@ async def patch_entry(
         raise HTTPException(status_code=404, detail="ردیف پیدا نشد")
     if not await _entry_in_scope(db, row, ctx):
         raise HTTPException(status_code=404, detail="ردیف پیدا نشد")
+    org = ctx.organization_id
+    names = await _org_user_names(db, org)
+
+    if body.scope == "all" and row.recurrence_parent_id:
+        parent = await db.get(CalendarEntry, row.recurrence_parent_id)
+        if parent is None or parent.organization_id != org:
+            raise HTTPException(status_code=404, detail="ردیف پیدا نشد")
+        row = parent
+
+    if body.scope == "this" and row.recurrence != "none" and not row.recurrence_parent_id:
+        occ = _parse_date(body.occurrence_date, "تاریخ") if body.occurrence_date else row.on_date
+        exc = CalendarEntry(
+            organization_id=org,
+            on_date=occ,
+            topic="",
+            recurrence="none",
+            recur_until=None,
+            recurrence_parent_id=row.id,
+            created_by=ctx.user.id,
+        )
+        _copy_entry(exc, row)
+        _apply(exc, body, partial=True)
+        db.add(exc)
+        await db.flush()
+        if body.attendee_ids is not None:
+            await _set_attendees(db, exc.id, [_uuid(uid) for uid in body.attendee_ids if uid])
+        await db.commit()
+        await db.refresh(exc)
+        return await _entry_response(db, exc, names)
+
     _apply(row, body, partial=True)
+    if body.attendee_ids is not None:
+        await _set_attendees(db, row.id, [_uuid(uid) for uid in body.attendee_ids if uid])
     await db.commit()
     await db.refresh(row)
-    names = {}
-    if row.assignee_id:
-        user = await db.get(User, row.assignee_id)
-        if user:
-            names[user.id] = user.full_name
-    return _entry_out(row, names)
+    return await _entry_response(db, row, names)
+
+
+@router.get("/occasions")
+async def list_occasions(
+    date_from: str = Query(alias="from"),
+    date_to: str = Query(alias="to"),
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_calendar_read(ctx)
+    start = _parse_date(date_from, "از")
+    end = _parse_date(date_to, "تا")
+    return await occasions_in_range(db, ctx.organization_id, start, end)
+
+
+@router.post("/occasions", status_code=201)
+async def create_occasion(
+    body: OccasionIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not _is_calendar_admin(ctx):
+        raise HTTPException(status_code=403, detail="فقط ادمین سازمان")
+    if body.kind not in ("official", "religious", "marketing"):
+        raise HTTPException(status_code=422, detail="نوع مناسبت نامعتبر است")
+    row = CalendarOccasion(
+        organization_id=ctx.organization_id,
+        on_date=_parse_date(body.on_date, "تاریخ"),
+        title=body.title.strip(),
+        kind=body.kind,
+        is_off=body.is_off,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {
+        "id": str(row.id),
+        "on_date": row.on_date.isoformat(),
+        "title": row.title,
+        "kind": row.kind,
+        "is_off": row.is_off,
+        "global": False,
+    }
+
+
+@router.delete("/occasions/{occasion_id}", status_code=204)
+async def delete_occasion(
+    occasion_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not _is_calendar_admin(ctx):
+        raise HTTPException(status_code=403, detail="فقط ادمین سازمان")
+    row = await db.get(CalendarOccasion, occasion_id)
+    if row is None or row.organization_id != ctx.organization_id:
+        raise HTTPException(status_code=404, detail="مناسبت پیدا نشد")
+    await db.delete(row)
+    await db.commit()
 
 
 @router.delete("/entries/{entry_id}", status_code=204)
@@ -759,6 +731,7 @@ def _from_llm(raw, year: int, month: int, length: int) -> list[dict]:
                 "cta": str(row.get("cta") or "")[:200],
                 "kpi": str(row.get("kpi") or "")[:120],
                 "status": "todo",
+                "production_status": "idea",
             }
         )
     return out
@@ -782,6 +755,7 @@ def _template(campaigns: list[PmCampaign], year: int, month: int, length: int) -
                 "cta": "دریافت شرایط" if camp else "",
                 "kpi": "Lead" if camp else "",
                 "status": "todo",
+                "production_status": "idea",
             }
         )
     return out

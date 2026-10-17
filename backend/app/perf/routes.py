@@ -222,7 +222,13 @@ def _panel_out(row: PmPanel) -> dict:
 
 def _sees_all_campaigns(ctx: AuthContext) -> bool:
     return bool(
-        {PermissionCode.ORG_ADMIN, PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE} & ctx.permissions
+        {
+            PermissionCode.ORG_ADMIN,
+            PermissionCode.REQUEST_TRIAGE,
+            PermissionCode.REQUEST_MANAGE,
+            PermissionCode.PRICE_APPROVE,
+        }
+        & ctx.permissions
     )
 
 

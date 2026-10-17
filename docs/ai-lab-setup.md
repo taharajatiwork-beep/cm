@@ -81,7 +81,28 @@ AI_LAB_ANOMALY_CPL_RATIO=1.5
 
 ## قرارداد JSON
 
-ورودی CM به automation: `task_id`, `kind`, `input`, `snapshot`, `created_at` (+ `callback_url` فقط در حالت callback). `snapshot.history` اختیاری است.
+ورودی CM به automation: `task_id`, `kind`, `workspace`, `input`, `snapshot`, `created_at` (+ `callback_url` فقط در حالت callback). `snapshot.history` اختیاری است.
+
+## فضاهای کار (تب‌ها) و `kind`
+
+یک automation؛ در پرامپت بر اساس `kind` شاخه بزنید. دسترسی در CM است، نه در بات.
+
+| `workspace` | نقش (خلاصه) | `kind`ها |
+|---|---|---|
+| `performance` | پرفورمنس (`performance_marketing` یا `perf.write` بدون `perf.approve`) | `period_review`, `campaign_review`, `channel_budget`, `sms_copy_review` |
+| `manager` | مدیر (`marketing_manager` یا `perf.approve`) | `projects_health`, `team_load` |
+| `finance` | `finance` | `finance_reconcile` |
+| `team` | `marketing` / `designer` / `filmmaker` | `my_work_review` (خصوصی: هر کاربر فقط تحلیل‌های خودش) |
+
+`GET /ai-lab/workspaces` — تب‌های مجاز کاربر.
+
+### outline پرامپت (خلاصه)
+
+- **period_review / campaign_review / channel_budget / sms_copy_review:** همان تحلیل CPL، کانال، کمپین، متن SMS از `snapshot` perf.
+- **projects_health:** کارت‌های باز میزیتو؛ گیرکرده، عقب‌افتاده، توزیع برد/لاین؛ پیشنهاد اولویت‌بندی.
+- **team_load:** بار ناشناس مسئول‌ها (A1, A2) و گلوگاه برد؛ کارهای باز CM.
+- **finance_reconcile:** ثبت‌نشده در Cost Tracking، پرداخت‌شده بدون ردیف پنل، ناهماهنگی کد — بدون IBAN/شرح حساس.
+- **my_work_review:** کارها و پروژه‌های visible کاربر؛ پیشنهاد تمرکز هفتگی.
 
 خروجی automation (داخل `body` یا callback): `task_id`, `status` (`done`|`failed`), `result` با `summary`, `findings[]` (هر کدام `evidence` اجباری), `recommendations[]` با `id` یکتا.
 

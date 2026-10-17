@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any
@@ -17,13 +18,15 @@ from app.perf.services.common import PerfError, iso, now
 
 _CODE = re.compile(r"\b([A-Z]{1,3}\d{1,3}(?:-\d+)?)\b", re.IGNORECASE)
 _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
-_PROJECTS = ("پرفورمنس", "کمپین", "مالی")
+_PROJECTS = ("پرفورمنس", "کمپین", "مالی")  # legacy substring fallback
 _MAX_CARDS = 2000
 _CHECKLIST_ITEMS = 30
 _CHECKLIST_TITLE = 120
 _WORKSPACE = re.compile(r"^[A-Za-z0-9]{1,64}$")
 _PAGE_SIZE = 25
 _MAX_PAGES = 40
+_SYNC_MAX_PAGES = 200
+_SYNC_MAX_CARDS = 8000
 
 # وضعیت استاندارد هر کارت از روی اسم بردش. ترتیب مهم است: اولین تطبیق برنده است.
 # تطبیق روی متن نرمال‌شده (ی/ک فارسی، بدون نیم‌فاصله، حروف کوچک) و از ابتدای کلمه است،
@@ -108,6 +111,16 @@ def is_active(status: str) -> bool:
 
 
 def wanted_project(title: str) -> bool:
+    from app.requests.mizito_lanes import wanted_marketing_mizito_project
+
+    if wanted_marketing_mizito_project(title):
+        return True
+    text = normalize(title)
+    return any(normalize(name) in text for name in _PROJECTS)
+
+
+def perf_project(title: str) -> bool:
+    """فقط سه پروژهٔ قدیمی پرفورمنس/کمپین/مالی — برای snapshot صفحهٔ هزینه و تریاژ."""
     text = normalize(title)
     return any(normalize(name) in text for name in _PROJECTS)
 
@@ -227,6 +240,7 @@ def _card(task: dict, project_id: str, project: dict, boards: dict[str, tuple[st
     checklist = [item for item in task.get("checklist") or [] if isinstance(item, dict)]
     total = len(checklist)
     done = sum(1 for item in checklist if item.get("checked"))
+    weight = _number(task.get("kanban_weight")) or 0.0
     progress = _number(task.get("progress"))
     if progress is None:
         progress = done * 100 / total if total else 0
@@ -239,6 +253,7 @@ def _card(task: dict, project_id: str, project: dict, boards: dict[str, tuple[st
         "board_id": board_id,
         "board": board,
         "board_position": position,
+        "weight": weight,
         "title": title,
         "code": code,
         "code_source": code_source,
@@ -253,10 +268,7 @@ def _card(task: dict, project_id: str, project: dict, boards: dict[str, tuple[st
         "deadline": _date(task.get("deadline")),
         "checklist_done": done,
         "checklist_total": total,
-        "checklist_items": [
-            {"title": str(item.get("title") or "")[:_CHECKLIST_TITLE], "checked": bool(item.get("checked"))}
-            for item in checklist[:_CHECKLIST_ITEMS]
-        ],
+        "checklist_items": [_checklist_item(item, index) for index, item in enumerate(checklist)],
         "progress": max(0, min(100, round(progress))),
         "attachments": len(attachments) if isinstance(attachments, list) else 0,
         "has_comments": bool(task.get("has_comments")),
@@ -264,7 +276,26 @@ def _card(task: dict, project_id: str, project: dict, boards: dict[str, tuple[st
     }
 
 
-def read_cards(projects_payload: Any, tasks_payload: Any) -> dict:
+def _checklist_item(item: dict, index: int) -> dict:
+    raw = _id(item)
+    title = str(item.get("title") or "")
+    if not raw:
+        digest = hashlib.sha1(title.encode("utf-8")).hexdigest()[:10]
+        raw = f"{index}:{digest}"
+    return {
+        "id": raw[:64],
+        "title": title[:_CHECKLIST_TITLE],
+        "checked": bool(item.get("checked")),
+    }
+
+
+def read_cards(
+    projects_payload: Any,
+    tasks_payload: Any,
+    *,
+    checklist_limit: int | None = _CHECKLIST_ITEMS,
+    max_cards: int = _MAX_CARDS,
+) -> dict:
     """همهٔ کارت‌های سه پروژهٔ مارکتینگ، هر کدام با وضعیت استاندارد برد."""
     projects = [row for row in _projects(projects_payload) if wanted_project(str(row.get("title") or ""))]
     by_id = {_id(row): row for row in projects}
@@ -279,16 +310,45 @@ def read_cards(projects_payload: Any, tasks_payload: Any) -> dict:
             continue
         seen.add(task_id)
         card = _card(task, project_id, project, boards.get(project_id, {}))
-        weight = _number(task.get("kanban_weight")) or 0.0
+        weight = card.get("weight") or 0.0
         position = card["board_position"] if card["board_position"] is not None else 999
         ranked.append(((not card["active"], card["project"], position, weight, card["title"]), card))
     ranked.sort(key=lambda pair: pair[0])
     cards = [card for _, card in ranked]
+    if checklist_limit is not None:
+        for card in cards:
+            items = card.get("checklist_items") or []
+            if len(items) > checklist_limit:
+                card["checklist_items"] = items[:checklist_limit]
+    if len(cards) > max_cards:
+        cards = cards[:max_cards]
+    from app.requests.mizito_lanes import lane_slug_for_mizito_project_title
+
+    lane_boards: list[dict[str, Any]] = []
+    for row in projects:
+        slug = lane_slug_for_mizito_project_title(str(row.get("title") or ""))
+        if not slug:
+            continue
+        pid = _id(row)
+        for board_id, (board_title, position) in boards.get(pid, {}).items():
+            if not board_id:
+                continue
+            lane_boards.append(
+                {
+                    "lane_slug": slug,
+                    "board_id": board_id,
+                    "title": board_title,
+                    "position": position if position is not None else 999,
+                }
+            )
+    lane_boards.sort(key=lambda item: (item["lane_slug"], item["position"], item["title"]))
     return {
         "projects": [{"title": str(row.get("title") or ""), "id": _id(row)} for row in projects],
-        "cards": cards[:_MAX_CARDS],
+        "lane_boards": lane_boards,
+        "cards": cards,
         "open_count": sum(1 for card in cards if card["active"]),
         "total_count": len(cards),
+        "truncated": len(ranked) > max_cards,
     }
 
 
@@ -332,8 +392,15 @@ async def mizito_post(client: httpx.AsyncClient, base: str, path: str, headers: 
     return _unwrap(response.json())
 
 
-async def _project_tasks(client: httpx.AsyncClient, base: str, headers: dict, project_id: str) -> list[dict]:
-    """کارت‌های باز و تکمیل‌شدهٔ یک پروژه، همان خواندنی که خود وب‌اپ میزیتو می‌زند (فقط خواندن)."""
+async def _project_tasks(
+    client: httpx.AsyncClient,
+    base: str,
+    headers: dict,
+    project_id: str,
+    *,
+    max_pages: int = _MAX_PAGES,
+) -> tuple[list[dict], bool]:
+    """کارت‌های باز و تکمیل‌شدهٔ یک پروژه. اگر به سقف صفحه برسد، truncated=True."""
     path = "tasks/upcoming"
     rows = _tasks(
         await mizito_post(
@@ -342,7 +409,8 @@ async def _project_tasks(client: httpx.AsyncClient, base: str, headers: dict, pr
     )
     seen = {_id(row) for row in rows}
     loaded = 0
-    for _ in range(_MAX_PAGES):
+    truncated = False
+    for _ in range(max_pages):
         body = {"project_id": project_id, "from": loaded, "filter": {"done_status": True, "completed": True}}
         page = _tasks(await mizito_post(client, base, path, headers, body))
         loaded += len(page)
@@ -351,31 +419,110 @@ async def _project_tasks(client: httpx.AsyncClient, base: str, headers: dict, pr
         rows.extend(fresh)
         if len(page) < _PAGE_SIZE or not fresh:
             break
+    else:
+        truncated = True
     for row in rows:
         row.setdefault("project", project_id)
-    return rows
+    return rows, truncated
+
+
+def for_perf(parsed: dict) -> dict:
+    """snapshot پرفورمنس فقط پروژه‌هایی که اسمشان پرفورمنس/کمپین/مالی است."""
+    projects = [row for row in parsed.get("projects") or [] if perf_project(str(row.get("title") or ""))]
+    ids = {str(row.get("id") or "") for row in projects}
+    cards = []
+    for card in parsed.get("cards") or []:
+        if str(card.get("project_id") or "") not in ids:
+            continue
+        trimmed = dict(card)
+        items = list(trimmed.get("checklist_items") or [])
+        trimmed["checklist_items"] = items[:_CHECKLIST_ITEMS]
+        cards.append(trimmed)
+    boards = [
+        row
+        for row in parsed.get("lane_boards") or []
+        if row.get("lane_slug") in {"finance_marketing", "performance", "campaigns"}
+    ]
+    out = dict(parsed)
+    out["projects"] = projects
+    out["cards"] = cards
+    out["lane_boards"] = boards
+    out["open_count"] = sum(1 for card in cards if card.get("active"))
+    out["total_count"] = len(cards)
+    return out
+
+
+async def _read_projects(
+    token: str,
+    *,
+    max_pages: int,
+    checklist_limit: int | None,
+    max_cards: int,
+    timeout: float,
+) -> dict:
+    settings = get_settings()
+    token = token.strip()
+    if not token:
+        return _offline("توکن میزیتو تنظیم نشده است")
+    base = settings.perf_mizito_base.rstrip("/")
+    headers = {"x-token": token, "Content-Type": "application/json"}
+    truncated_projects: list[str] = []
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            projects = await mizito_post(client, base, "projects/getList", headers, {})
+            tasks: list[dict] = []
+            for project in _projects(projects):
+                if not wanted_project(str(project.get("title") or "")) or not _id(project):
+                    continue
+                rows, hit_cap = await _project_tasks(
+                    client, base, headers, _id(project), max_pages=max_pages
+                )
+                tasks.extend(rows)
+                if hit_cap:
+                    truncated_projects.append(str(project.get("title") or _id(project)))
+        parsed = read_cards(projects, tasks, checklist_limit=checklist_limit, max_cards=max_cards)
+    except httpx.HTTPStatusError as exc:
+        return _offline(mizito_http_reason(exc.response.status_code, _safe_json(exc.response)))
+    except httpx.HTTPError as exc:
+        return _offline(f"میزیتو خوانده نشد: {exc}")
+    except (PerfError, ValueError) as exc:
+        return _offline(str(exc))
+    parsed["truncated_projects"] = truncated_projects
+    parsed["truncated"] = bool(truncated_projects) or bool(parsed.get("truncated"))
+    return {"connected": True, "reason": "", **parsed}
+
+
+def _safe_json(response: httpx.Response) -> object:
+    try:
+        return response.json()
+    except ValueError:
+        return {}
+
+
+async def mizito_full_read(token: str) -> dict:
+    """شش پروژهٔ مارکتینگ، بردها، و همهٔ کارت‌ها (چک‌لیست کامل) برای همگام‌سازی کار."""
+    return await _read_projects(
+        token,
+        max_pages=_SYNC_MAX_PAGES,
+        checklist_limit=None,
+        max_cards=_SYNC_MAX_CARDS,
+        timeout=180,
+    )
 
 
 async def mizito_snapshot(token: str | None = None) -> dict:
     settings = get_settings()
     token = settings.perf_mizito_token.strip() if token is None else token.strip()
-    if not token:
-        return _offline("توکن میزیتو تنظیم نشده است")
-    base = settings.perf_mizito_base.rstrip("/")
-    headers = {"x-token": token, "Content-Type": "application/json"}
-    try:
-        async with httpx.AsyncClient(timeout=45) as client:
-            projects = await mizito_post(client, base, "projects/getList", headers, {})
-            tasks: list[dict] = []
-            for project in _projects(projects):
-                if wanted_project(str(project.get("title") or "")) and _id(project):
-                    tasks.extend(await _project_tasks(client, base, headers, _id(project)))
-        parsed = read_cards(projects, tasks)
-    except httpx.HTTPError as exc:
-        return _offline(f"میزیتو خوانده نشد: {exc}")
-    except (PerfError, ValueError) as exc:
-        return _offline(str(exc))
-    return {"connected": True, "reason": "", **parsed}
+    raw = await _read_projects(
+        token,
+        max_pages=_MAX_PAGES,
+        checklist_limit=_CHECKLIST_ITEMS,
+        max_cards=_MAX_CARDS,
+        timeout=45,
+    )
+    if not raw.get("connected"):
+        return raw
+    return for_perf(raw)
 
 
 _EMPTY = {**_offline("هنوز از میزیتو خوانده نشده است"), "read_at": None}

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Donut, LineTrend } from "../components/charts";
-import { Badge, Button, Card, EmptyState, ErrorMessage, ForbiddenState, List, ListItem, LoadingState, MoreMenu, Muted, PageHeader, SectionHeader, Select, StatCard, Table, TitleCode, type Tone } from "../components/ui";
+import { Badge, Button, Card, EmptyState, ForbiddenState, List, ListItem, LoadingState, MoreMenu, Muted, PageHeader, SectionHeader, Select, StatCard, Table, TitleCode, type Tone } from "../components/ui";
 import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { useToast } from "../components/ui/Toast";
@@ -32,8 +32,26 @@ export function CampaignPage() {
     onError: (error: Error) => toast(error.message),
   });
   if (row.isLoading) return <LoadingState />;
-  if (row.isError && isForbiddenError(row.error)) return <ForbiddenState />;
-  if (row.error || !row.data) return <ErrorMessage error={row.error instanceof Error ? row.error.message : "کمپین پیدا نشد"} />;
+  if (row.isError && isForbiddenError(row.error)) {
+    return (
+      <ForbiddenState
+        titleEn="You can’t open this campaign"
+        titleFa="به این کمپین دسترسی ندارید"
+        bodyEn="Ask marketing or your manager if you need the numbers."
+        bodyFa="اگر به عددها نیاز دارید از سرپرست مارکتینگ یا مدیر بخواهید."
+      />
+    );
+  }
+  if (row.error || !row.data) {
+    return (
+      <ForbiddenState
+        titleEn="Campaign not found"
+        titleFa="کمپین پیدا نشد"
+        bodyEn="It may have been removed or isn’t visible for your role."
+        bodyFa="شاید حذف شده یا برای نقش شما قابل مشاهده نیست."
+      />
+    );
+  }
   const data = row.data;
   const report: Report = {
     trend: data.report?.trend ?? [],

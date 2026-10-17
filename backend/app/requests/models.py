@@ -3,9 +3,12 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -69,9 +72,85 @@ class WorkProject(Base):
     lead_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     requester_acceptance: Mapped[str | None] = mapped_column(String(20))
     requester_acceptance_note: Mapped[str | None] = mapped_column(Text)
+    mizito_lane: Mapped[str | None] = mapped_column(String(40))
+    mizito_card_id: Mapped[str | None] = mapped_column(String(64))
+    mizito_project_id: Mapped[str | None] = mapped_column(String(64))
+    mizito_board: Mapped[str | None] = mapped_column(String(200))
+    mizito_board_id: Mapped[str | None] = mapped_column(String(64))
+    mizito_board_position: Mapped[int | None] = mapped_column()
+    mizito_status: Mapped[str | None] = mapped_column(String(40))
+    mizito_hash: Mapped[str | None] = mapped_column(String(64))
+    mizito_weight: Mapped[float | None] = mapped_column(Float)
+    mizito_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mizito_modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mizito_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mizito_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mizito_code: Mapped[str | None] = mapped_column(String(40))
+    mizito_progress: Mapped[int | None] = mapped_column(Integer)
+    mizito_checklist_done: Mapped[int | None] = mapped_column(Integer)
+    mizito_checklist_total: Mapped[int | None] = mapped_column(Integer)
+    mizito_attachments: Mapped[int | None] = mapped_column(Integer)
+    mizito_has_comments: Mapped[bool | None] = mapped_column(Boolean)
+    mizito_assignee_ids: Mapped[str | None] = mapped_column(Text)
+    mizito_missing_runs: Mapped[int] = mapped_column(Integer, default=0)
+    mizito_removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    hidden_in_cm: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkMizitoLaneBoard(Base):
+    """ستون‌های کانبان یک دستهٔ مارکتینگ (بردهای پروژهٔ میزیتو)."""
+
+    __tablename__ = "work_mizito_lane_board"
+    __table_args__ = (UniqueConstraint("organization_id", "lane_slug", "board_id", name="uq_work_mizito_lane_board"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    lane_slug: Mapped[str] = mapped_column(String(40), nullable=False)
+    board_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    position: Mapped[int] = mapped_column(default=0)
+    removed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class WorkMizitoChange(Base):
+    """تغییر میزیتو: اعمال‌شده یا منتظر تأیید (حذف/خروج از پروژه‌های مارکتینگ)."""
+
+    __tablename__ = "work_mizito_change"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    field: Mapped[str] = mapped_column(String(40), default="")
+    old_value: Mapped[str] = mapped_column(Text, default="")
+    new_value: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="applied")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkMizitoSyncRun(Base):
+    """یک اجرای همگام‌سازی میزیتو برای یک سازمان."""
+
+    __tablename__ = "work_mizito_sync_run"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_count: Mapped[int] = mapped_column(Integer, default=0)
+    unchanged_count: Mapped[int] = mapped_column(Integer, default=0)
+    pending_count: Mapped[int] = mapped_column(Integer, default=0)
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False)
+    truncated_projects: Mapped[str] = mapped_column(Text, default="")
 
 
 class WorkProjectMember(Base):

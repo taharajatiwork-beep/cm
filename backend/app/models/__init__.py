@@ -60,7 +60,12 @@ from app.models.inventory import (  # noqa: F401 — register metadata
     VehiclePrice,
 )
 from app.models.pricing import PostSlot  # noqa: F401
-from app.calendar.models import CalendarEntry, CalendarMonth  # noqa: F401
+from app.calendar.models import (  # noqa: F401
+    CalendarEntry,
+    CalendarEntryAttendee,
+    CalendarMonth,
+    CalendarOccasion,
+)
 from app.requests import models as _request_models  # noqa: F401
 from app.ai_lab.models import AiTask  # noqa: F401
 from app.perf.models import (  # noqa: F401
@@ -441,6 +446,7 @@ class Task(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    external_ref: Mapped[str | None] = mapped_column(String(80), index=True)
 
     work_item: Mapped[WorkItem | None] = relationship(back_populates="tasks")
     assignees: Mapped[list[TaskAssignee]] = relationship(back_populates="task")

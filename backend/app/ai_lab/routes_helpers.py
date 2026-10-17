@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai_lab.access import allowed_kinds, is_org_admin
 from app.ai_lab.models import AiRecFollowup, AiTask
+from app.ai_lab.workspaces import is_private_kind
+from app.api.deps import AuthContext
 
 
 async def followups_for_task(db: AsyncSession, task_id: UUID) -> dict[str, dict]:
@@ -66,3 +69,21 @@ def task_out(row: AiTask, followups: dict[str, dict] | None = None) -> dict:
         "completed_at": row.completed_at.isoformat() if row.completed_at else None,
         "last_polled_at": row.last_polled_at.isoformat() if row.last_polled_at else None,
     }
+
+
+def apply_task_visibility_filter(q, auth: AuthContext):
+    kinds = allowed_kinds(auth)
+    if not kinds:
+        return q.where(AiTask.id.is_(None))
+    if is_org_admin(auth):
+        return q.where(AiTask.kind.in_(kinds))
+    public = {k for k in kinds if not is_private_kind(k)}
+    private = {k for k in kinds if is_private_kind(k)}
+    clauses = []
+    if public:
+        clauses.append(AiTask.kind.in_(public))
+    if private:
+        clauses.append(and_(AiTask.kind.in_(private), AiTask.created_by == auth.user.id))
+    if not clauses:
+        return q.where(AiTask.id.is_(None))
+    return q.where(or_(*clauses))

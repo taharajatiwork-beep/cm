@@ -51,11 +51,12 @@ describe("access", () => {
     expect(canSeeNavPath("/perf", user, h)).toBe(false);
   });
 
-  it("ai-lab excludes finance with perf.read only", () => {
+  it("ai-lab includes finance and marketing members", () => {
     const finance = { roleCode: "finance", permissions: ["perf.read", "price.approve"] };
     const h = has(finance.permissions);
-    expect(canSeeAiLab(finance, h)).toBe(false);
-    expect(canSeeNavPath("/ai-lab", finance, h)).toBe(false);
+    expect(canSeeAiLab(finance, h)).toBe(true);
+    const designer = { roleCode: "designer", permissions: ["task.read"] };
+    expect(canSeeAiLab(designer, has(designer.permissions))).toBe(true);
     const nadia = { roleCode: "performance_marketing", permissions: ["perf.read", "perf.write"] };
     const hn = has(nadia.permissions);
     expect(canSeeAiLab(nadia, hn)).toBe(true);

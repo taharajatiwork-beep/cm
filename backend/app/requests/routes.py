@@ -2,8 +2,8 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import func, or_, select
 from app.models import Task
 from app.models.enums import TaskStatus
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import AuthContext, get_current_user, handle_authz
 from app.core.permissions import AuthorizationError, PermissionCode, require_any_permission, require_permission
 from app.db.session import get_db
-from app.models import Team, User
+from app.models import Conversation, Team, User
 from datetime import date, datetime
 from app.requests.models import WorkProject, WorkRequest
+from app.requests.project_access import apply_project_visibility, base_visible_projects
 from app.requests.schemas import ProjectIn, ProjectPatch, RequestIn, RequestPatch
 
 router = APIRouter(prefix="/requests", tags=["requests"])
@@ -77,6 +78,26 @@ def _project_out(
         "planned_budget": row.planned_budget,
         "lead_user_id": str(row.lead_user_id) if row.lead_user_id else None,
         "requester_acceptance": row.requester_acceptance,
+        "mizito_lane": row.mizito_lane,
+        "mizito_card_id": row.mizito_card_id,
+        "mizito_board": row.mizito_board,
+        "mizito_board_id": row.mizito_board_id,
+        "mizito_board_position": row.mizito_board_position,
+        "mizito_status": row.mizito_status,
+        "mizito_code": row.mizito_code,
+        "mizito_weight": row.mizito_weight,
+        "mizito_created_at": iso(row.mizito_created_at),
+        "mizito_modified_at": iso(row.mizito_modified_at),
+        "mizito_completed_at": iso(row.mizito_completed_at),
+        "mizito_deadline": iso(row.mizito_deadline),
+        "mizito_progress": row.mizito_progress,
+        "mizito_checklist_done": row.mizito_checklist_done,
+        "mizito_checklist_total": row.mizito_checklist_total,
+        "mizito_attachments": row.mizito_attachments,
+        "mizito_has_comments": row.mizito_has_comments,
+        "mizito_removed_at": iso(row.mizito_removed_at),
+        "hidden_in_cm": bool(row.hidden_in_cm),
+        "source": "mizito" if row.mizito_card_id else "cm",
         "created_at": iso(row.created_at),
         "updated_at": iso(row.updated_at),
     }
@@ -440,6 +461,7 @@ async def create_standalone_project(
         team_id=body.team_id or (req.team_id if req else ctx.user.team_id),
         status=body.status,
         due_date=req.due_date if req else None,
+        mizito_lane=(body.mizito_lane or "").strip() or None,
         created_by=ctx.user.id,
     )
     db.add(row)
@@ -459,10 +481,228 @@ async def create_standalone_project(
     )
 
 
+@router.post("/mizito/sync-work")
+async def sync_mizito_work(
+    purge_manual: bool = Query(default=False),
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """پروژه‌های CM را از کارت‌های میزیتو به‌روز می‌کند. توکن فقط از اتصالات (DB) — همان ذخیرهٔ پنل."""
+    _need(ctx, PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE, PermissionCode.ORG_ADMIN)
+    from app.perf.services.connections import mizito_token_for
+    from app.requests.mizito_sync import run_org_mizito_sync, sync_mizito_cards_to_projects
+    from app.worker import acquire_job, release_job
+
+    token = (await mizito_token_for(db, ctx.organization_id)).strip()
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="توکن میزیتو ذخیره نشده. در اتصالات → میزیتو، x-token را یک بار ذخیره کنید.",
+        )
+    if not await acquire_job("mizito_sync", ttl_seconds=900):
+        raise HTTPException(status_code=409, detail="همگام‌سازی میزیتو در حال اجراست")
+    try:
+        if purge_manual:
+            result = await sync_mizito_cards_to_projects(
+                db, ctx.organization_id, token=token, purge_manual=True
+            )
+        else:
+            result = await run_org_mizito_sync(db, ctx.organization_id, token)
+    finally:
+        await release_job("mizito_sync")
+    if not result.get("ok"):
+        raise HTTPException(status_code=502, detail=str(result.get("reason") or "میزیتو وصل نشد"))
+    return result
+
+
+@router.get("/mizito/sync-status")
+async def mizito_sync_status(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _need(
+        ctx,
+        PermissionCode.REQUEST_CREATE,
+        PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
+        PermissionCode.TASK_READ,
+        PermissionCode.ORG_ADMIN,
+    )
+    from app.requests.mizito_sync import sync_status
+
+    return await sync_status(db, ctx.organization_id)
+
+
+@router.get("/mizito/changes")
+async def mizito_changes(
+    status: str = "",
+    project_id: UUID | None = None,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _need(
+        ctx,
+        PermissionCode.REQUEST_CREATE,
+        PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
+        PermissionCode.TASK_READ,
+        PermissionCode.ORG_ADMIN,
+    )
+    from app.requests.models import WorkMizitoChange
+
+    query = select(WorkMizitoChange).where(WorkMizitoChange.organization_id == ctx.organization_id)
+    if status:
+        query = query.where(WorkMizitoChange.status == status)
+    if project_id:
+        query = query.where(WorkMizitoChange.project_id == project_id)
+    rows = (await db.scalars(query.order_by(WorkMizitoChange.created_at.desc()).limit(100))).all()
+    return [
+        {
+            "id": str(row.id),
+            "project_id": str(row.project_id) if row.project_id else None,
+            "kind": row.kind,
+            "field": row.field,
+            "old_value": row.old_value,
+            "new_value": row.new_value,
+            "status": row.status,
+            "created_at": iso(row.created_at),
+        }
+        for row in rows
+    ]
+
+
+@router.post("/mizito/changes/{change_id}/approve")
+async def approve_mizito_change(
+    change_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _decide_mizito_change(db, ctx, change_id, approve=True)
+
+
+@router.post("/mizito/changes/{change_id}/ignore")
+async def ignore_mizito_change(
+    change_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _decide_mizito_change(db, ctx, change_id, approve=False)
+
+
+async def _decide_mizito_change(db: AsyncSession, ctx: AuthContext, change_id: UUID, *, approve: bool) -> dict:
+    _need(ctx, PermissionCode.REQUEST_TRIAGE, PermissionCode.REQUEST_MANAGE, PermissionCode.ORG_ADMIN)
+    from app.requests.mizito_sync import decide_change
+
+    try:
+        return await decide_change(db, ctx.organization_id, change_id, ctx.user.id, approve)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/mizito-kanban/column")
+async def mizito_kanban_column_route(
+    lane: str,
+    board_id: str,
+    source: str = "",
+    q: str = "",
+    hide_done: bool = False,
+    offset: int = 0,
+    limit: int = Query(20, ge=1, le=100),
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _need(
+        ctx,
+        PermissionCode.REQUEST_CREATE,
+        PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
+        PermissionCode.TASK_READ,
+        PermissionCode.ORG_ADMIN,
+    )
+    from app.requests.mizito_kanban import mizito_kanban_column
+
+    return await mizito_kanban_column(
+        db,
+        ctx,
+        lane.strip(),
+        board_id.strip(),
+        source=source.strip(),
+        q=q.strip(),
+        hide_done=hide_done,
+        offset=offset,
+        limit=limit,
+    )
+
+
+@router.get("/mizito-kanban")
+async def mizito_kanban(
+    lane: str,
+    source: str = "",
+    q: str = "",
+    hide_done: bool = False,
+    include_archive: bool = False,
+    per_column: int = Query(20, ge=1, le=50),
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """کانبان یک دسته: ستون‌ها = بردهای میزیتو، کارت‌ها = پروژه‌های CM (هر کارت میزیتو)."""
+    _need(
+        ctx,
+        PermissionCode.REQUEST_CREATE,
+        PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
+        PermissionCode.TASK_READ,
+        PermissionCode.ORG_ADMIN,
+    )
+    from app.requests.mizito_kanban import mizito_lane_kanban
+
+    return await mizito_lane_kanban(
+        db,
+        ctx,
+        lane.strip(),
+        source=source.strip(),
+        q=q.strip(),
+        hide_done=hide_done,
+        include_archive=include_archive,
+        per_column=per_column,
+    )
+
+
+@router.get("/mizito-lanes")
+async def list_mizito_lanes(
+    counts: bool = False,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """دسته‌بندی مارکتینگ (پروژه‌های میزیتو) برای فیلتر پروژه‌ها."""
+    _need(
+        ctx,
+        PermissionCode.REQUEST_CREATE,
+        PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
+        PermissionCode.TASK_READ,
+        PermissionCode.ORG_ADMIN,
+    )
+    from app.requests.mizito_lanes import mizito_lane_labels
+
+    labels = mizito_lane_labels()
+    if not counts:
+        return labels
+    out = []
+    for lane in labels:
+        query = base_visible_projects(ctx.organization_id).where(WorkProject.mizito_lane == lane["slug"])
+        query = await apply_project_visibility(query, db, ctx)
+        total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
+        out.append({**lane, "project_count": int(total)})
+    return out
+
+
 @router.get("/projects")
 async def list_projects(
     request_id: UUID | None = None,
     status: str = "",
+    mizito_lane: str = "",
+    source: str = "",
     ctx: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -476,29 +716,18 @@ async def list_projects(
         PermissionCode.TASK_READ,
         PermissionCode.ORG_ADMIN,
     )
-    query = select(WorkProject).where(WorkProject.organization_id == ctx.organization_id)
+    query = base_visible_projects(ctx.organization_id)
     if request_id:
         query = query.where(WorkProject.request_id == request_id)
     if status:
         query = query.where(WorkProject.status == status)
-    if _is_triage(ctx):
-        pass
-    elif PermissionCode.REQUEST_CREATE in ctx.permissions and PermissionCode.TASK_READ not in ctx.permissions:
-        mine = select(WorkRequest.id).where(
-            WorkRequest.organization_id == ctx.organization_id,
-            WorkRequest.requested_by == ctx.user.id,
-        )
-        query = query.where(WorkProject.request_id.in_(mine))
-    else:
-        visible = await _member_project_ids(db, ctx)
-        if visible:
-            query = query.where(WorkProject.id.in_(visible))
-        else:
-            query = query.where(WorkProject.id.is_(None))
-    if _is_triage(ctx) and ctx.user.team_id and PermissionCode.ORG_ADMIN not in ctx.permissions:
-        tree = await _tree_ids(db, ctx)
-        if tree is not None:
-            query = query.where(WorkProject.team_id.in_(tree))
+    if mizito_lane.strip():
+        query = query.where(WorkProject.mizito_lane == mizito_lane.strip())
+    if source == "mizito":
+        query = query.where(WorkProject.mizito_card_id.is_not(None))
+    elif source == "cm":
+        query = query.where(WorkProject.mizito_card_id.is_(None))
+    query = await apply_project_visibility(query, db, ctx)
     rows = (await db.scalars(query.order_by(WorkProject.created_at.desc()))).all()
     task_counts = await _task_counts_for_projects(db, ctx.organization_id, {row.id for row in rows})
     req_meta: dict[UUID, tuple[str, str]] = {}
@@ -522,6 +751,78 @@ async def list_projects(
         )
         for row in rows
     ]
+
+
+_PROJECT_SORT = {
+    "created_at": WorkProject.created_at,
+    "title": WorkProject.title,
+    "status": WorkProject.status,
+    "updated_at": WorkProject.updated_at,
+    "due": WorkProject.mizito_deadline,
+}
+
+
+@router.get("/projects/page")
+async def list_projects_page(
+    q: str = "",
+    mizito_lane: str = "",
+    source: str = "",
+    status: str = "",
+    sort: str = "created_at",
+    order: str = "desc",
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _need(
+        ctx,
+        PermissionCode.REQUEST_CREATE,
+        PermissionCode.REQUEST_TRIAGE,
+        PermissionCode.REQUEST_MANAGE,
+        PermissionCode.TASK_READ,
+        PermissionCode.ORG_ADMIN,
+    )
+    query = base_visible_projects(ctx.organization_id)
+    if mizito_lane.strip():
+        query = query.where(WorkProject.mizito_lane == mizito_lane.strip())
+    if status:
+        query = query.where(WorkProject.status == status)
+    if source == "mizito":
+        query = query.where(WorkProject.mizito_card_id.is_not(None))
+    elif source == "cm":
+        query = query.where(WorkProject.mizito_card_id.is_(None))
+    if q.strip():
+        needle = f"%{q.strip()}%"
+        query = query.where(or_(WorkProject.title.ilike(needle), WorkProject.code.ilike(needle)))
+    query = await apply_project_visibility(query, db, ctx)
+    total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    col = _PROJECT_SORT.get(sort, WorkProject.created_at)
+    ordering = col.desc() if order.lower() == "desc" else col.asc()
+    rows = list(await db.scalars(query.order_by(ordering).offset(offset).limit(limit)))
+    task_counts = await _task_counts_for_projects(db, ctx.organization_id, {row.id for row in rows})
+    req_meta: dict[UUID, tuple[str, str]] = {}
+    req_ids = {row.request_id for row in rows if row.request_id}
+    if req_ids:
+        for req in (await db.scalars(select(WorkRequest).where(WorkRequest.id.in_(req_ids)))).all():
+            req_meta[req.id] = (req.code, req.title)
+    teams: dict[UUID, str] = {}
+    team_ids = {row.team_id for row in rows if row.team_id}
+    if team_ids:
+        for team in (await db.scalars(select(Team).where(Team.id.in_(team_ids)))).all():
+            teams[team.id] = team.name
+    items = [
+        _project_out(
+            row,
+            request_code=req_meta.get(row.request_id, ("", ""))[0] if row.request_id else "",
+            request_title=req_meta.get(row.request_id, ("", ""))[1] if row.request_id else "",
+            team_name=teams.get(row.team_id, "") if row.team_id else "",
+            task_total=task_counts.get(row.id, (0, 0))[0],
+            task_done=task_counts.get(row.id, (0, 0))[1],
+        )
+        for row in rows
+    ]
+    return {"items": items, "total": int(total), "limit": limit, "offset": offset}
 
 
 @router.post("/{request_id}/projects", status_code=201)
@@ -579,6 +880,9 @@ async def patch_project(
     if not row or row.organization_id != ctx.organization_id:
         raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
     data = body.model_dump(exclude_unset=True)
+    locked = {"title", "kind", "status", "due_date", "mizito_lane"}
+    if row.mizito_card_id and locked.intersection(data):
+        raise HTTPException(status_code=409, detail="این فیلد از میزیتو می‌آید")
     if "status" in data and data["status"] not in PROJECT_STATUSES:
         raise HTTPException(status_code=422, detail="وضعیت نامعتبر است")
     if data.get("team_id"):
@@ -620,6 +924,8 @@ async def delete_project(
     row = await db.get(WorkProject, project_id)
     if not row or row.organization_id != ctx.organization_id:
         raise HTTPException(status_code=404, detail="پروژه پیدا نشد")
+    if row.mizito_card_id:
+        raise HTTPException(status_code=409, detail="پروژهٔ میزیتو حذف نمی‌شود. می‌توانید آن را در CM پنهان کنید.")
     await db.delete(row)
     await db.flush()
     return Response(status_code=204)
@@ -707,12 +1013,7 @@ async def get_request(
     }
 
 
-@router.get("/projects/{project_id}")
-async def project_detail(
-    project_id: UUID,
-    ctx: AuthContext = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def _visible_project(db: AsyncSession, ctx: AuthContext, project_id: UUID) -> WorkProject:
     _need(
         ctx,
         PermissionCode.REQUEST_CREATE,
@@ -735,11 +1036,38 @@ async def project_detail(
         visible = await _tree_ids(db, ctx)
         if visible is not None and row.team_id not in visible:
             raise HTTPException(status_code=403, detail="Not authorized")
+    return row
+
+
+@router.post("/projects/{project_id}/thread")
+async def open_project_thread(
+    project_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """گفتگوی پروژه را (در صورت نبود) می‌سازد و کاربر را عضوش می‌کند."""
+    from app.requests.spine import ensure_thread
+
+    row = await _visible_project(db, ctx, project_id)
+    if _is_requester_only(ctx):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    thread = await ensure_thread(
+        db, organization_id=ctx.organization_id, actor_id=ctx.user.id, project_id=row.id, topic=row.title
+    )
+    return {"id": str(thread.id), "topic": thread.topic}
+
+
+@router.get("/projects/{project_id}")
+async def project_detail(
+    project_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _visible_project(db, ctx, project_id)
     from app.requests.models import DesignDeliverable, Shoot, WorkAttachment
     from app.requests.spine import (
         attachment_out,
         deliverable_out,
-        ensure_thread,
         progress,
         shoot_out,
         tasks_for,
@@ -749,8 +1077,12 @@ async def project_detail(
     tasks = await tasks_for(db, ctx.organization_id, project_id=row.id)
     thread = None
     if not _is_requester_only(ctx):
-        thread = await ensure_thread(
-            db, organization_id=ctx.organization_id, actor_id=ctx.user.id, project_id=row.id, topic=row.title
+        thread = await db.scalar(
+            select(Conversation).where(
+                Conversation.organization_id == ctx.organization_id,
+                Conversation.project_id == row.id,
+                Conversation.pm_campaign_id.is_(None),
+            )
         )
     attachments = list(
         (
@@ -774,6 +1106,11 @@ async def project_detail(
         team = await db.get(Team, row.team_id)
         team_name = team.name if team else ""
     body = _project_out(row, request_code=req_code, request_title=req_title, team_name=team_name)
+    if row.mizito_card_id:
+        from app.perf.services.mizito import card_url_prefix
+
+        prefix = card_url_prefix()
+        body["mizito_url"] = f"{prefix}{row.mizito_card_id}" if prefix else ""
     body["progress"] = progress(tasks)
     body["template"] = template_for(row.kind)
     body["thread_id"] = str(thread.id) if thread else None

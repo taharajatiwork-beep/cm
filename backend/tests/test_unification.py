@@ -2,7 +2,7 @@
 
 import ast
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.core.permissions import PermissionCode
 from tests.conftest import auth, login
@@ -89,6 +89,42 @@ async def test_operational_task_and_project_page(client, seeded, db):
     assert len(applied.json()["tasks"]) == 4
 
 
+async def test_project_thread_created_only_on_open(client, seeded, db):
+    from sqlalchemy import func, select
+
+    from app.models import Conversation
+
+    await _user(
+        db, seeded, "thread-u@autoco.example", [PermissionCode.REQUEST_TRIAGE, PermissionCode.TASK_READ]
+    )
+    triage = auth(await login(client, "thread-u@autoco.example"))
+    made = await client.post(
+        "/requests/projects",
+        headers=triage,
+        json={"title": "گفتگوی پروژه", "kind": "عمومی", "status": "new"},
+    )
+    assert made.status_code == 201, made.text
+    project_id = made.json()["id"]
+
+    async def thread_count() -> int:
+        return await db.scalar(
+            select(func.count()).select_from(Conversation).where(Conversation.project_id == UUID(project_id))
+        )
+
+    detail = await client.get(f"/requests/projects/{project_id}", headers=triage)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["thread_id"] is None
+    assert await thread_count() == 0
+
+    opened = await client.post(f"/requests/projects/{project_id}/thread", headers=triage)
+    assert opened.status_code == 200, opened.text
+    again = await client.post(f"/requests/projects/{project_id}/thread", headers=triage)
+    assert again.json()["id"] == opened.json()["id"]
+    assert await thread_count() == 1
+    detail = await client.get(f"/requests/projects/{project_id}", headers=triage)
+    assert detail.json()["thread_id"] == opened.json()["id"]
+
+
 async def test_linked_expense_needs_manager(client, seeded, db):
     await _user(db, seeded, "perf-u@autoco.example", [PermissionCode.PERF_WRITE, PermissionCode.REQUEST_CREATE])
     await _user(
@@ -107,6 +143,7 @@ async def test_linked_expense_needs_manager(client, seeded, db):
         headers=lead,
         json={"title": "پروژه هزینه", "kind": "عمومی"},
     )
+    assert project.status_code == 201, project.text
     payment = await client.post(
         "/perf/payments",
         headers=perf,

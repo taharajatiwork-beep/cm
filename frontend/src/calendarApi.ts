@@ -3,18 +3,38 @@ import { apiErrorDetail } from "./lib/httpErrorDetail";
 
 export type CalendarEntry = {
   id: string;
+  entry_id: string;
   on_date: string;
+  entry_type: string;
+  title: string;
+  topic: string;
   tier: string;
   format: string;
   channel: string;
-  topic: string;
   cta: string;
   kpi: string;
   status: string;
+  production_status: string;
+  published_url: string;
+  all_day: boolean;
+  start_time: string | null;
+  end_time: string | null;
+  start: string;
+  end: string;
+  location: string;
+  notes: string;
+  recurrence: string;
+  recur_until: string | null;
+  recurrence_parent_id: string | null;
   campaign_id: string | null;
   assignee_id: string | null;
   assignee_name: string;
+  attendee_ids: string[];
   project_id: string | null;
+  color_key: string;
+  late: boolean;
+  kind: string;
+  conflicts?: string[];
 };
 
 export type CalendarEvent = {
@@ -26,6 +46,25 @@ export type CalendarEvent = {
   link: string;
   status: string;
   id: string;
+  color_key?: string;
+  late?: boolean;
+  start?: string;
+  end?: string;
+};
+
+export type CalendarOccasion = {
+  id: string;
+  on_date: string;
+  title: string;
+  kind: string;
+  is_off: boolean;
+  global: boolean;
+};
+
+export type CalendarLoad = {
+  person_id: string;
+  date: string;
+  count: number;
 };
 
 export type CalendarMonth = {
@@ -44,9 +83,27 @@ export type CalendarPayload = {
   entries: CalendarEntry[];
   month: CalendarMonth | null;
   events: CalendarEvent[];
+  occasions: CalendarOccasion[];
+  load: CalendarLoad[];
 };
 
-export type DraftEntry = Omit<CalendarEntry, "id" | "campaign_id" | "assignee_id" | "assignee_name" | "project_id">;
+export type DraftEntry = Omit<
+  CalendarEntry,
+  | "id"
+  | "entry_id"
+  | "campaign_id"
+  | "assignee_id"
+  | "assignee_name"
+  | "project_id"
+  | "title"
+  | "attendee_ids"
+  | "color_key"
+  | "late"
+  | "kind"
+  | "conflicts"
+  | "start"
+  | "end"
+>;
 
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(init.headers);
@@ -79,8 +136,12 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
 }
 
 export const calendarApi = {
-  range: (from: string, to: string, year: number, month: number) =>
-    request<CalendarPayload>(`/calendar?from=${from}&to=${to}&year=${year}&month=${month}`),
+  range: (from: string, to: string, year: number, month: number, layers?: string, mine?: boolean) => {
+    const params = new URLSearchParams({ from, to, year: String(year), month: String(month) });
+    if (layers) params.set("layers", layers);
+    if (mine) params.set("mine", "1");
+    return request<CalendarPayload>(`/calendar?${params}`);
+  },
   create: (body: Record<string, unknown>) =>
     request<CalendarEntry>("/calendar/entries", { method: "POST", body: JSON.stringify(body) }),
   bulk: (entries: DraftEntry[]) =>
@@ -92,6 +153,11 @@ export const calendarApi = {
     request<CalendarMonth>(`/calendar/month/${year}/${month}`, { method: "PUT", body: JSON.stringify(body) }),
   draft: (year: number, month: number) =>
     request<{ source: string; entries: DraftEntry[] }>(`/calendar/month/${year}/${month}/draft`, { method: "POST" }),
+  occasions: (from: string, to: string) =>
+    request<CalendarOccasion[]>(`/calendar/occasions?from=${from}&to=${to}`),
+  createOccasion: (body: Record<string, unknown>) =>
+    request<CalendarOccasion>("/calendar/occasions", { method: "POST", body: JSON.stringify(body) }),
+  removeOccasion: (id: string) => request<void>(`/calendar/occasions/${id}`, { method: "DELETE" }),
   async download(from: string, to: string) {
     const headers = new Headers();
     const token = getToken();

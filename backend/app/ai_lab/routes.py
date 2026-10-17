@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai_lab.followup import ensure_followup_on_accept
 from app.ai_lab.models import AiRecFollowup, AiTask
-from app.ai_lab.routes_helpers import followups_for_task, task_out as _task_out
+from app.ai_lab.routes_helpers import apply_task_visibility_filter, followups_for_task, task_out as _task_out
 from app.ai_lab.schemas import (
     BotCallbackIn,
     EvaluationIn,
@@ -32,7 +32,8 @@ from app.ai_lab.service import (
 )
 from app.models.enums import Priority
 from app.services.work import WorkService
-from app.ai_lab.access import can_use_ai_lab
+from app.ai_lab.access import allowed_kinds, can_use_ai_lab, require_kind_allowed, task_visible
+from app.ai_lab.workspaces import workspaces_payload
 from app.ai_lab.signing import verify
 from app.ai_lab.snapshots import build_snapshot
 from app.api.deps import AuthContext, get_current_user, handle_authz
@@ -81,6 +82,16 @@ async def _expire_if_needed(db: AsyncSession, row: AiTask) -> None:
         await db.flush()
 
 
+@router.get("/workspaces")
+async def list_workspaces(auth: AuthContext = Depends(get_current_user)) -> dict:
+    _settings_ok()
+    try:
+        _require_ai_lab_access(auth)
+    except AuthorizationError as exc:
+        raise handle_authz(exc) from exc
+    return {"workspaces": workspaces_payload(auth)}
+
+
 @router.get("/config")
 async def lab_config(auth: AuthContext = Depends(get_current_user)) -> dict:
     try:
@@ -100,16 +111,12 @@ async def evaluation_summary(
     auth: AuthContext = Depends(_require_perf),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    rows = list(
-        (
-            await db.scalars(
-                select(AiTask).where(
-                    AiTask.organization_id == auth.organization_id,
-                    AiTask.status == "done",
-                )
-            )
-        ).all()
+    q = select(AiTask).where(
+        AiTask.organization_id == auth.organization_id,
+        AiTask.status == "done",
     )
+    q = apply_task_visibility_filter(q, auth)
+    rows = list((await db.scalars(q)).all())
     by_kind: dict[str, dict] = {}
     for row in rows:
         bucket = by_kind.setdefault(row.kind, {"count": 0, "ratings": [], "accepted": 0, "total_recs": 0, "latencies": []})
@@ -173,7 +180,11 @@ async def preview_snapshot(
     auth: AuthContext = Depends(_require_perf),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    snap = await build_snapshot(db, auth.organization_id, body.kind, body.input)
+    try:
+        require_kind_allowed(auth, body.kind)
+    except AuthorizationError as exc:
+        raise handle_authz(exc) from exc
+    snap = await build_snapshot(db, auth.organization_id, body.kind, body.input, auth=auth)
     blob = json.dumps(snap, ensure_ascii=False)
     if _PHONE_RE.search(blob):
         raise HTTPException(status_code=500, detail="Snapshot failed PII guard")
@@ -186,8 +197,12 @@ async def create_task(
     auth: AuthContext = Depends(_require_perf),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    try:
+        require_kind_allowed(auth, body.kind)
+    except AuthorizationError as exc:
+        raise handle_authz(exc) from exc
     blob_preview = json.dumps(
-        await build_snapshot(db, auth.organization_id, body.kind, body.input),
+        await build_snapshot(db, auth.organization_id, body.kind, body.input, auth=auth),
         ensure_ascii=False,
     )
     if _PHONE_RE.search(blob_preview):
@@ -199,6 +214,7 @@ async def create_task(
         kind=body.kind,
         input_data=body.input,
         trigger="manual",
+        auth=auth,
     )
     return await _task_response(db, row)
 
@@ -211,7 +227,12 @@ async def list_tasks(
     trigger: str | None = Query(None),
 ) -> list[dict]:
     q = select(AiTask).where(AiTask.organization_id == auth.organization_id)
+    q = apply_task_visibility_filter(q, auth)
     if kind:
+        try:
+            require_kind_allowed(auth, kind)
+        except AuthorizationError as exc:
+            raise handle_authz(exc) from exc
         q = q.where(AiTask.kind == kind)
     if trigger:
         q = q.where(AiTask.trigger == trigger)
@@ -228,7 +249,7 @@ async def get_task(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     row = await db.get(AiTask, task_id)
-    if not row or row.organization_id != auth.organization_id:
+    if not row or row.organization_id != auth.organization_id or not task_visible(auth, row):
         raise HTTPException(status_code=404, detail="Task not found")
     await _expire_if_needed(db, row)
     return await _task_response(db, row)
@@ -242,7 +263,7 @@ async def manual_result(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     row = await db.get(AiTask, task_id)
-    if not row or row.organization_id != auth.organization_id:
+    if not row or row.organization_id != auth.organization_id or not task_visible(auth, row):
         raise HTTPException(status_code=404, detail="Task not found")
     if row.status == "done":
         return await _task_response(db, row)
@@ -264,7 +285,7 @@ async def poll_task_now(
     if settings.ai_lab_result_source != "github":
         raise HTTPException(status_code=400, detail="GitHub polling is not enabled")
     row = await db.get(AiTask, task_id)
-    if not row or row.organization_id != auth.organization_id:
+    if not row or row.organization_id != auth.organization_id or not task_visible(auth, row):
         raise HTTPException(status_code=404, detail="Task not found")
     if row.status not in ("waiting", "sent"):
         return await _task_response(db, row)
@@ -282,7 +303,7 @@ async def recommendation_decision(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     row = await db.get(AiTask, task_id)
-    if not row or row.organization_id != auth.organization_id:
+    if not row or row.organization_id != auth.organization_id or not task_visible(auth, row):
         raise HTTPException(status_code=404, detail="Task not found")
     try:
         decisions = json.loads(row.decisions_json or "{}")
@@ -310,7 +331,7 @@ async def recommendation_to_task(
     except AuthorizationError as exc:
         raise handle_authz(exc) from exc
     row = await db.get(AiTask, task_id)
-    if not row or row.organization_id != auth.organization_id:
+    if not row or row.organization_id != auth.organization_id or not task_visible(auth, row):
         raise HTTPException(status_code=404, detail="Task not found")
     try:
         result = json.loads(row.result_json or "{}")
@@ -376,7 +397,7 @@ async def evaluate_task(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     row = await db.get(AiTask, task_id)
-    if not row or row.organization_id != auth.organization_id:
+    if not row or row.organization_id != auth.organization_id or not task_visible(auth, row):
         raise HTTPException(status_code=404, detail="Task not found")
     row.rating = body.rating
     row.useful = body.useful
