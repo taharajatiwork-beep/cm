@@ -11,6 +11,7 @@ import {
   ErrorMessage,
   Icon,
   LoadingState,
+  Muted,
   PageHeader,
   SectionHeader,
   Segmented,
@@ -75,29 +76,6 @@ const BUCKET_LABEL: Record<WorkBucket, [string, string]> = {
   later: ["Later", "آینده"],
   waiting: ["Waiting on others", "منتظر دیگران"],
   projects_without_tasks: ["Team projects with no work yet", "پروژه بدون کار"],
-};
-
-const BUCKET_HELP: Record<WorkBucket, [string, string]> = {
-  overdue: [
-    "Tasks you own or are assigned — past deadline. Each row shows which request and project it belongs to.",
-    "کارهایی که مالک یا محول‌شده‌اید و از مهلت گذشته‌اند. هر ردیف نشان می‌دهد زیر کدام درخواست و پروژه است.",
-  ],
-  today: [
-    "Tasks due today. Request → project → task: the line under the title shows the chain.",
-    "کارهایی که مهلتشان امروز است. درخواست → پروژه → کار؛ خط زیر عنوان زنجیره را نشان می‌دهد.",
-  ],
-  later: [
-    "Tasks with a later deadline or no deadline yet.",
-    "کارهایی با مهلت بعداً یا بدون مهلت.",
-  ],
-  waiting: [
-    "You created the task but someone else is assigned to finish it.",
-    "شما کار را ساخته‌اید اما نفر دیگری باید انجام دهد.",
-  ],
-  projects_without_tasks: [
-    "A project exists but no tasks yet — open it and add steps or apply a template.",
-    "پروژه ساخته شده اما هنوز کار ندارد — باز کنید و قدم اضافه کنید یا قالب بزنید.",
-  ],
 };
 
 function emptyWorkAction(to: string) {
@@ -258,7 +236,6 @@ export function MyWorkPage() {
     (row) => String(row.status || "pending") === "pending" && String(row.kind || "").startsWith("ai."),
   );
 
-  const description = bi("Tasks by deadline, plus prices and assistant items in their own groups.", "کارها بر اساس مهلت؛ قیمت و دستیار در گروه جدا.");
   function openTask(id: string) {
     setDetailTaskId(id);
     setSearchParams((prev) => {
@@ -363,7 +340,7 @@ export function MyWorkPage() {
 
   return (
     <>
-      <PageHeader title={<Bi en="My Work" fa="کارهای من" />} description={description} />
+      <PageHeader title={<Bi en="My Work" fa="کارهای من" />} />
       <ErrorMessage error={error} />
       <ErrorMessage error={canUseWorkBuckets && buckets.isError ? buckets.error : null} />
 
@@ -377,10 +354,17 @@ export function MyWorkPage() {
               loading={buckets.isLoading}
             />
           </div>
-          {queueFilter !== "all" ? (
-            <p className="help-text">{bi(BUCKET_HELP[queueFilter][0], BUCKET_HELP[queueFilter][1])}</p>
+          {showUnified && unifiedTasks[0] ? (
+            <div className="my-work-next row">
+              <Muted>
+                <Bi en="Next" fa="بعدی" />
+              </Muted>
+              <strong className="truncate">{String(unifiedTasks[0].title)}</strong>
+              <Button className="btn-sm" type="button" onClick={() => openTask(String(unifiedTasks[0].id))}>
+                <Bi en="Open" fa="باز کردن" />
+              </Button>
+            </div>
           ) : null}
-
           <Card padded={false}>
             {listLoading ? <LoadingState /> : null}
             {!listLoading && unifiedEmpty && filledWorkBuckets(bucketCounts).length === 0 ? (
@@ -402,6 +386,7 @@ export function MyWorkPage() {
                 titleFa="در این دسته چیزی نیست"
                 bodyEn="Pick another filter or switch back to All."
                 bodyFa="فیلتر دیگری انتخاب کنید یا به «همه» برگردید."
+                onClearFilters={() => setQueueFilter("all")}
               />
             ) : null}
             {!listLoading && showUnified && !unifiedEmpty ? (
@@ -435,15 +420,9 @@ export function MyWorkPage() {
                           )}
                           {slot.post_at ? <DateText value={slot.post_at} withTime /> : null}
                         </span>
-                        <span className="row-meta work-parent-context">
-                          <Bi
-                            en="Vehicle pricing — not tied to a work request"
-                            fa="قیمت خودرو — به درخواست/پروژهٔ کار وصل نیست"
-                          />
-                        </span>
                       </div>
                       <div className="row-end">
-                        <Button className="btn-sm" to="/pricing">
+                        <Button className="btn-sm" to={confirm ? "/pricing?posts=waiting" : "/pricing?posts=ready"}>
                           <Bi en="Open" fa="باز کردن" />
                         </Button>
                       </div>

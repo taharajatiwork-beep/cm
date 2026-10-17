@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Donut, LineTrend } from "../components/charts";
-import { Badge, Button, Card, EmptyState, ForbiddenState, List, ListItem, LoadingState, MoreMenu, Muted, PageHeader, SectionHeader, Select, StatCard, Table, TitleCode, type Tone } from "../components/ui";
+import { Badge, Button, Card, Disclosure, EmptyState, ForbiddenState, List, ListItem, LoadingState, MoreMenu, Muted, PageHeader, SectionHeader, Select, StatCard, Table, TitleCode, type Tone } from "../components/ui";
 import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { useToast } from "../components/ui/Toast";
@@ -128,7 +128,6 @@ export function CampaignPage() {
           </div>
         }
       />
-      <CampaignBriefSection campaign={data} brief={data.brief} />
       <div className="kpi-row kpi-row--4 kpi-row--even">
         <StatCard
           icon="activity"
@@ -174,13 +173,12 @@ export function CampaignPage() {
           />
         </Card>
       ) : null}
-      <MizitoCards code={data.code} />
       {lines.length ? (
         <Card>
           <SectionHeader
             icon="alert"
-            title={<Bi en="What to do" fa="چه کار شود" />}
-            hint={<Bi en="Later days of this range compared with the earlier days." fa="نیمهٔ دوم روزهای دارای داده، نسبت به نیمهٔ اول." />}
+            title={<Bi en="What to do next" fa="قدم بعد" />}
+            hint={<Bi en="Second half of the range vs the first." fa="نیمهٔ دوم بازه نسبت به نیمهٔ اول." />}
           />
           {lines[0] ? <p className="perf-advice">{lines[0]}</p> : null}
           {lines.length > 1 ? (
@@ -190,6 +188,8 @@ export function CampaignPage() {
           ) : null}
         </Card>
       ) : null}
+      <CampaignBriefSection campaign={data} brief={data.brief} />
+      <MizitoCards code={data.code} />
       {report.trend.length || report.pages.length || data.budget_toman || report.clicks ? (
         <p className="muted perf-facts">
           {report.trend.length ? <>{toman(report.trend.length)} روز در نمودار</> : null}
@@ -202,18 +202,20 @@ export function CampaignPage() {
           {report.clicks ? <> · کلیک {toman(report.clicks)}</> : null}
         </p>
       ) : null}
-      <div className="perf-chart-grid">
-        {METRICS.map((metric) => (
-          <Card key={metric.key} className="perf-chart-card">
-            <SectionHeader title={metric.title} />
-            <TrendChart trend={report.trend} metric={metric.key} title={metric.title} />
-          </Card>
-        ))}
-      </div>
-      <Card className="perf-chart-card">
-        <SectionHeader title={<Bi en="Spend by channel" fa="سهم هزینه به تفکیک کانال" />} hint={<Bi en="Each slice is that channel's share of spend. The legend also shows cost per lead." fa="هر تکه سهم هزینهٔ همان کانال است. کنار نمودار، هزینهٔ هر ورودی همان کانال هم هست." />} />
-        <ChannelShare channels={report.channels} />
-      </Card>
+      <Disclosure label={<Bi en="Charts" fa="نمودارها" />}>
+        <div className="perf-chart-grid">
+          {METRICS.map((metric) => (
+            <Card key={metric.key} className="perf-chart-card">
+              <SectionHeader title={metric.title} />
+              <TrendChart trend={report.trend} metric={metric.key} title={metric.title} />
+            </Card>
+          ))}
+        </div>
+        <Card className="perf-chart-card">
+          <SectionHeader title={<Bi en="Spend by channel" fa="سهم هزینه به کانال" />} hint={<Bi en="Share of spend; legend shows CPL." fa="سهم هزینه؛ کنار نمودار هزینهٔ هر ورودی." />} />
+          <ChannelShare channels={report.channels} />
+        </Card>
+      </Disclosure>
       <div className="no-print">
       <BestPages pages={report.pages} campaignId={data.id} />
       </div>

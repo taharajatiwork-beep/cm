@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Card, Dialog, ErrorMessage, Field, ForbiddenState, Input, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, Table } from "../components/ui";
+import { Button, Card, Dialog, ErrorMessage, Field, ForbiddenState, Input, LoadingState, MoreMenu, Muted, PageHeader, SectionHeader, Segmented, Select, Table } from "../components/ui";
 import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { Bi, useBi } from "../i18n";
@@ -111,15 +111,17 @@ export function CampaignsPage() {
     <>
       <PageHeader
         title={<Bi en="Performance campaigns" fa="کمپین پرفورمنس" />}
-        description={<Bi en="Each row is one perf campaign (not a conversation topic). SMS and social stay inside it." fa="هر ردیف یک کمپین پرفورمنس است (نه «موضوع گفتگو» در پیام‌ها). پیامک و سوشال داخل همان می‌مانند." />}
+        description={<Bi en="One row per perf campaign; SMS and social live inside it." fa="هر ردیف یک کمپین پرفورمنس؛ پیامک و سوشال داخل همان است." />}
         actions={
           <div className="row">
-            <Button type="button" variant="secondary" onClick={() => setBook(true)}>
-              <Bi en="Number book" fa="دفتر شماره" />
-            </Button>
             <Button type="button" onClick={() => setOpen(true)}>
               <Bi en="New campaign" fa="کمپین تازه" />
             </Button>
+            <MoreMenu label={<Bi en="More" fa="بیشتر" />}>
+              <Button type="button" variant="ghost" onClick={() => setBook(true)}>
+                <Bi en="Number book" fa="دفتر شماره" />
+              </Button>
+            </MoreMenu>
           </div>
         }
       />
@@ -399,13 +401,14 @@ function RegisterTable({ rows }: { rows: RegisterRow[] }) {
 }
 
 function ChannelChips({ channels }: { channels: string[] }) {
-  const shown = channels.slice(0, 3);
-  const rest = channels.length - shown.length;
-  if (!shown.length) return <>—</>;
+  if (!channels.length) return <>—</>;
+  const labels = channels.map((item) => CHANNEL_LABEL[item] || item);
+  const shown = labels.slice(0, 3);
+  const rest = labels.length - shown.length;
   return (
-    <span className="perf-chips">
-      {shown.map((item) => <span key={item} className="perf-chip">{CHANNEL_LABEL[item] || item}</span>)}
-      {rest > 0 ? <span className="muted" dir="ltr">+{toman(rest)}</span> : null}
+    <span className="muted">
+      {shown.join(" · ")}
+      {rest > 0 ? ` · +${toman(rest)}` : ""}
     </span>
   );
 }

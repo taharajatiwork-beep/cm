@@ -5,7 +5,6 @@ import { api } from "../api";
 import { DateText } from "../components/DateText";
 import { useAuth } from "../auth";
 import { isForbiddenError } from "../lib/apiError";
-import { useConfirm } from "../components/ui/ConfirmDialog";
 import {
   Button,
   Card,
@@ -97,37 +96,6 @@ function numOrNull(v: string): number | null {
 function strOrNull(v: string): string | null {
   const t = v.trim();
   return t || null;
-}
-
-function fieldText(value: unknown): string {
-  return value != null && value !== "" ? String(value) : "";
-}
-
-function formFromVehicle(v: Record<string, unknown>): VehicleForm {
-  return {
-    vin: fieldText(v.vin),
-    brand: fieldText(v.brand),
-    model: fieldText(v.model),
-    year: fieldText(v.year),
-    stock_number: fieldText(v.stock_number),
-    color: fieldText(v.color),
-    trim: fieldText(v.trim),
-    mileage: fieldText(v.mileage),
-    sale_price: fieldText(v.sale_price),
-    purchase_price: fieldText(v.purchase_price),
-    body_type: fieldText(v.body_type),
-    transmission: fieldText(v.transmission),
-    fuel_type: fieldText(v.fuel_type),
-    engine: fieldText(v.engine),
-    plate_number: fieldText(v.plate_number),
-    doors: fieldText(v.doors),
-    seats: fieldText(v.seats),
-    options: fieldText(v.options),
-    exterior_condition: fieldText(v.exterior_condition),
-    interior_condition: fieldText(v.interior_condition),
-    description: fieldText(v.description),
-    notes: fieldText(v.notes),
-  };
 }
 
 function formBody(form: VehicleForm, includePrice: boolean): Record<string, unknown> {
@@ -242,7 +210,6 @@ export function VehiclesPage() {
   const bi = useBi();
   const vehicleLabel = useVehicleLabel();
   const toast = useToast();
-  const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [error, setError] = useState("");
@@ -298,25 +265,9 @@ export function VehiclesPage() {
     },
     onError: (err) => setError(String((err as Error).message)),
   });
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.vehicles.remove(id),
-    onSuccess: () => {
-      toast(bi("Vehicle deleted", "خودرو حذف شد"));
-      void invalidateVehicles();
-    },
-    onError: (err) => setError(String((err as Error).message)),
-  });
-
   function openAdd() {
     setEditingId(null);
     setForm(emptyForm);
-    setError("");
-    setShowAdd(true);
-  }
-
-  function openEdit(v: Record<string, unknown>) {
-    setEditingId(String(v.id));
-    setForm(formFromVehicle(v));
     setError("");
     setShowAdd(true);
   }
@@ -330,18 +281,6 @@ export function VehiclesPage() {
     e.preventDefault();
     setError("");
     saveMutation.mutate({ id: editingId, body: formBody(form, !editingId || canPrice) });
-  }
-
-  async function removeVehicle(v: Record<string, unknown>) {
-    const name = `${vehicleLabel(String(v.brand))} ${vehicleLabel(String(v.model))}`.trim();
-    const ok = await confirm(
-      bi("Delete this vehicle?", "این خودرو حذف شود؟"),
-      bi(`${name} will be removed from the list.`, `${name} از فهرست حذف می‌شود.`),
-      bi("Yes, delete", "بله، حذف کن"),
-      { danger: true },
-    );
-    if (!ok) return;
-    deleteMutation.mutate(String(v.id));
   }
 
   const importMutation = useMutation({
@@ -647,30 +586,6 @@ export function VehiclesPage() {
                 header: <Bi en="Added" fa="ثبت" />,
                 render: (v) => <DateText value={v.created_at} />,
               },
-              ...(canWrite
-                ? [
-                    {
-                      key: "actions",
-                      header: "",
-                      className: "col-actions",
-                      render: (v: Record<string, unknown>) => (
-                        <div className="row-actions" onClick={(e) => e.stopPropagation()}>
-                          <Button variant="secondary" className="btn-sm" onClick={() => openEdit(v)}>
-                            <Bi en="Edit" fa="ویرایش" />
-                          </Button>
-                          <Button
-                            variant="danger-quiet"
-                            className="btn-sm"
-                            disabled={deleteMutation.isPending}
-                            onClick={() => void removeVehicle(v)}
-                          >
-                            <Bi en="Delete" fa="حذف" />
-                          </Button>
-                        </div>
-                      ),
-                    },
-                  ]
-                : []),
             ]}
           />
         )}
@@ -966,6 +881,16 @@ export function VehicleDetailPage() {
         }
         actions={
           <>
+            {has("inventory.write") && String(v.status) === "IN_STOCK" ? (
+              <>
+                <Button variant="secondary" onClick={() => void api.vehicles.setStatus(id, "RESERVED", "reserved from vehicle page")}>
+                  <Bi en="Reserve" fa="رزرو" />
+                </Button>
+                <Button variant="secondary" onClick={() => void api.vehicles.setStatus(id, "SOLD", "sold from vehicle page")}>
+                  <Bi en="Sold" fa="فروخته شد" />
+                </Button>
+              </>
+            ) : null}
             {has("inquiry.create") ? (
               <Button type="button" onClick={() => setInquiryOpen(true)}>
                 <Bi en="New inquiry" fa="استعلام جدید" />

@@ -136,22 +136,24 @@ export function ReportsPage() {
         />
       ) : null}
       {work.error ? <ErrorMessage error={work.error instanceof Error ? work.error.message : String(work.error)} /> : null}
-      {work.data && !projectId && !requestId ? (
-        <WorkReportCharts data={work.data} statusLabels={REQUEST_STATUS} />
-      ) : null}
       {work.data ? (
         <div className="kpi-row kpi-row--4">
-          <StatCard to="/requests" icon="message" label={<Bi en="Requests (asked)" fa="درخواست (خواسته)" />} value={faNum(Number(work.data.requests ?? 0))} />
-          <StatCard to="/projects" icon="layers" tone="accent" label={<Bi en="Projects (work packages)" fa="پروژه (بستهٔ کار)" />} value={faNum(Number(work.data.projects ?? 0))} />
+          <StatCard to="/requests" icon="message" label={<Bi en="Requests" fa="درخواست" />} value={faNum(Number(work.data.requests ?? 0))} />
+          <StatCard to="/projects" icon="layers" tone="accent" label={<Bi en="Projects" fa="پروژه" />} value={faNum(Number(work.data.projects ?? 0))} />
           <StatCard
             to={has("task.read") ? "/my-work" : undefined}
             icon="check"
             tone="warn"
-            label={<Bi en="Open tasks (steps)" fa="کار باز (قدم‌ها)" />}
+            label={<Bi en="Open tasks" fa="کار باز" />}
             value={faNum(Number(work.data.open_tasks ?? 0))}
           />
-          <StatCard icon="car" label={<Bi en="Recorded cost" fa="هزینهٔ ثبت‌شده" />} value={tomanText(Number(work.data.recorded_cost ?? 0))} />
+          <StatCard icon="car" label={<Bi en="Cost" fa="هزینه" />} value={tomanText(Number(work.data.recorded_cost ?? 0))} />
         </div>
+      ) : null}
+      {work.data && !projectId && !requestId ? (
+        <Disclosure label={<Bi en="Charts" fa="نمودارها" />}>
+          <WorkReportCharts data={work.data} statusLabels={REQUEST_STATUS} />
+        </Disclosure>
       ) : null}
       <CampaignBoard scope={activeScope} projectId={projectId} requestId={requestId} />
       {work.data ? (

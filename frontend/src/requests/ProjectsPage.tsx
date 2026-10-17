@@ -230,7 +230,6 @@ export function ProjectsPage() {
         projectId={url.project}
         open={Boolean(url.project)}
         onClose={closeProject}
-        triage={triage}
         cardUrlPrefix={syncStatus.data?.card_url_prefix}
       />
       {reviewing ? (

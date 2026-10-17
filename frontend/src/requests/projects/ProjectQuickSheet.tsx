@@ -1,7 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Badge, Button, Field, Muted, Select } from "../../components/ui";
+import { useQuery } from "@tanstack/react-query";
+import { Badge, Button, Muted } from "../../components/ui";
 import { Sheet } from "../../components/ui/Extras";
-import { DateText } from "../../components/DateText";
 import { Bi } from "../../i18n";
 import { requestsApi } from "../api";
 import { mizitoLaneLabel } from "../mizitoLanes";
@@ -11,28 +10,14 @@ type Props = {
   projectId: string;
   open: boolean;
   onClose: () => void;
-  triage: boolean;
   cardUrlPrefix?: string;
 };
 
-export function ProjectQuickSheet({ projectId, open, onClose, triage, cardUrlPrefix }: Props) {
-  const qc = useQueryClient();
+export function ProjectQuickSheet({ projectId, open, onClose, cardUrlPrefix }: Props) {
   const detail = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => requestsApi.project(projectId),
     enabled: open && Boolean(projectId),
-  });
-  const history = useQuery({
-    queryKey: ["requests", "mizito-changes", projectId],
-    queryFn: () => requestsApi.mizitoChanges("", projectId),
-    enabled: open && Boolean(projectId) && Boolean(detail.data?.mizito_card_id),
-  });
-  const patch = useMutation({
-    mutationFn: (status: string) => requestsApi.patchProject(projectId, { status }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["project", projectId] });
-      void qc.invalidateQueries({ queryKey: ["requests"] });
-    },
   });
 
   const row = detail.data ?? {};
@@ -73,56 +58,12 @@ export function ProjectQuickSheet({ projectId, open, onClose, triage, cardUrlPre
             </Badge>
             <span className="meta-chip">{isCm ? "CM" : "میزیتو"}</span>
             {row.mizito_lane ? <span className="meta-chip">{mizitoLaneLabel(String(row.mizito_lane))}</span> : null}
-            {row.mizito_board ? <span className="meta-chip">{String(row.mizito_board)}</span> : null}
           </div>
           {row.mizito_card_id ? (
-            <dl className="projects-facts">
-              <div><dt>کد میزیتو</dt><dd dir="ltr">{String(row.mizito_code || "—")}</dd></div>
-              <div>
-                <dt>مهلت</dt>
-                <dd>{row.mizito_deadline ? <DateText value={String(row.mizito_deadline)} /> : "—"}</dd>
-              </div>
-              <div>
-                <dt>چک‌لیست</dt>
-                <dd>{String(row.mizito_checklist_done ?? 0)} از {String(row.mizito_checklist_total ?? 0)}</dd>
-              </div>
-              <div><dt>پیوست</dt><dd>{String(row.mizito_attachments ?? 0)}</dd></div>
-              <div>
-                <dt>آخرین تغییر میزیتو</dt>
-                <dd>
-                  {row.mizito_modified_at ? <DateText value={String(row.mizito_modified_at)} withTime /> : "—"}
-                </dd>
-              </div>
-            </dl>
-          ) : null}
-          {(history.data ?? []).length > 0 ? (
-            <div>
-              <h3 className="projects-sheet-sub">تاریخچه</h3>
-              <ul className="projects-history-list">
-                {(history.data ?? []).slice(0, 5).map((change) => (
-                  <li key={change.id}>
-                    <Muted>{change.field}: {change.old_value} → {change.new_value}</Muted>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          <Muted as="p">
-            اعضا: {((row.members as Array<{ full_name: string }>) ?? []).length} · کمپین:{" "}
-            {((row.campaigns as Array<unknown>) ?? []).length}
-          </Muted>
-          {triage && isCm ? (
-            <Field label={<Bi en="Status" fa="وضعیت" />}>
-              <Select
-                value={String(row.status || "new")}
-                onChange={(event) => patch.mutate(event.target.value)}
-                disabled={patch.isPending}
-              >
-                {Object.entries(PROJECT_STATUS_LABEL).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
-                ))}
-              </Select>
-            </Field>
+            <Muted as="p">
+              چک‌لیست {String(row.mizito_checklist_done ?? 0)}/{String(row.mizito_checklist_total ?? 0)}
+              {row.mizito_attachments ? ` · ${String(row.mizito_attachments)} پیوست` : ""}
+            </Muted>
           ) : null}
         </div>
       ) : null}

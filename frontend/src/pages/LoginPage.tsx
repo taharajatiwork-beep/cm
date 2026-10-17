@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { ApiError } from "../api";
 import { useAuth } from "../auth";
@@ -14,11 +14,26 @@ const DEMO = import.meta.env.DEV
   ? { slug: "autoco", email: "ali@autoco.example", password: "password" }
   : { slug: "", email: "", password: "" };
 
+const SLUG_KEY = "cm.company_slug";
+
 export function LoginPage() {
   const { user, loading, login } = useAuth();
   const location = useLocation();
   const bi = useBi();
-  const [slug, setSlug] = useState(DEMO.slug);
+  const [slug, setSlug] = useState(() => {
+    try {
+      return localStorage.getItem(SLUG_KEY) || DEMO.slug;
+    } catch {
+      return DEMO.slug;
+    }
+  });
+  const [rememberSlug, setRememberSlug] = useState(() => {
+    try {
+      return Boolean(localStorage.getItem(SLUG_KEY));
+    } catch {
+      return false;
+    }
+  });
   const [email, setEmail] = useState(DEMO.email);
   const [password, setPassword] = useState(DEMO.password);
   const [totp, setTotp] = useState("");
@@ -31,6 +46,15 @@ export function LoginPage() {
     const from = (location.state as { from?: LoginFrom } | null)?.from;
     return <Navigate to={loginRedirectTarget(from)} replace />;
   }
+
+  useEffect(() => {
+    try {
+      if (rememberSlug && slug.trim()) localStorage.setItem(SLUG_KEY, slug.trim());
+      else localStorage.removeItem(SLUG_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, [rememberSlug, slug]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -94,6 +118,10 @@ export function LoginPage() {
             <Bi en="Company code" fa="کد شرکت" />
           </label>
           <input id="login-slug" value={slug} onChange={(e) => setSlug(e.target.value)} autoComplete="organization" required />
+          <label className="checkbox-row">
+            <input type="checkbox" checked={rememberSlug} onChange={(e) => setRememberSlug(e.target.checked)} />
+            <Bi en="Remember company code" fa="یادآوری کد شرکت" />
+          </label>
         </div>
         <div className="field">
           <label htmlFor="login-email">
@@ -114,18 +142,21 @@ export function LoginPage() {
             required
           />
         </div>
-        <div className="field">
-          <label htmlFor="login-totp">
-            <Bi en="Authenticator code" fa="رمز دو مرحله‌ای" />
-          </label>
-          <input
-            id="login-totp"
-            value={totp}
-            onChange={(e) => setTotp(e.target.value)}
-            inputMode="numeric"
-            autoComplete="one-time-code"
-          />
-        </div>
+        <details className="perf-fold">
+          <summary><Bi en="Two-factor code" fa="رمز دو مرحله‌ای" /></summary>
+          <div className="field">
+            <label htmlFor="login-totp">
+              <Bi en="Authenticator code" fa="کد اپلیکیشن" />
+            </label>
+            <input
+              id="login-totp"
+              value={totp}
+              onChange={(e) => setTotp(e.target.value)}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+            />
+          </div>
+        </details>
         <ErrorMessage message={error} friendly={false} />
         <Button type="submit" disabled={busy}>
           {busy ? bi("Signing in…", "در حال ورود…") : bi("Sign in", "ورود")}

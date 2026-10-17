@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Bi } from "../../i18n";
 import { symbolUrl } from "../../brand/logos";
+import { Button } from "./Button";
 import { isForbiddenError } from "../../lib/apiError";
 import { ErrorMessage } from "./ErrorMessage";
 import { ForbiddenState } from "./ForbiddenState";
@@ -26,6 +27,7 @@ export function EmptyState({
   bodyEn,
   bodyFa,
   action,
+  onClearFilters,
   className = "",
 }: {
   titleEn: string;
@@ -33,6 +35,7 @@ export function EmptyState({
   bodyEn: string;
   bodyFa: string;
   action?: ReactNode;
+  onClearFilters?: () => void;
   className?: string;
 }) {
   return (
@@ -45,6 +48,11 @@ export function EmptyState({
         <Bi en={bodyEn} fa={bodyFa} />
       </p>
       {action}
+      {onClearFilters ? (
+        <Button type="button" variant="secondary" onClick={onClearFilters}>
+          <Bi en="Clear filters" fa="پاک کردن فیلتر" />
+        </Button>
+      ) : null}
     </div>
   );
 }

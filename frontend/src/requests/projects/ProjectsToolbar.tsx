@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button, Checkbox, Icon, Input, MoreMenu, Segmented, Select } from "../../components/ui";
 import { DateText } from "../../components/DateText";
 import { Bi } from "../../i18n";
@@ -65,33 +65,6 @@ export function ProjectsToolbar({
             aria-label="جستجو در پروژه‌ها"
           />
         </div>
-        <div className="projects-toolbar-chips">
-          <Select aria-label="منبع" value={url.source} onChange={(event) => onPatch({ source: event.target.value, page: 1 })}>
-            <option value="">همهٔ منابع</option>
-            <option value="mizito">میزیتو</option>
-            <option value="cm">CM</option>
-          </Select>
-          {!board ? (
-            <Select aria-label="وضعیت" value={url.status} onChange={(event) => onPatch({ status: event.target.value, page: 1 })}>
-              <option value="">همهٔ وضعیت‌ها</option>
-              <option value="new">تازه</option>
-              <option value="in_progress">در جریان</option>
-              <option value="done">تمام</option>
-            </Select>
-          ) : null}
-          <Checkbox
-            checked={url.hide_done}
-            onChange={(event) => onPatch({ hide_done: event.target.checked, page: 1 })}
-            label={<Bi en="Open only" fa="فقط باز" />}
-          />
-          {board ? (
-            <Checkbox
-              checked={url.archive}
-              onChange={(event) => onPatch({ archive: event.target.checked, page: 1 })}
-              label={<Bi en="Archive columns" fa="ستون‌های بایگانی" />}
-            />
-          ) : null}
-        </div>
         <div className="projects-toolbar-end">
           <span className={`projects-sync muted${syncFinishedAt && syncOk === false ? " is-error" : ""}`} title={syncError || undefined}>
             <Icon name="clock" size={12} />
@@ -106,22 +79,58 @@ export function ProjectsToolbar({
               { key: "list", label: "فهرست" },
             ]}
           />
-          {triage ? (
-            <MoreMenu label={<Bi en="More" fa="بیشتر" />}>
-              {onSyncNow ? (
-                <Button type="button" variant="ghost" onClick={onSyncNow}>
-                  همگام‌سازی همین حالا
-                </Button>
-              ) : null}
-              {onReviewChanges ? (
-                <Button type="button" variant="ghost" onClick={onReviewChanges} disabled={pending === 0}>
-                  تغییرهای منتظر تأیید ({pending})
-                </Button>
-              ) : null}
-            </MoreMenu>
-          ) : null}
+          <MoreMenu label={<Bi en="Filters" fa="فیلترها" />}>
+            <FieldRow label={<Bi en="Source" fa="منبع" />}>
+              <Select aria-label="منبع" value={url.source} onChange={(event) => onPatch({ source: event.target.value, page: 1 })}>
+                <option value="">همهٔ منابع</option>
+                <option value="mizito">میزیتو</option>
+                <option value="cm">CM</option>
+              </Select>
+            </FieldRow>
+            {!board ? (
+              <FieldRow label={<Bi en="Status" fa="وضعیت" />}>
+                <Select aria-label="وضعیت" value={url.status} onChange={(event) => onPatch({ status: event.target.value, page: 1 })}>
+                  <option value="">همهٔ وضعیت‌ها</option>
+                  <option value="new">تازه</option>
+                  <option value="in_progress">در جریان</option>
+                  <option value="done">تمام</option>
+                </Select>
+              </FieldRow>
+            ) : null}
+            <Checkbox
+              checked={url.hide_done}
+              onChange={(event) => onPatch({ hide_done: event.target.checked, page: 1 })}
+              label={<Bi en="Open only" fa="فقط باز" />}
+            />
+            {board ? (
+              <Checkbox
+                checked={url.archive}
+                onChange={(event) => onPatch({ archive: event.target.checked, page: 1 })}
+                label={<Bi en="Archive columns" fa="ستون‌های بایگانی" />}
+              />
+            ) : null}
+            {triage && onSyncNow ? (
+              <Button type="button" variant="ghost" onClick={onSyncNow}>
+                همگام‌سازی همین حالا
+              </Button>
+            ) : null}
+            {triage && onReviewChanges ? (
+              <Button type="button" variant="ghost" onClick={onReviewChanges} disabled={pending === 0}>
+                تغییرهای منتظر تأیید ({pending})
+              </Button>
+            ) : null}
+          </MoreMenu>
         </div>
       </div>
+    </div>
+  );
+}
+
+function FieldRow({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return (
+    <div className="stack" style={{ gap: 4, padding: "4px 0" }}>
+      <span className="muted" style={{ fontSize: "0.78rem" }}>{label}</span>
+      {children}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Badge, Button, Card, EmptyState, ErrorMessage, ForbiddenState, List, ListItem, LoadingState, MoreMenu, PageHeader, SectionHeader, StatCard, TitleCode } from "../components/ui";
+import { Badge, Button, Card, EmptyState, ErrorMessage, ForbiddenState, List, ListItem, LoadingState, MoreMenu, PageHeader, SectionHeader, TitleCode } from "../components/ui";
 import { isForbiddenError } from "../lib/apiError";
 import { FaText } from "../components/FaText";
 import { Bi, useBi } from "../i18n";
@@ -57,11 +57,11 @@ export function PerfHomePage() {
           </>
         }
       />
-      <div className="kpi-row kpi-row--3 kpi-row--even">
-        <StatCard icon="megaphone" tone="accent" label={<Bi en="Active" fa="کمپین فعال" />} value={toman(data.active_campaigns.length)} hint={campaigns.data ? <Bi en="of all campaigns" fa={`از ${toman(campaigns.data.length)}`} /> : <Bi en="open one" fa="یکی را باز کنید" />} to="/perf/campaigns" />
-        <StatCard icon="alert" tone={data.waiting_payments ? "warn" : "ok"} label={<Bi en="Payments" fa="پرداخت" />} value={toman(data.waiting_payments)} hint={<Bi en="waiting" fa="منتظر تأیید" />} to="/perf/money" />
-        <StatCard icon="message" tone={low ? "warn" : "neutral"} label={<Bi en="SMS panels" fa="پنل پیامک" />} value={toman(data.panels.length)} hint={low ? low.name : data.panels.map((panel) => panel.name).join(" · ") || <Bi en="none" fa="پنلی نیست" />} to="/perf/sms" />
-      </div>
+      {low ? (
+        <p className="banner banner-warn">
+          <Bi en={`Low SMS balance: ${low.name}`} fa={`اعتبار کم در پنل ${low.name}`} />
+        </p>
+      ) : null}
       <Card>
         <SectionHeader icon="check" title={<Bi en="Campaign gaps" fa="جاهای ناقص کمپین‌ها" />} hint={<Bi en="Each row opens the campaign or its tool. It does not send, book, or pay." fa="هر ردیف کمپین یا ابزارش را باز می‌کند. ارسال، قرار و پرداخت همچنان با دکمه است." />} count={data.next.length} />
         {data.next.length ? (

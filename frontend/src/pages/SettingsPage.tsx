@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   CardTitle,
+  Disclosure,
   EmptyState,
   Field,
   Input,
@@ -22,7 +23,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { BrowserNotifyCard } from "./settings/BrowserNotifyCard";
 import { TotpCard } from "./settings/TotpCard";
 
-type Section = "org" | "knowledge" | "language" | "telegram";
+type Section = "org" | "language" | "telegram";
 
 type TgStatus = {
   linked: boolean;
@@ -56,7 +57,6 @@ export function SettingsPage() {
   const branchesQuery = useQuery({ queryKey: queryKeys.branches, queryFn: () => api.branches.list() });
   const teamsQuery = useQuery({ queryKey: queryKeys.teams, queryFn: () => api.teams.list() });
   const deptsQuery = useQuery({ queryKey: queryKeys.departments, queryFn: () => api.departments.list() });
-  const docsQuery = useQuery({ queryKey: queryKeys.knowledge, queryFn: () => api.knowledge.list() });
   const membersQuery = useQuery({
     queryKey: queryKeys.teamMembers(String(selectedTeam ?? "")),
     enabled: Boolean(selectedTeam),
@@ -66,7 +66,6 @@ export function SettingsPage() {
   const branches = branchesQuery.data ?? [];
   const teams = teamsQuery.data ?? [];
   const depts = deptsQuery.data ?? [];
-  const docs = docsQuery.data ?? [];
   const members = membersQuery.data ?? [];
   const roleName = new Map((rolesQuery.data ?? []).map((r) => [r.id, r.name]));
   const [deepLink, setDeepLink] = useState<string | null>(null);
@@ -180,7 +179,9 @@ export function SettingsPage() {
           />
         }
       />
-      <TotpCard />
+      <Disclosure label={<Bi en="Security (2FA)" fa="امنیت (ورود دو مرحله‌ای)" />}>
+        <TotpCard />
+      </Disclosure>
 
       <div className="tab-row">
         {(
@@ -188,7 +189,6 @@ export function SettingsPage() {
             ["telegram", bi("Telegram", "تلگرام")],
             ["language", bi("Language", "زبان")],
             ["org", bi("Branches & teams", "شعب و تیم‌ها")],
-            ["knowledge", bi("Rules & guides", "قوانین و راهنماها")],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -388,16 +388,6 @@ export function SettingsPage() {
                 <li key={String(d.id)}>{String(d.name)}</li>
               ))}
             </ul>
-            <details className="advanced">
-              <summary>
-                <Bi en="Advanced tools" fa="ابزارهای پیشرفته" />
-              </summary>
-              <div className="advanced-body">
-                <Button variant="ghost" to="/my-work">
-                  <Bi en="My work" fa="کارهای من" />
-                </Button>
-              </div>
-            </details>
           </Card>
           <Card>
             <CardTitle>
@@ -432,39 +422,6 @@ export function SettingsPage() {
             )}
           </Card>
         </div>
-      )}
-
-      {section === "knowledge" && (
-        <Card>
-          <p>
-            <Bi
-              en="Company rules and guides. Colleagues can search them and the assistant uses them in its answers."
-              fa="قوانین و راهنماهای شرکت. همکاران می‌توانند جستجویشان کنند و دستیار در جواب‌ها از آن‌ها استفاده می‌کند."
-            />
-          </p>
-          {docs.length === 0 ? (
-            <EmptyState
-              titleEn="No guides yet"
-              titleFa="هنوز راهنمایی نیست"
-              bodyEn="Add your company rules when ready."
-              bodyFa="هر وقت آماده بودید، قوانین شرکت را اضافه کنید."
-              action={
-                <Button variant="secondary" to="/knowledge">
-                  <Bi en="Go to Rules & guides" fa="رفتن به قوانین و راهنماها" />
-                </Button>
-              }
-            />
-          ) : (
-            <ul>
-              {docs.map((d) => (
-                <li key={String(d.id)}>{String(d.title)}</li>
-              ))}
-            </ul>
-          )}
-          <Button variant="secondary" to="/knowledge">
-            <Bi en="Manage rules & guides" fa="مدیریت قوانین و راهنماها" />
-          </Button>
-        </Card>
       )}
 
       {section === "language" && (

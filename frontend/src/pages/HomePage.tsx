@@ -24,7 +24,6 @@ import {
   type AttentionStory,
   formatDeadline,
   isOverdue,
-  taskMark,
 } from "../lib/collaboration";
 import { caughtUpTarget, filterOnboardingCue, onboardingCue, visibleHomeKpis, type HomeKpi } from "../lib/focus";
 import { useVehicleLabel } from "../lib/vehicleLabels";
@@ -271,20 +270,18 @@ export function HomePage() {
                 <Bi en="Guide" fa="راهنما" />
               </Button>
             ) : null}
-            {kpis.includes("replies") ? (
-              <Button variant="secondary" to="/communication">
-                <Icon name="message" size={14} />
-                <Bi en="Messages" fa="پیام‌ها" />
-              </Button>
-            ) : null}
-            {isRequester ? (
-              <Button variant="secondary" to="/requests">
-                <Bi en="My request status" fa="وضعیت درخواست‌های من" />
-              </Button>
-            ) : null}
             {has("inquiry.create") ? (
               <Button type="button" onClick={() => setInquiryOpen(true)}>
                 <Bi en="New inquiry" fa="استعلام جدید" />
+              </Button>
+            ) : isRequester ? (
+              <Button to="/requests">
+                <Bi en="My requests" fa="درخواست‌های من" />
+              </Button>
+            ) : kpis.includes("replies") && waitingReply > 0 ? (
+              <Button to="/communication">
+                <Icon name="message" size={14} />
+                <Bi en="Messages" fa="پیام‌ها" />
               </Button>
             ) : null}
           </>
@@ -360,6 +357,7 @@ export function HomePage() {
             pricesWaiting={pricing.data?.waiting ?? 0}
             postsToday={pricing.data?.today_total ?? 0}
             allPriced={Boolean(pricing.data?.all_priced)}
+            hideWhenZero
           />
         ))}
       </div>
@@ -385,12 +383,16 @@ export function HomePage() {
             <ul className="story-grid">
               {stories.map((story) => {
                 const kind = KIND_META[story.kind];
+                const lead =
+                  story.lines.find((line) => line.waiting)?.text ??
+                  story.lines.find((line) => !line.done)?.text ??
+                  story.lines[0]?.text;
                 return (
                   <li
                     key={story.id}
                     className={`story-card${story.tone === "danger" ? " is-danger" : story.tone === "warn" ? " is-warn" : ""}`}
                   >
-                    <div className="story-body">
+                    <Link to={story.href} className="story-card-hit">
                       <div className="story-top">
                         <span className="story-kind">
                           <Icon name={kind.icon} size={12} />
@@ -402,37 +404,15 @@ export function HomePage() {
                           </Badge>
                         ) : null}
                       </div>
-                      <Link to={story.href} className="story-title">
-                        {story.title}
-                      </Link>
-                      <ul className="story-lines">
-                        {story.lines.map((line, i) => (
-                          <li
-                            key={i}
-                            className={line.waiting ? "is-waiting" : line.done ? "is-done" : ""}
-                          >
-                            <span className="story-mark">
-                              {line.done ? "✓" : line.waiting ? "!" : taskMark("OPEN")}
-                            </span>
-                            {line.text}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="story-foot">
+                      <strong className="story-title">{story.title}</strong>
+                      {lead ? <p className="muted story-lead">{lead}</p> : null}
                       {story.deadline ? (
                         <span className="deadline">
                           <Icon name="clock" size={12} />
                           {story.deadline}
                         </span>
-                      ) : (
-                        <span />
-                      )}
-                      <Link to={story.href} className="story-open">
-                        <Bi en="Handle" fa="رسیدگی" />
-                        <Icon name="arrow" size={13} />
-                      </Link>
-                    </div>
+                      ) : null}
+                    </Link>
                   </li>
                 );
               })}
@@ -455,6 +435,7 @@ function HomeKpiCard({
   pricesWaiting,
   postsToday,
   allPriced,
+  hideWhenZero = false,
 }: {
   kpi: HomeKpi;
   loading: boolean;
@@ -466,7 +447,19 @@ function HomeKpiCard({
   pricesWaiting: number;
   postsToday: number;
   allPriced: boolean;
+  hideWhenZero?: boolean;
 }) {
+  if (hideWhenZero && !loading) {
+    const n =
+      kpi === "waiting" ? waiting :
+      kpi === "late" ? atRisk :
+      kpi === "projects" ? sharedCount :
+      kpi === "replies" ? waitingReply :
+      kpi === "prices" ? pricesWaiting :
+      kpi === "posts" ? postsToday : 0;
+    if (n === 0 && kpi !== "prices") return null;
+    if (kpi === "prices" && pricesWaiting === 0 && allPriced) return null;
+  }
   if (kpi === "waiting") {
     return (
       <StatCard
@@ -487,6 +480,7 @@ function HomeKpiCard({
         label={<Bi en="Late" fa="دیر شده" />}
         value={loading ? "–" : atRisk}
         hint={<Bi en="past their deadline" fa="از مهلتشان گذشته" />}
+        to="/my-work"
       />
     );
   }

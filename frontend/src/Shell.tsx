@@ -212,6 +212,10 @@ export function Shell() {
   const perfToolsPathActive = marketingNav.perfTools.some(
     (item) => pathname === item.to || pathname.startsWith(`${item.to}/`),
   );
+  const morePathActive = otherMore.some(
+    (item) => pathname === item.to || pathname.startsWith(`${item.to}/`),
+  );
+  const perfConnections = has("perf.read") || has("perf.write") || has("perf.approve") || has("price.approve");
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
@@ -341,7 +345,7 @@ export function Shell() {
           ) : null}
 
           {otherMore.length > 0 ? (
-            <details className="advanced nav-advanced" open>
+            <details className="advanced nav-advanced" open={morePathActive || undefined}>
               <summary>
                 <Bi en="More" fa="بیشتر" />
               </summary>
@@ -359,8 +363,8 @@ export function Shell() {
               <Bi en="Settings" fa="تنظیمات" />
             </span>
           </NavLink>
-          {(has("perf.read") || has("perf.write") || has("perf.approve") || has("price.approve")) ? (
-            <NavLink to="/perf/connections" className="nav-settings" onClick={closeDrawer} title={bi("The tools you use", "ابزارهای خودتان")}>
+          {perfConnections ? (
+            <NavLink to="/perf/connections" className="nav-settings nav-settings--sub" onClick={closeDrawer} title={bi("Connections", "اتصالات")}>
               <Icon name="plug" />
               <span>
                 <Bi en="Connections" fa="اتصالات" />

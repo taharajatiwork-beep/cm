@@ -13,6 +13,7 @@ import {
   Input,
   List,
   ListItem,
+  Muted,
   PageHeader,
   SectionHeader,
   Select,
@@ -58,6 +59,7 @@ export function KnowledgePage() {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [selected, setSelected] = useState<Doc | null>(null);
   const [error, setError] = useState("");
 
   function categoryLabel(code: string) {
@@ -164,6 +166,7 @@ export function KnowledgePage() {
           </form>
         </div>
         <Table
+          onRowClick={(d) => setSelected(d)}
           columns={[
             {
               key: "title",
@@ -200,6 +203,18 @@ export function KnowledgePage() {
           }
         />
       </Card>
+
+      <Sheet open={Boolean(selected)} onClose={() => setSelected(null)} title={selected?.title ?? ""}>
+        {selected ? (
+          <div className="stack">
+            <p><Badge>{categoryLabel(selected.category)}</Badge> {selected.status === "INDEXED" ? <Badge tone="ok">{bi("Ready", "آماده")}</Badge> : null}</p>
+            <Muted><Bi en="Chunks indexed" fa="بخش‌های شاخص" />: {selected.chunk_count}</Muted>
+            <Button variant="secondary" onClick={() => { setQuery(selected.title); setSelected(null); }}>
+              <Bi en="Search this title" fa="جستجوی این عنوان" />
+            </Button>
+          </div>
+        ) : null}
+      </Sheet>
 
       <Sheet
         open={showAdd}

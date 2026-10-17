@@ -6,9 +6,11 @@ import { requestsApi } from "./api";
 
 export function DeliveryReviewCard({
   projectId,
+  projectTitle,
   onSuccess,
 }: {
   projectId: string;
+  projectTitle?: string;
   onSuccess: () => void;
 }) {
   const bi = useBi();
@@ -32,8 +34,16 @@ export function DeliveryReviewCard({
 
   return (
     <>
-      <Card className="stack">
-        <SectionHeader title={<Bi en="Accept delivery" fa="تأیید تحویل" />} />
+      <Card className="stack" id={`delivery-${projectId}`}>
+        <SectionHeader
+          title={
+            projectTitle ? (
+              <Bi en={`Accept delivery: ${projectTitle}`} fa={`تأیید تحویل: ${projectTitle}`} />
+            ) : (
+              <Bi en="Accept delivery" fa="تأیید تحویل" />
+            )
+          }
+        />
         <p>
           <Bi en="Confirm the result or send it back with a note." fa="نتیجه را تأیید کنید یا با یادداشت برای اصلاح برگردانید." />
         </p>

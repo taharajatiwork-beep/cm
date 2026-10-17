@@ -11,6 +11,7 @@ import {
   Dialog,
   EmptyState,
   ErrorMessage,
+  Disclosure,
   Field,
   Input,
   LoadingState,
@@ -311,8 +312,7 @@ export function AiLabPage() {
       )}
 
       {summary.data && summaryKinds.length > 0 && (
-        <Card>
-          <SectionHeader icon="activity" title={<Bi en="Evaluation" fa="ارزیابی" />} />
+        <Disclosure label={<Bi en="Evaluation by kind" fa="ارزیابی به تفکیک نوع" />}>
           <div className="form-grid">
             {summaryKinds.map(([k, v]) => (
               <div key={k} className="muted">
@@ -326,7 +326,7 @@ export function AiLabPage() {
               </div>
             ))}
           </div>
-        </Card>
+        </Disclosure>
       )}
 
       <Card>
@@ -363,17 +363,17 @@ export function AiLabPage() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  className="is-clickable"
+                  onClick={() => setDetailId(row.id)}
+                >
                   <td>{bi(KIND_LABEL[row.kind]?.en ?? row.kind, KIND_LABEL[row.kind]?.fa ?? row.kind)}</td>
                   <td>{bi(TRIGGER_LABEL[(row.trigger as AiTaskTrigger) || "manual"].en, TRIGGER_LABEL[(row.trigger as AiTaskTrigger) || "manual"].fa)}</td>
                   <td><span className={statusBadgeClass(row.status)}>{statusLabel(row.status)}</span></td>
                   <td>{row.rating ?? "—"}</td>
                   <td>{row.accepted_count}</td>
-                  <td>
-                    <Button variant="ghost" type="button" onClick={() => setDetailId(row.id)}>
-                      <Bi en="Open" fa="باز کردن" />
-                    </Button>
-                  </td>
+                  <td />
                 </tr>
               ))}
             </tbody>

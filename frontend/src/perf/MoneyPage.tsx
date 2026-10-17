@@ -195,22 +195,30 @@ export function MoneyPage() {
           </div>
         </Dialog>
       ) : null}
-      <MizitoList campaigns={campaigns.data ?? []} />
-      <MizitoFinanceBlock campaigns={campaigns.data ?? []} />
-      {payments.isLoading ? <LoadingState /> : null}
-      {payments.error ? <ErrorMessage error={payments.error} /> : null}
-      {payments.data ? (
-        payments.data.length === 0 ? (
-          <EmptyState
-            titleEn="No payment requests yet"
-            titleFa="هنوز درخواست پرداختی نیست"
-            bodyEn="Panel top-ups and social costs start with a new request."
-            bodyFa="شارژ پنل و هزینهٔ سوشال با «درخواست تازه» شروع می‌شود."
-          />
-        ) : (
-          <MoneyTable rows={payments.data} campaigns={campaigns.data ?? []} canFinance={canFinance} canTeamApprove={canTeamApprove} userId={user?.id} onAct={(id, action, amount) => act.mutate({ id, action, amount })} onOutcome={setOutcome} />
-        )
-      ) : null}
+      <Card>
+        <SectionHeader icon="briefcase" title={<Bi en="Payment requests" fa="درخواست‌های پرداخت" />} />
+        {payments.isLoading ? <LoadingState /> : null}
+        {payments.error ? <ErrorMessage error={payments.error} /> : null}
+        {payments.data ? (
+          payments.data.length === 0 ? (
+            <EmptyState
+              titleEn="No payment requests yet"
+              titleFa="هنوز درخواست پرداختی نیست"
+              bodyEn="Panel top-ups and social costs start with a new request."
+              bodyFa="شارژ پنل و هزینهٔ سوشال با «درخواست تازه» شروع می‌شود."
+            />
+          ) : (
+            <MoneyTable rows={payments.data} campaigns={campaigns.data ?? []} canFinance={canFinance} canTeamApprove={canTeamApprove} userId={user?.id} onAct={(id, action, amount) => act.mutate({ id, action, amount })} onOutcome={setOutcome} />
+          )
+        ) : null}
+      </Card>
+      <details className="perf-fold">
+        <summary><Bi en="Mizito sync" fa="همگام‌سازی میزیتو" /></summary>
+        <div className="stack">
+          <MizitoList campaigns={campaigns.data ?? []} />
+          <MizitoFinanceBlock campaigns={campaigns.data ?? []} />
+        </div>
+      </details>
       <OutcomePop outcome={outcome} onClose={() => setOutcome(null)} />
     </>
   );

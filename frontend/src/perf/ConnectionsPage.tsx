@@ -245,11 +245,13 @@ export function ConnectionsPage() {
                   <h3><Bi en={item.en} fa={item.fa} /></h3>
                   {sheetBadge(link, liveReady, checking)}
                 </div>
-                <p className="conn-help">{item.help}</p>
-                {link?.connected && link.title ? <Muted>عنوان: {link.title}</Muted> : null}
-                {liveReady && link && !link.connected ? (
-                  <ErrorMessage friendly={false} message={link.reason || "شیت باز نشد و دلیلی از سرور نیامد."} />
-                ) : null}
+                <p className="muted">
+                  {!link?.configured
+                    ? "تنظیم نشده"
+                    : link.connected
+                      ? (link.title ? `وصل · ${link.title}` : "وصل")
+                      : (link.reason || (liveReady ? "باز نشد" : "بررسی زنده نکرده‌اید"))}
+                </p>
               </article>
             );
           })}

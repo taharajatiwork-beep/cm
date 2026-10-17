@@ -505,6 +505,13 @@ function PeopleTab() {
       body: JSON.stringify({ email, full_name: name, password }),
     });
     setMessage(res.ok ? "ساخته شد" : await res.text());
+    if (res.ok) {
+      setCreateOpen(false);
+      setEmail("");
+      setName("");
+      setPassword("");
+      invalidateAdmin();
+    }
   }
 
   const [formError, setFormError] = useState("");
@@ -539,6 +546,7 @@ function PeopleTab() {
     queryFn: () => api.admin.rolePermissions(roleId),
   });
 
+  const [createOpen, setCreateOpen] = useState(false);
   const [userQuery, setUserQuery] = useState("");
   const people = (peopleQuery.data ?? []).filter((person) => {
     const blob = `${person.full_name || ""} ${person.email || ""}`.toLowerCase();
@@ -596,47 +604,15 @@ function PeopleTab() {
     <>
       <ErrorMessage error={formError || loadError} />
 
-      <Card>
-        <SectionHeader
-          icon="plus"
-          title={<Bi en="New user" fa="کاربر جدید" />}
-          hint={
-            <Bi
-              en="They sign in with this email and password. You can change the password later."
-              fa="با همین ایمیل و رمز وارد می‌شوند. رمز را بعداً هم می‌توانید عوض کنید."
-            />
-          }
-        />
-        <form className="form-grid" onSubmit={onSubmit}>
-          <Field label={<Bi en="Full name" fa="نام کامل" />}>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required />
-          </Field>
-          <Field label={<Bi en="Email" fa="ایمیل" />}>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </Field>
-          <Field label={<Bi en="Password" fa="رمز عبور" />}>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </Field>
-          <div className="span-all">
-            <Button type="submit">{bi("Create", "ساختن")}</Button>
-          </div>
-        </form>
-      </Card>
-
       <Card padded={false}>
         <SectionHeader
           icon="users"
           title={<Bi en="People" fa="کاربران" />}
+          action={
+            <Button type="button" onClick={() => setCreateOpen(true)}>
+              <Bi en="New user" fa="کاربر جدید" />
+            </Button>
+          }
           count={people.length}
           hint={
             <Bi
@@ -652,8 +628,8 @@ function PeopleTab() {
           <EmptyState
             titleEn="No users yet"
             titleFa="هنوز کاربری نیست"
-            bodyEn="Create the first account above."
-            bodyFa="اولین حساب را بالا بسازید."
+            bodyEn="Use New user to add the first account."
+            bodyFa="با «کاربر جدید» اولین حساب را بسازید."
           />
         ) : (
           <Table className="table-fit"
@@ -824,6 +800,31 @@ function PeopleTab() {
           />
         ) : null}
       </Card>
+      {createOpen ? (
+        <Dialog onClose={() => setCreateOpen(false)} className="form-pop" labelledBy="admin-new-user-title">
+          <SectionHeader
+            title={<span id="admin-new-user-title"><Bi en="New user" fa="کاربر جدید" /></span>}
+            hint={<Bi en="Email and password for sign-in." fa="ایمیل و رمز برای ورود." />}
+          />
+          <form className="form-grid" onSubmit={onSubmit}>
+            <Field label={<Bi en="Full name" fa="نام کامل" />}>
+              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            </Field>
+            <Field label={<Bi en="Email" fa="ایمیل" />}>
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </Field>
+            <Field label={<Bi en="Password" fa="رمز عبور" />}>
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </Field>
+            <div className="span-all row">
+              <Button type="submit">{bi("Create", "ساختن")}</Button>
+              <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
+                <Bi en="Cancel" fa="انصراف" />
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+      ) : null}
     </>
   );
 }

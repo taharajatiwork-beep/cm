@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import {
@@ -24,6 +25,13 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
   const vehicleLabel = useVehicleLabel();
   const [q, setQ] = useState(initialQuery);
   const [submitted, setSubmitted] = useState(initialQuery);
+
+  useEffect(() => {
+    if (initialQuery.trim()) {
+      setQ(initialQuery);
+      setSubmitted(initialQuery);
+    }
+  }, [initialQuery]);
   const searchQuery = useQuery({
     queryKey: ["search", submitted],
     enabled: submitted.trim().length > 0,
@@ -48,6 +56,8 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
     const id = String(h.entity_id);
     if (t === "vehicle") return `/vehicles/${id}`;
     if (t === "user") return `/people`;
+    if (t === "work_item") return `/projects/${id}`;
+    if (t === "case") return `/cases`;
     return null;
   }
 
@@ -61,15 +71,7 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
 
   return (
     <>
-      <PageHeader
-        title={<Bi en="Search" fa="جستجو" />}
-        description={
-          <Bi
-            en="Type a name, a car or a plate — we look everywhere for you."
-            fa="یک نام، خودرو یا پلاک بنویسید — همه‌جا را برایتان می‌گردیم."
-          />
-        }
-      />
+      <PageHeader title={<Bi en="Search" fa="جستجو" />} />
       <Card className="block-gap">
         <Toolbar as="form" onSubmit={run}>
           <Input
@@ -117,19 +119,21 @@ export function SearchPage({ initialQuery = "" }: { initialQuery?: string }) {
                   ? `${vehicleLabel(String(meta.brand ?? ""))} ${vehicleLabel(String(meta.model ?? ""))}`.trim() +
                     (meta.stock_number ? ` #${String(meta.stock_number)}` : "")
                   : String(h.title || h.entity_id);
-              return (
-                <ListItem key={`${h.entity_type}-${h.entity_id}-${i}`}>
-                  <div>
+              const key = `${h.entity_type}-${h.entity_id}-${i}`;
+              if (!href) {
+                return (
+                  <ListItem key={key}>
                     <strong>{title}</strong>
-                    <div>
-                      <Muted>{typeLabel(String(h.entity_type))}</Muted>
-                    </div>
-                  </div>
-                  {href ? (
-                    <Button variant="secondary" to={href}>
-                      <Bi en="Open" fa="باز کردن" />
-                    </Button>
-                  ) : null}
+                    <Muted>{typeLabel(String(h.entity_type))}</Muted>
+                  </ListItem>
+                );
+              }
+              return (
+                <ListItem key={key}>
+                  <Link className="ui-list-row-link" to={href}>
+                    <strong>{title}</strong>
+                    <Muted>{typeLabel(String(h.entity_type))}</Muted>
+                  </Link>
                 </ListItem>
               );
             })}

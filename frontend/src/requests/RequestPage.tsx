@@ -17,6 +17,7 @@ import {
 } from "../components/ui";
 import { ApiError } from "../api";
 import { useAuth } from "../auth";
+import { RequestTriagePanel } from "./RequestTriagePanel";
 import { Bi, useBi } from "../i18n";
 import { faNum } from "../fa";
 import { requestsApi, type WorkProject } from "./api";
@@ -43,7 +44,8 @@ export function RequestPage() {
   const { id = "" } = useParams();
   const bi = useBi();
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, has } = useAuth();
+  const triage = has("request.triage") || has("request.manage") || has("org.admin");
   const detail = useQuery({
     queryKey: ["request", id],
     queryFn: () => requestsApi.get(id),
@@ -85,14 +87,15 @@ export function RequestPage() {
     (p) => p.status === "done" && !p.requester_acceptance && row.requested_by === user?.id,
   );
   const doneTasks = tasks.filter((t) => t.status === "COMPLETED").length;
-  const nextStep =
+  const firstOpenProject = projects.find((p) => p.status !== "done") ?? projects[0];
+  const nextAction =
     pendingDelivery.length > 0
-      ? bi("Review delivered work and accept or return it.", "تحویل را ببینید و تأیید یا برگشت بزنید.")
-      : row.status === "new"
-        ? bi("Waiting for the team to review this request.", "منتظر رسیدگی تیم هستید.")
-        : projects.length === 0
-          ? bi("Team will turn this into projects or tasks.", "تیم این را به پروژه یا کار تبدیل می‌کند.")
-          : bi("Open a project to see progress.", "برای پیشرفت، یک پروژه را باز کنید.");
+      ? { label: bi("Accept delivery", "تأیید تحویل"), onClick: () => document.getElementById(`delivery-${pendingDelivery[0].id}`)?.scrollIntoView({ behavior: "smooth" }) }
+      : triage && (row.status === "new" || projects.length === 0)
+        ? null
+        : firstOpenProject
+          ? { label: bi("Open project", "باز کردن پروژه"), to: `/projects/${firstOpenProject.id}` }
+          : null;
 
   return (
     <>
@@ -100,9 +103,17 @@ export function RequestPage() {
         title={row.title}
         description={<TitleCode title={row.kind} code={row.code} />}
         actions={
-          <Button variant="secondary" to="/requests">
-            <Bi en="All requests" fa="همهٔ درخواست‌ها" />
-          </Button>
+          <div className="row">
+            {nextAction?.to ? (
+              <Button to={nextAction.to}>{nextAction.label}</Button>
+            ) : nextAction?.onClick ? (
+              <Button type="button" onClick={nextAction.onClick}>{nextAction.label}</Button>
+            ) : null}
+            {triage ? <RequestTriagePanel row={row} projects={projects} /> : null}
+            <Button variant="secondary" to="/requests">
+              <Bi en="All requests" fa="همهٔ درخواست‌ها" />
+            </Button>
+          </div>
         }
       />
       <Card className="stack">
@@ -123,7 +134,6 @@ export function RequestPage() {
             </span>
           ) : null}
         </div>
-        <p className="banner banner-info">{nextStep}</p>
         {row.description ? <p>{row.description}</p> : <Muted><Bi en="No description." fa="توضیحی ثبت نشده." /></Muted>}
         <Muted as="p">
           {projects.length > 0
@@ -136,7 +146,7 @@ export function RequestPage() {
       </Card>
 
       {pendingDelivery.map((project) => (
-        <DeliveryReviewCard key={project.id} projectId={project.id} onSuccess={refresh} />
+        <DeliveryReviewCard key={project.id} projectId={project.id} projectTitle={project.title} onSuccess={refresh} />
       ))}
 
       {projects.length > 0 ? (

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import { Button, ErrorMessage, Field, LoadingState, Muted, SectionHeader, TextArea } from "../components/ui";
+import { Button, Disclosure, ErrorMessage, Field, LoadingState, Muted, SectionHeader, TextArea } from "../components/ui";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { Bi, useBi, useLocale } from "../i18n";
 import { formatDeadline } from "../lib/collaboration";
@@ -65,6 +65,29 @@ export function TaskDetailSheet({
 
   return (
     <div className="stack">
+      {canFinish ? (
+        <div className="stack">
+          <SectionHeader icon="upload" title={<Bi en="Finish this task" fa="تمام کردن کار" />} />
+          <input
+            ref={fileRef}
+            type="file"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) upload.mutate(file);
+              e.target.value = "";
+            }}
+          />
+          <div className="row">
+            <Button type="button" variant="secondary" onClick={() => fileRef.current?.click()} disabled={upload.isPending}>
+              <Bi en="Upload output" fa="آپلود خروجی" />
+            </Button>
+            <Button type="button" onClick={() => void markDone()}>
+              <Bi en="Mark done" fa="انجام شد" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {data.description ? (
         <p>{String(data.description)}</p>
       ) : (
@@ -126,8 +149,7 @@ export function TaskDetailSheet({
           </ul>
         </div>
       ) : null}
-      <div>
-        <SectionHeader icon="message" title={<Bi en="Comments" fa="نظرات" />} count={noteRows.filter((n) => n.kind === "comment").length} />
+      <Disclosure label={<Bi en="Comments" fa="نظرات" />}>
         {notes.isLoading ? <LoadingState block={false} /> : null}
         {notes.error ? <ErrorMessage error={notes.error} /> : null}
         <ul className="rows rows--boxed">
@@ -156,23 +178,7 @@ export function TaskDetailSheet({
             <Bi en="Add comment" fa="ثبت نظر" />
           </Button>
         </div>
-      </div>
-      {canFinish ? (
-        <div className="stack">
-          <SectionHeader icon="upload" title={<Bi en="Deliverable" fa="خروجی کار" />} />
-          <input ref={fileRef} type="file" hidden onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) upload.mutate(file);
-            e.target.value = "";
-          }} />
-          <Button type="button" variant="secondary" onClick={() => fileRef.current?.click()} disabled={upload.isPending}>
-            <Bi en="Upload output" fa="آپلود خروجی" />
-          </Button>
-          <Button type="button" onClick={() => void markDone()}>
-            <Bi en="Mark done" fa="انجام شد" />
-          </Button>
-        </div>
-      ) : null}
+      </Disclosure>
     </div>
   );
 }

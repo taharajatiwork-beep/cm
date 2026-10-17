@@ -15,6 +15,7 @@ import {
   Field,
   Icon,
   Input,
+  MoreMenu,
   Muted,
   PageHeader,
   SectionHeader,
@@ -96,12 +97,33 @@ export function CustomersPage() {
           />
         }
         actions={
-          has("customer.write") || has("org.admin") ? (
-            <Button onClick={() => setShowAdd(true)}>
-              <Icon name="plus" size={14} />
-              <Bi en="Add customer" fa="افزودن مشتری" />
-            </Button>
-          ) : undefined
+          <div className="row">
+            {has("customer.write") || has("org.admin") ? (
+              <Button onClick={() => setShowAdd(true)}>
+                <Icon name="plus" size={14} />
+                <Bi en="Add customer" fa="افزودن مشتری" />
+              </Button>
+            ) : null}
+            {has("org.admin") && selected ? (
+              <MoreMenu label={<Bi en="More" fa="بیشتر" />}>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    void api.customers.exportJson(String(selected.id)).then((body) => {
+                      const blob = new Blob([JSON.stringify(body)], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "customer.json";
+                      a.click();
+                    });
+                  }}
+                >
+                  <Bi en="Export JSON" fa="خروجی JSON" />
+                </Button>
+              </MoreMenu>
+            ) : null}
+          </div>
         }
       />
       <SheetsSyncCard />
@@ -111,8 +133,7 @@ export function CustomersPage() {
       ) : listQuery.isLoading ? (
         <LoadingState />
       ) : (
-      <div className="split">
-        <Card padded={false}>
+      <Card padded={false} className="customers-list">
           <div className="card-bar">
             <SectionHeader title={<Bi en="All customers" fa="همه مشتریان" />} count={rows.length} />
             <form
@@ -179,113 +200,81 @@ export function CustomersPage() {
               )
             }
           />
-        </Card>
-
-        <aside className="side-stack">
-          <Card>
-            {!selected ? (
-              <div className="pane-empty pane-empty--snug">
-                <div>
-                  <Icon name="user" size={22} />
-                  <div className="muted">
-                    <Bi en="Select a customer to see details." fa="برای دیدن جزئیات، یک مشتری انتخاب کنید." />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="person-head">
-                  <Avatar name={String(selected.full_name)} size={42} />
-                  <div>
-                    <h2>{String(selected.full_name)}</h2>
-                    <Muted>
-                      <Bi en="Customer" fa="مشتری" />
-                    </Muted>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    to={`/communication?new=1&customer=${String(selected.id)}&topic=${encodeURIComponent(
-                      bi(`About: ${String(selected.full_name)}`, `درباره: ${String(selected.full_name)}`),
-                    )}`}
-                  >
-                    <Icon name="message" size={14} />
-                    <Bi en="Message about this customer" fa="گفتگو درباره این مشتری" />
-                  </Button>
-                </div>
-                <dl className="spec-grid spec-grid--single">
-                  <div>
-                    <dt>{bi("Phone", "تلفن")}</dt>
-                    <dd className="mono">{String(selected.phone || "—")}</dd>
-                  </div>
-                  <div>
-                    <dt>{bi("Email", "ایمیل")}</dt>
-                    <dd className="ltr-value">{String(selected.email || "—")}</dd>
-                  </div>
-                  <div>
-                    <dt>{bi("Added", "ثبت")}</dt>
-                    <dd>
-                      <DateText value={selected.created_at} />
-                    </dd>
-                  </div>
-                  <div className="row">
-                    {has("org.admin") ? (
-                      <>
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            void api.customers.exportJson(String(selected.id)).then((body) => {
-                              const blob = new Blob([JSON.stringify(body)], { type: "application/json" });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement("a");
-                              a.href = url;
-                              a.download = "customer.json";
-                              a.click();
-                            });
-                          }}
-                        >
-                          <Bi en="Export" fa="خروجی" />
-                        </Button>
-                        <Button
-                          variant="danger-quiet"
-                          onClick={() => {
-                            void (async () => {
-                              const first = await confirm(
-                                "ناشناس کردن مشتری",
-                                "نام، تلفن و ایمیل این مشتری پاک می‌شود.",
-                                "ادامه",
-                              );
-                              if (!first) return;
-                              const second = await confirm(
-                                "تأیید نهایی",
-                                "این کار برگشت‌پذیر نیست. دوباره تأیید کنید.",
-                                "بله، ناشناس کن",
-                                { danger: true },
-                              );
-                              if (!second || !selected) return;
-                              await api.customers.erase(String(selected.id));
-                              setSelected(null);
-                              void qc.invalidateQueries({ queryKey: queryKeys.customersRoot });
-                            })();
-                          }}
-                        >
-                          <Bi en="Erase" fa="ناشناس" />
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
-                  {selected.notes ? (
-                    <div>
-                      <dt>{bi("Notes", "یادداشت")}</dt>
-                      <dd className="prose-block">{String(selected.notes)}</dd>
-                    </div>
-                  ) : null}
-                </dl>
-              </>
-            )}
-          </Card>
-        </aside>
-      </div>
+      </Card>
       )}
+
+      <Sheet
+        open={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        title={selected ? String(selected.full_name) : ""}
+      >
+        {selected ? (
+          <div className="stack stack--roomy">
+            <div className="person-head">
+              <Avatar name={String(selected.full_name)} size={42} />
+              <div>
+                <Muted><Bi en="Customer" fa="مشتری" /></Muted>
+              </div>
+              <Button
+                variant="secondary"
+                to={`/communication?new=1&customer=${String(selected.id)}&topic=${encodeURIComponent(
+                  bi(`About: ${String(selected.full_name)}`, `درباره: ${String(selected.full_name)}`),
+                )}`}
+              >
+                <Icon name="message" size={14} />
+                <Bi en="Message" fa="پیام" />
+              </Button>
+            </div>
+            <dl className="spec-grid spec-grid--single">
+              <div>
+                <dt>{bi("Phone", "تلفن")}</dt>
+                <dd className="mono">{String(selected.phone || "—")}</dd>
+              </div>
+              <div>
+                <dt>{bi("Email", "ایمیل")}</dt>
+                <dd className="ltr-value">{String(selected.email || "—")}</dd>
+              </div>
+              <div>
+                <dt>{bi("Added", "ثبت")}</dt>
+                <dd><DateText value={selected.created_at} /></dd>
+              </div>
+              {selected.notes ? (
+                <div>
+                  <dt>{bi("Notes", "یادداشت")}</dt>
+                  <dd className="prose-block">{String(selected.notes)}</dd>
+                </div>
+              ) : null}
+            </dl>
+            {has("org.admin") ? (
+              <Button
+                variant="danger-quiet"
+                onClick={() => {
+                  void (async () => {
+                    const first = await confirm(
+                      "ناشناس کردن مشتری",
+                      "نام، تلفن و ایمیل این مشتری پاک می‌شود.",
+                      "ادامه",
+                    );
+                    if (!first) return;
+                    const second = await confirm(
+                      "تأیید نهایی",
+                      "این کار برگشت‌پذیر نیست. دوباره تأیید کنید.",
+                      "بله، ناشناس کن",
+                      { danger: true },
+                    );
+                    if (!second || !selected) return;
+                    await api.customers.erase(String(selected.id));
+                    setSelected(null);
+                    void qc.invalidateQueries({ queryKey: queryKeys.customersRoot });
+                  })();
+                }}
+              >
+                <Bi en="Erase" fa="ناشناس" />
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </Sheet>
 
       <Sheet
         open={showAdd}

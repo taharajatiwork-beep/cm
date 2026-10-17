@@ -1,12 +1,13 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Badge, Button, Card, Dialog, ErrorMessage, Field, ForbiddenState, Input, Muted, PageHeader, SectionHeader, Segmented, Select, Table, TextArea } from "../components/ui";
+import { Badge, Button, Card, Dialog, ErrorMessage, Field, ForbiddenState, Input, Muted, PageHeader, SectionHeader, Select, Table, TextArea } from "../components/ui";
 import { isForbiddenError } from "../lib/apiError";
 import { DateText } from "../components/DateText";
 import { useToast } from "../components/ui/Toast";
 import { Bi, useBi } from "../i18n";
 import { perfApi, toman, type PageRow, type Story } from "./api";
+import { faNum } from "../fa";
 import { FileButton, RelatedLinks } from "./bits";
 import { ArrangeBar, hit, ShowMore, useArrange, type SortOption } from "./browse";
 import { PageEdit, RowActions, StoryEdit, useRemove } from "./edit";
@@ -478,14 +479,124 @@ export function SocialFlowPage() {
           </Field>
         </div>
       </Card>
-      {campaign ? <SocialSteps campaignId={campaign.id} budgetToman={campaign.budget_toman} step={step} /> : (
+      {campaign ? <SocialSteps campaignId={campaign.id} campaignCode={campaign.code} budgetToman={campaign.budget_toman} step={step} /> : (
         <Muted as="p"><Bi en="Pick the campaign these cars belong to." fa="اول کمپینی را انتخاب کنید که این ماشین‌ها برای آن هستند." /></Muted>
       )}
     </div>
   );
 }
 
-function SocialSteps({ campaignId, budgetToman, step }: { campaignId: string; budgetToman: number | null; step?: string }) {
+type SocialFlowStep = "cars" | "budget" | "pages" | "publish";
+const SOCIAL_FLOW: SocialFlowStep[] = ["cars", "budget", "pages", "publish"];
+
+function SocialFlowStepNav({ step, onStep }: { step: SocialFlowStep; onStep: (s: SocialFlowStep) => void }) {
+  const items: Array<{ key: SocialFlowStep; label: string }> = [
+    { key: "cars", label: "ماشین‌ها" },
+    { key: "budget", label: "بودجه" },
+    { key: "pages", label: "پیج‌ها" },
+    { key: "publish", label: "انتشار" },
+  ];
+  const current = SOCIAL_FLOW.indexOf(step);
+  return (
+    <nav className="sms-flow-steps" aria-label="قدم‌های سوشال">
+      {items.map((item, index) => (
+        <span key={item.key} className="sms-flow-step-wrap">
+          {index > 0 ? <span className={index <= current ? "sms-flow-step-line is-done" : "sms-flow-step-line"} /> : null}
+          <button
+            type="button"
+            className={["sms-flow-step", item.key === step ? "is-active" : "", index < current ? "is-done" : ""].filter(Boolean).join(" ")}
+            onClick={() => onStep(item.key)}
+          >
+            <span className="sms-flow-step-num">{index < current ? "✓" : faNum(index + 1)}</span>
+            {item.label}
+          </button>
+        </span>
+      ))}
+    </nav>
+  );
+}
+
+function SocialFlowNav({
+  step,
+  onStep,
+  missing,
+}: {
+  step: SocialFlowStep;
+  onStep: (s: SocialFlowStep) => void;
+  missing: Array<{ label: string; step: SocialFlowStep }>;
+}) {
+  const index = SOCIAL_FLOW.indexOf(step);
+  const blocked = missing.filter((item) => item.step === step);
+  return (
+    <div className="sms-flow-nav">
+      {index > 0 ? (
+        <Button type="button" variant="secondary" onClick={() => onStep(SOCIAL_FLOW[index - 1])}>
+          بازگشت
+        </Button>
+      ) : <span />}
+      <span className="muted">{blocked[0]?.label ?? ""}</span>
+      {index < SOCIAL_FLOW.length - 1 ? (
+        <Button type="button" disabled={blocked.length > 0} onClick={() => onStep(SOCIAL_FLOW[index + 1])}>
+          بعدی
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function SocialSummary({
+  carCount,
+  amount,
+  bookedCount,
+  unpublished,
+  kindLabel,
+  missing,
+  onJump,
+}: {
+  carCount: number;
+  amount: number;
+  bookedCount: number;
+  unpublished: number;
+  kindLabel: string;
+  missing: Array<{ label: string; step: SocialFlowStep }>;
+  onJump: (step: SocialFlowStep) => void;
+}) {
+  const checks: Array<{ ok: boolean; label: string; step: SocialFlowStep }> = [
+    { ok: carCount > 0, label: carCount ? `${toman(carCount)} ماشین` : "ماشین ثبت نشده", step: "cars" },
+    { ok: amount > 0, label: amount > 0 ? `بودجه ${toman(amount)}` : "بودجه نیست", step: "budget" },
+    { ok: bookedCount > 0, label: bookedCount ? `${toman(bookedCount)} قرار ${kindLabel}` : "قرار ثبت نشده", step: "pages" },
+    { ok: unpublished === 0 && bookedCount > 0, label: unpublished ? `${toman(unpublished)} منتظر انتشار` : bookedCount ? "آمادهٔ آمار" : "انتشار", step: "publish" },
+  ];
+  return (
+    <Card className="sms-flow-summary-card">
+      <SectionHeader icon="sparkles" title={<Bi en="Summary" fa="خلاصه" />} />
+      <ul className="sms-flow-summary-list">
+        {checks.map((item) => (
+          <li key={item.label}>
+            <button type="button" className={item.ok ? "sms-check is-ok" : "sms-check is-miss"} onClick={() => onJump(item.step)}>
+              <i>{item.ok ? "✓" : "!"}</i>
+              <span>{item.label}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {missing.length === 0 && bookedCount > 0 ? <Badge tone="ok">جریان کامل است</Badge> : null}
+    </Card>
+  );
+}
+
+function SocialSteps({
+  campaignId,
+  campaignCode,
+  budgetToman,
+  step,
+}: {
+  campaignId: string;
+  campaignCode: string;
+  budgetToman: number | null;
+  step?: string;
+}) {
+  const [, setParams] = useSearchParams();
   const qc = useQueryClient();
   const toast = useToast();
   const requests = useQuery({ queryKey: ["perf", "requests"], queryFn: perfApi.requests });
@@ -493,11 +604,20 @@ function SocialSteps({ campaignId, budgetToman, step }: { campaignId: string; bu
   const [cars, setCars] = useState("");
   const [budget, setBudget] = useState(budgetToman ? String(budgetToman) : "");
   const [kind, setKind] = useState<Kind>("story");
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const label = KINDS.find((item) => item.key === kind)!;
+  const flowStep: SocialFlowStep =
+    step === "budget" || step === "pages" || step === "publish" || step === "cars" ? step : "cars";
+  const setFlowStep = (next: SocialFlowStep) => {
+    setParams({ campaign: campaignId, step: next }, { replace: true });
+  };
   useEffect(() => {
     setBudget(budgetToman ? String(budgetToman) : "");
   }, [campaignId, budgetToman]);
   const mine = (requests.data ?? []).filter((row) => row.campaign_id === campaignId);
+  const campaignStories = (stories.data ?? []).filter((row) => row.campaign_id === campaignId);
+  const kindStories = campaignStories.filter((row) => (row.kind || "story") === kind);
+  const unpublished = kindStories.filter((row) => row.status !== "published").length;
   const saveCars = useMutation({
     mutationFn: async () => {
       const lines = cars.split(/\n+/).map((line) => line.trim()).filter(Boolean);
@@ -536,11 +656,7 @@ function SocialSteps({ campaignId, budgetToman, step }: { campaignId: string; bu
   const book = useMutation({
     mutationFn: async () => {
       const pages = suggest.data?.pages ?? [];
-      const taken = new Set(
-        (stories.data ?? [])
-          .filter((row) => row.campaign_id === campaignId && (row.kind || "story") === kind)
-          .map((row) => row.page),
-      );
+      const taken = new Set(kindStories.map((row) => row.page));
       let added = 0;
       for (const page of pages) {
         if (taken.has(page.name)) continue;
@@ -558,85 +674,126 @@ function SocialSteps({ campaignId, budgetToman, step }: { campaignId: string; bu
   });
   const picked = suggest.data?.pages ?? [];
   const spend = picked.reduce((sum, row) => sum + (row.price_toman || 0), 0);
-  const amount = Number(budget) || 0;
+  const amount = Number(budget) || budgetToman || 0;
+  const missingItems = useMemo(() => {
+    const items: Array<{ label: string; step: SocialFlowStep }> = [];
+    if (!mine.length) items.push({ label: "حداقل یک ماشین ثبت کنید", step: "cars" });
+    if (amount <= 0) items.push({ label: "بودجه را ذخیره کنید", step: "budget" });
+    if (flowStep === "pages" && !suggest.data && amount > 0) items.push({ label: "پیج‌ها را بچینید", step: "pages" });
+    if (flowStep === "pages" && suggest.data && !picked.length) items.push({ label: "با این بودجه پیجی نیست", step: "pages" });
+    return items;
+  }, [mine.length, amount, flowStep, suggest.data, picked.length]);
+
   return (
-    <div className="perf-social-flow">
-      <div className="perf-social-top">
-        <Card>
-          <SectionHeader
-            title={<Bi en="1. Cars" fa="۱. ماشین‌ها" />}
-            hint={<Bi en="One car per line, as the manager sent them." fa="هر خط یک ماشین، همان‌طور که مدیر فرستاده." />}
-            count={mine.length}
-          />
-          <Field label={<Bi en="List" fa="لیست" />}>
-            <TextArea value={cars} rows={4} placeholder={"تیگو ۸\nلاماری ایما"} onChange={(event) => setCars(event.target.value)} />
-          </Field>
-          <div className="perf-actions">
-            <Button type="button" disabled={!cars.trim() || saveCars.isPending} onClick={() => saveCars.mutate()}>
-              <Bi en="Save the list" fa="ثبت لیست" />
-            </Button>
-          </div>
-          {mine.length ? <CarLines rows={mine} /> : null}
-        </Card>
-        <Card>
-          <SectionHeader
-            title={<Bi en="2. Budget" fa="۲. بودجه" />}
-            hint={<Bi en="This is the toman cap for the pages below." fa="سقف تومان برای پیج‌های پایین است." />}
-          />
-          <div className="perf-plan perf-plan-cap">
-            <Field label={<Bi en="Budget (toman)" fa="بودجه (تومان)" />}>
-              <Input type="number" value={budget} placeholder="۰" onChange={(event) => setBudget(event.target.value)} />
+    <div className="sms-flow perf-social-flow">
+      <div className="sms-flow-main">
+        <SocialFlowStepNav step={flowStep} onStep={setFlowStep} />
+        {flowStep === "cars" ? (
+          <Card>
+            <SectionHeader title={<Bi en="Cars" fa="ماشین‌ها" />} hint={<Bi en="One car per line." fa="هر خط یک ماشین." />} count={mine.length} />
+            <Field label={<Bi en="List" fa="لیست" />}>
+              <TextArea value={cars} rows={4} placeholder={"تیگو ۸\nلاماری ایما"} onChange={(event) => setCars(event.target.value)} />
             </Field>
-            <Button type="button" variant="secondary" disabled={amount <= 0 || saveBudget.isPending} onClick={() => saveBudget.mutate()}>
-              <Bi en="Save budget" fa="ذخیره بودجه" />
+            <div className="perf-actions">
+              <Button type="button" disabled={!cars.trim() || saveCars.isPending} onClick={() => saveCars.mutate()}>
+                <Bi en="Save the list" fa="ثبت لیست" />
+              </Button>
+            </div>
+            {mine.length ? <CarLines rows={mine} /> : null}
+          </Card>
+        ) : null}
+        {flowStep === "budget" ? (
+          <Card>
+            <SectionHeader title={<Bi en="Budget" fa="بودجه" />} hint={<Bi en="Toman cap for pages." fa="سقف تومان برای پیج‌ها." />} />
+            <div className="perf-plan perf-plan-cap">
+              <Field label={<Bi en="Budget (toman)" fa="بودجه (تومان)" />}>
+                <Input type="number" value={budget} placeholder="۰" onChange={(event) => setBudget(event.target.value)} />
+              </Field>
+              <Button type="button" variant="secondary" disabled={amount <= 0 || saveBudget.isPending} onClick={() => saveBudget.mutate()}>
+                <Bi en="Save budget" fa="ذخیره بودجه" />
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+        {flowStep === "pages" ? (
+          <Card>
+            <SectionHeader title={<Bi en="Pages" fa="پیج و هزینه" />} hint={<Bi en="Cheapest CPL first until budget runs out." fa="ارزان‌ترین هزینهٔ هر ورودی تا تمام بودجه." />} />
+            <div className="sms-kind-grid" role="radiogroup" aria-label="نوع قرار">
+              {KINDS.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={kind === item.key}
+                  className={kind === item.key ? "sms-kind is-on" : "sms-kind"}
+                  onClick={() => setKind(item.key)}
+                >
+                  <strong>{item.fa}</strong>
+                  <span>{item.en}</span>
+                </button>
+              ))}
+            </div>
+            <div className="perf-actions">
+              <Button type="button" variant="secondary" onClick={() => setCatalogOpen(true)}>
+                <Bi en="Page catalog" fa="فهرست پیج" />
+              </Button>
+              <Button type="button" disabled={amount <= 0 || suggest.isPending} onClick={() => suggest.mutate()}>
+                <Bi en="Lay out pages" fa="چیدن پیج‌ها" />
+              </Button>
+              {picked.length ? (
+                <Button type="button" variant="secondary" disabled={book.isPending} onClick={() => book.mutate()}>
+                  <Bi en="Book pages" fa="ثبت قرارها" />
+                </Button>
+              ) : null}
+            </div>
+            {suggest.data ? (
+              picked.length ? (
+                <>
+                  <p className="muted perf-readout">{toman(picked.length)} پیج · {toman(spend)} تومان · مانده {toman(suggest.data.remaining_toman)}</p>
+                  <ul className="perf-suggest-list">
+                    {picked.map((row) => (
+                      <li key={row.id}>
+                        <b>{row.name}</b>
+                        <span className="perf-num">{toman(row.price_toman)}</span>
+                        <span className="muted">{row.cpl != null ? `هر ورودی ${toman(row.cpl)}` : "—"}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : <Muted as="p"><Bi en="Nothing fits this budget." fa="با این بودجه پیجی جا نمی‌شود." /></Muted>
+            ) : null}
+          </Card>
+        ) : null}
+        {flowStep === "publish" ? (
+          <Card>
+            <SectionHeader title={<Bi en="Publish" fa="انتشار" />} hint={<Bi en="Mark published and enter stats." fa="منتشر شد و آمار پست." />} />
+            <KindPane campaignId={campaignId} kind={kind} label={label.fa} focus={step === "insight" || step === "publish" ? step : undefined} />
+          </Card>
+        ) : null}
+        <SocialFlowNav step={flowStep} onStep={setFlowStep} missing={missingItems} />
+      </div>
+      <aside className="sms-flow-summary">
+        <SocialSummary
+          carCount={mine.length}
+          amount={amount}
+          bookedCount={kindStories.length}
+          unpublished={unpublished}
+          kindLabel={label.fa}
+          missing={missingItems}
+          onJump={setFlowStep}
+        />
+        <Muted as="p" className="perf-readout">{campaignCode}</Muted>
+      </aside>
+      {catalogOpen ? (
+        <Dialog onClose={() => setCatalogOpen(false)} className="detail-pop">
+          <PageCatalog />
+          <div className="perf-actions">
+            <Button type="button" variant="secondary" onClick={() => setCatalogOpen(false)}>
+              <Bi en="Close" fa="بستن" />
             </Button>
           </div>
-        </Card>
-      </div>
-      <Card>
-        <SectionHeader
-          title={<Bi en="3. Pages and cost" fa="۳. پیج و هزینه" />}
-          hint={<Bi en="Pages are filled from the cheapest cost per lead until the budget runs out. Booking each page asks finance to pay." fa="پیج‌ها از ارزان‌ترین هزینهٔ هر ورودی تا تمام شدن بودجه چیده می‌شوند. ثبت هر پیج برای مالی درخواست پرداخت می‌سازد." />}
-        />
-        <Segmented
-          value={kind}
-          onChange={setKind}
-          items={KINDS.map((item) => ({ key: item.key, label: <Bi en={item.en} fa={item.fa} /> }))}
-        />
-        <div className="perf-actions">
-          <Button type="button" disabled={amount <= 0 || suggest.isPending} onClick={() => suggest.mutate()}>
-            <Bi en="Lay out the pages" fa="چیدن پیج‌ها" />
-          </Button>
-          {picked.length ? (
-            <Button type="button" variant="secondary" disabled={book.isPending} onClick={() => book.mutate()}>
-              <Bi en="Book these pages" fa="ثبت این قرارها" />
-            </Button>
-          ) : null}
-        </div>
-        {suggest.data ? (
-          picked.length ? (
-            <>
-              <p className="muted perf-readout">{toman(picked.length)} پیج · جمع {toman(spend)} تومان · باقی‌مانده {toman(suggest.data.remaining_toman)}</p>
-              <ul className="perf-suggest-list">
-                {picked.map((row) => (
-                  <li key={row.id}>
-                    <b>{row.name}</b>
-                    <span className="perf-num">{toman(row.price_toman)}</span>
-                    <span className="muted">{row.cpl != null ? `هر ورودی ${toman(row.cpl)}` : "بدون ورودی"}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : <Muted as="p"><Bi en="Nothing fits this budget." fa="با این بودجه پیجی جا نمی‌شود." /></Muted>
-        ) : null}
-      </Card>
-      <Card>
-        <SectionHeader title={`${label.fa}‌های این کمپین`} hint={<Bi en="Publish and post stats stay here." fa="انتشار و آمار پست همین‌جا ثبت می‌شود." />} />
-        <KindPane campaignId={campaignId} kind={kind} label={label.fa} focus={step} />
-      </Card>
-      <Card>
-        <PageCatalog />
-      </Card>
+        </Dialog>
+      ) : null}
     </div>
   );
 }

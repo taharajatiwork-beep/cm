@@ -1,6 +1,6 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import {
@@ -15,7 +15,6 @@ import {
   LoadingState,
   PageHeader,
   SectionHeader,
-  StatCard,
   Table,
 } from "../components/ui";
 import { useToast } from "../components/ui/Toast";
@@ -69,13 +68,6 @@ function millions(amount: unknown): string {
   return n.toLocaleString("fa-IR");
 }
 
-function hoursAgo(iso?: string | null): string {
-  if (!iso) return "ثبت نشده";
-  const hours = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 3_600_000));
-  if (hours < 1) return "همین ساعت";
-  return `${hours.toLocaleString("fa-IR")} ساعت پیش`;
-}
-
 function stale(iso?: string | null): boolean {
   if (!iso) return true;
   return Date.now() - new Date(iso).getTime() > 24 * 3_600_000;
@@ -117,42 +109,60 @@ function waitingStatus(status: string): boolean {
   return status === "requested" || status === "needs_recheck";
 }
 
+function defaultPostFilter(canPrice: boolean, canRequest: boolean): PostFilter {
+  if (canPrice && !canRequest) return "waiting";
+  if (canRequest && !canPrice) return "ready";
+  return "all";
+}
+
 export function PricingPage() {
   const { has } = useAuth();
   const bi = useBi();
   const vehicleLabel = useVehicleLabel();
   const toast = useToast();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
   const canPrice = has("price.approve") || has("price.write");
   const canRequest = has("campaign.write");
-  const canPeople = has("user.read");
   const [vehicleIds, setVehicleIds] = useState<string[]>([]);
   const [carsOpen, setCarsOpen] = useState(false);
   const carsRef = useRef<HTMLDivElement>(null);
   const [hour, setHour] = useState("16");
   const [minute, setMinute] = useState("00");
-  const [fresh, setFresh] = useState<Record<string, string>>({});
-  const [postFilter, setPostFilter] = useState<PostFilter>("all");
-  const [stockFilter, setStockFilter] = useState<"stock" | "stale" | "all">("stock");
+  const postsParam = searchParams.get("posts");
+  const [postFilter, setPostFilter] = useState<PostFilter>(() => {
+    if (postsParam === "waiting" || postsParam === "ready" || postsParam === "all") return postsParam;
+    return defaultPostFilter(canPrice, canRequest);
+  });
+  const [confirmSlot, setConfirmSlot] = useState<Slot | null>(null);
+  const [confirmAmount, setConfirmAmount] = useState("");
   const [askOpen, setAskOpen] = useState(false);
   const askTitleId = useId();
+  const confirmTitleId = useId();
+
+  useEffect(() => {
+    const p = searchParams.get("posts");
+    if (p === "waiting" || p === "ready" || p === "all") setPostFilter(p);
+  }, [searchParams]);
+
+  function setPostFilterUrl(next: PostFilter) {
+    setPostFilter(next);
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (next === "all") params.delete("posts");
+        else params.set("posts", next);
+        return params;
+      },
+      { replace: true },
+    );
+  }
 
   const board = useQuery({
     queryKey: ["pricing-board"],
     queryFn: () => api.pricing.board(),
   });
-  const people = useQuery({
-    queryKey: ["people"],
-    queryFn: () => api.people.list(),
-    enabled: canPeople,
-  });
-  const names = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const person of people.data ?? []) map.set(String(person.id), String(person.full_name || person.email || ""));
-    return map;
-  }, [people.data]);
-
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["pricing-board"] });
     void qc.invalidateQueries({ queryKey: ["vehicles"] });
@@ -218,23 +228,6 @@ export function PricingPage() {
   const staleCars = stock.filter((car) => car.status === "IN_STOCK" && stale(car.price_updated_at));
   const visibleSlots =
     postFilter === "waiting" ? waiting : postFilter === "ready" ? ready : slots;
-  const visibleStock = stock.filter((car) => {
-    if (stockFilter === "all") return true;
-    if (stockFilter === "stale") return car.status === "IN_STOCK" && stale(car.price_updated_at);
-    return car.status === "IN_STOCK";
-  });
-
-  function person(id?: string | null) {
-    if (!id) return null;
-    const name = names.get(id);
-    if (!name) return null;
-    if (!canPeople) return <span>{name}</span>;
-    return (
-      <Link to={`/people/${id}`} onClick={(e) => e.stopPropagation()}>
-        {name}
-      </Link>
-    );
-  }
 
   return (
     <>
@@ -262,33 +255,6 @@ export function PricingPage() {
         <LoadingState />
       ) : (
         <>
-          <div className="kpi-row kpi-row--3">
-            <StatCard
-              icon="alert"
-              tone={waiting.length > 0 ? "warn" : "ok"}
-              label={<Bi en="Need a price" fa="منتظر قیمت" />}
-              value={waiting.length}
-              hint={<Bi en="open just these" fa="فقط همین‌ها را نشان بده" />}
-              onClick={() => setPostFilter(postFilter === "waiting" ? "all" : "waiting")}
-            />
-            <StatCard
-              icon="check"
-              tone="ok"
-              label={<Bi en="Ready today" fa="امروز آماده‌اند" />}
-              value={ready.length}
-              hint={<Bi en="confirmed or posted" fa="تأییدشده یا منتشرشده" />}
-              onClick={() => setPostFilter(postFilter === "ready" ? "all" : "ready")}
-            />
-            <StatCard
-              icon="car"
-              tone={staleCars.length > 0 ? "warn" : "neutral"}
-              label={<Bi en="Old prices" fa="قیمت قدیمی" />}
-              value={staleCars.length}
-              hint={<Bi en="not updated in 24 hours" fa="بیش از ۲۴ ساعت عوض نشده" />}
-              onClick={() => setStockFilter(stockFilter === "stale" ? "stock" : "stale")}
-            />
-          </div>
-
           {canRequest && askOpen ? (
             <Dialog
               onClose={() => setAskOpen(false)}
@@ -444,7 +410,7 @@ export function PricingPage() {
                       key={key}
                       type="button"
                       className={`chip${postFilter === key ? " active" : ""}`}
-                      onClick={() => setPostFilter(key)}
+                      onClick={() => setPostFilterUrl(key)}
                     >
                       {bi(en, fa)}
                       <span className="chip-count">{count}</span>
@@ -506,29 +472,15 @@ export function PricingPage() {
                       render: (slot) => (
                         <div className="pricing-actions" onClick={(e) => e.stopPropagation()}>
                           {canPrice && waitingStatus(slot.status) ? (
-                            <>
-                              <Input
-                                value={fresh[slot.id] || ""}
-                                onChange={(e) => setFresh((prev) => ({ ...prev, [slot.id]: e.target.value }))}
-                                placeholder={bi("New price, million", "قیمت تازه، میلیون")}
-                                inputMode="numeric"
-                              />
-                              <Button
-                                onClick={() => {
-                                  const typed = tomanFromMillionInput(fresh[slot.id] || "");
-                                  confirm.mutate(
-                                    { id: slot.id, amount: typed },
-                                    { onSuccess: () => setFresh((prev) => ({ ...prev, [slot.id]: "" })) },
-                                  );
-                                }}
-                              >
-                                {fresh[slot.id] ? (
-                                  <Bi en="Save on the car" fa="ثبت روی خودرو" />
-                                ) : (
-                                  <Bi en="Confirm this price" fa="تأیید همین قیمت" />
-                                )}
-                              </Button>
-                            </>
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                setConfirmSlot(slot);
+                                setConfirmAmount("");
+                              }}
+                            >
+                              <Bi en="Confirm price" fa="تأیید قیمت" />
+                            </Button>
                           ) : null}
                           {canRequest && slot.status === "confirmed" ? (
                             <Button variant="secondary" onClick={() => posted.mutate(slot.id)}>
@@ -544,109 +496,73 @@ export function PricingPage() {
             </Card>
           </section>
 
-          <section>
+          <Card className="stack">
             <SectionHeader
               icon="car"
-              title={<Bi en="Stock" fa="موجودی" />}
-              count={visibleStock.length}
+              title={<Bi en="Stock and prices" fa="موجودی و قیمت‌ها" />}
               hint={
                 <Bi
-                  en="Click a car to open it. A price older than 24 hours is marked old."
-                  fa="روی خودرو بزنید تا صفحه‌اش باز شود. قیمتی که ۲۴ ساعت عوض نشده، قدیمی است."
+                  en={`${inStock.length} in stock${staleCars.length ? ` · ${staleCars.length} with old prices` : ""}. Open vehicles to update prices.`}
+                  fa={`${inStock.length.toLocaleString("fa-IR")} موجود${staleCars.length ? ` · ${staleCars.length.toLocaleString("fa-IR")} با قیمت قدیمی` : ""}. برای به‌روزرسانی قیمت، خودروها را باز کنید.`}
                 />
               }
-              action={
-                <Button variant="ghost" to="/vehicles">
-                  <Bi en="All vehicles" fa="همهٔ خودروها" />
-                </Button>
-              }
             />
-            <Card padded={false}>
-              <div className="card-bar">
-                <div className="chips">
-                  {(
-                    [
-                      ["stock", "In stock", "موجود"],
-                      ["stale", "Old price", "قیمت قدیمی"],
-                      ["all", "All", "همه"],
-                    ] as const
-                  ).map(([key, en, fa]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      className={`chip${stockFilter === key ? " active" : ""}`}
-                      onClick={() => setStockFilter(key)}
-                    >
-                      {bi(en, fa)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <Table
-                rows={visibleStock}
-                rowKey={(row) => row.id}
-                onRowClick={(row) => navigate(`/vehicles/${row.id}`)}
-                empty={
-                  <EmptyState
-                    titleEn="No cars in this list"
-                    titleFa="خودرویی در این فهرست نیست"
-                    bodyEn="Switch the filter, or add cars from the vehicles page."
-                    bodyFa="فیلتر را عوض کنید، یا از صفحهٔ خودروها موجودی اضافه کنید."
+            <Button to="/vehicles">
+              <Bi en="Open vehicles" fa="باز کردن خودروها" />
+            </Button>
+          </Card>
+
+          {confirmSlot && canPrice ? (
+            <Dialog
+              onClose={() => {
+                if (!confirm.isPending) setConfirmSlot(null);
+              }}
+              className="form-pop"
+              labelledBy={confirmTitleId}
+              closeLabel={bi("Close", "بستن")}
+              busy={confirm.isPending}
+              as="form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const typed = tomanFromMillionInput(confirmAmount);
+                confirm.mutate(
+                  { id: confirmSlot.id, amount: typed },
+                  { onSuccess: () => setConfirmSlot(null) },
+                );
+              }}
+            >
+              <SectionHeader
+                title={
+                  <span id={confirmTitleId}>
+                    <Bi en="Confirm price" fa="تأیید قیمت" />
+                    {" — "}
+                    {vehicleLabel(confirmSlot.brand)} {vehicleLabel(confirmSlot.model)}
+                  </span>
+                }
+              />
+              <Field
+                label={
+                  <Bi
+                    en="New price in million (leave empty to keep current)"
+                    fa="قیمت تازه به میلیون (خالی = همان قیمت فعلی)"
                   />
                 }
-                columns={[
-                  {
-                    key: "car",
-                    header: <Bi en="Vehicle" fa="خودرو" />,
-                    render: (row) => (
-                      <Link to={`/vehicles/${row.id}`} onClick={(e) => e.stopPropagation()}>
-                        <strong>
-                          {vehicleLabel(row.brand)} {vehicleLabel(row.model)}
-                        </strong>
-                        <div className="cell-sub">
-                          {[row.color ? vehicleLabel(row.color) : null, row.year, row.delivery_note].filter(Boolean).join(" · ") || "—"}
-                        </div>
-                      </Link>
-                    ),
-                  },
-                  {
-                    key: "price",
-                    header: <Bi en="Price" fa="قیمت" />,
-                    render: (row) => (
-                      <span className="num">
-                        {millions(row.sale_price)}{" "}
-                        {stale(row.price_updated_at) ? (
-                          <Badge tone="warn">
-                            <Bi en="Old" fa="قدیمی" />
-                          </Badge>
-                        ) : null}
-                      </span>
-                    ),
-                  },
-                  {
-                    key: "price_at",
-                    header: <Bi en="Price updated" fa="تغییر قیمت" />,
-                    render: (row) => (
-                      <span className="cell-sub">
-                        {hoursAgo(row.price_updated_at)}
-                        {row.price_updated_by ? <> · {person(row.price_updated_by)}</> : null}
-                      </span>
-                    ),
-                  },
-                  {
-                    key: "stock_at",
-                    header: <Bi en="Stock updated" fa="به‌روزرسانی موجودی" />,
-                    render: (row) => (
-                      <span className="cell-sub">
-                        {hoursAgo(row.stock_updated_at)}
-                        {row.stock_updated_by ? <> · {person(row.stock_updated_by)}</> : null}
-                      </span>
-                    ),
-                  },
-                ]}
-              />
-            </Card>
-          </section>
+              >
+                <Input
+                  value={confirmAmount}
+                  onChange={(e) => setConfirmAmount(e.target.value)}
+                  placeholder={bi("Optional", "اختیاری")}
+                  inputMode="numeric"
+                />
+              </Field>
+              <p className="muted num">
+                {bi("Current", "فعلی")}: {millions(confirmSlot.confirmed_price ?? confirmSlot.sale_price)}
+              </p>
+              <Button type="submit" disabled={confirm.isPending}>
+                <Bi en="Confirm" fa="تأیید" />
+              </Button>
+            </Dialog>
+          ) : null}
         </>
       )}
     </>

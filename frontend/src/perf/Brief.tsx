@@ -84,7 +84,7 @@ export function CampaignBriefSection({ campaign, brief }: { campaign: CampaignRo
       <SectionHeader
         icon="book"
         title={<Bi en="Campaign brief" fa="بریف کمپین" />}
-        hint={<Bi en="Weekly plan of this campaign: goals, 7-day content, caption, ads, hashtags." fa="برنامهٔ هفتگی این کمپین: هدف‌ها، محتوای ۷ روزه، کپشن، تبلیغ و هشتگ." />}
+        hint={<Bi en="Goals, weekly content, caption, ads." fa="هدف، محتوای هفتگی، کپشن و تبلیغ." />}
         action={
           <div className="row no-print">
             <Button type="button" className="btn-sm" disabled={draft.isPending} onClick={() => draft.mutate()}>
@@ -99,9 +99,7 @@ export function CampaignBriefSection({ campaign, brief }: { campaign: CampaignRo
       />
       {source ? <p className="muted brief-source no-print">آخرین پیش‌نویس: {source === "llm" ? "هوش مصنوعی" : "قالب آماده"}</p> : null}
       {present && brief ? <BriefView brief={asBrief(brief)} /> : (
-        <Muted as="p">
-          هنوز بریفی ثبت نشده. «پیش‌نویس» از مشخصات همین کمپین یک برنامهٔ هفتگی می‌سازد؛ بعد می‌توانید ویرایش و ذخیره کنید.
-        </Muted>
+        <Muted as="p"><Bi en="No brief yet — use Draft or Edit." fa="بریفی نیست — «پیش‌نویس» یا «ویرایش»." /></Muted>
       )}
       {editing ? <BriefEdit campaign={campaign} brief={editing} onClose={() => setEditing(null)} /> : null}
     </Card>

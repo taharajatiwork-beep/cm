@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { DateText } from "../components/DateText";
-import { Badge, Button, Card, Checkbox, Disclosure, EmptyState, ErrorMessage, Field, Icon, Input, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, StatCard, TitleCode } from "../components/ui";
+import { Badge, Button, Card, Checkbox, Dialog, Disclosure, EmptyState, ErrorMessage, Field, Icon, Input, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, StatCard, TitleCode } from "../components/ui";
 import { Donut, HBars } from "../components/charts";
 import { faNum, tomanText } from "../fa";
 import { useAuth } from "../auth";
@@ -61,6 +61,8 @@ export function ProjectPage() {
   const [linkUrl, setLinkUrl] = useState("");
   const [designTitle, setDesignTitle] = useState("");
   const [shootTitle, setShootTitle] = useState("");
+  const [designPop, setDesignPop] = useState<Record<string, string> | null>(null);
+  const [shootPop, setShootPop] = useState<Record<string, string> | null>(null);
   const detail = useQuery({
     queryKey: ["project", id],
     queryFn: () => requestsApi.project(id),
@@ -168,25 +170,23 @@ export function ProjectPage() {
         <p className="banner banner-warn"><Bi en="Blocked: overdue work on this project." fa="مسدود: کار عقب‌افتاده در این پروژه." /></p>
       ) : null}
       {row.readonly && row.status === "done" && !row.requester_acceptance ? (
-        <DeliveryReviewCard projectId={id} onSuccess={refresh} />
+        <DeliveryReviewCard projectId={id} projectTitle={String(row.title || "")} onSuccess={refresh} />
       ) : null}
-      <div className="kpi-row">
-        <StatCard icon="layers" tone="accent" label={<Bi en="Stage" fa="مرحله" />} value={PROJECT_STATUS_LABEL[String(row.status || "")] || String(row.status || "—")} />
-        {row.readonly && row.lead_name ? (
-          <StatCard icon="users" label={<Bi en="Lead team" fa="تیم مجری" />} value={String(row.lead_name)} />
+      <div className="meta-row">
+        <Badge tone={row.status === "done" ? "ok" : "warn"}>
+          {PROJECT_STATUS_LABEL[String(row.status || "")] || String(row.status || "—")}
+        </Badge>
+        {row.readonly && row.lead_name ? <span className="meta-chip">{String(row.lead_name)}</span> : null}
+        {taskTotal > 0 && !row.planning_pending ? (
+          <span className="meta-chip">
+            {Math.round((done / taskTotal) * 100)}٪ · {faNum(done)}/{faNum(taskTotal)}
+          </span>
         ) : null}
-        <StatCard
-          icon="check"
-          tone="ok"
-          label={<Bi en="Progress" fa="پیشرفت" />}
-          value={
-            row.planning_pending || taskTotal === 0
-              ? bi("Not planned yet", "هنوز برنامه‌ریزی نشده")
-              : `${Math.round((done / taskTotal) * 100)}٪`
-          }
-        />
-        <StatCard icon="megaphone" tone="accent" label={<Bi en="Campaigns" fa="کمپین" />} value={campaigns.length} to={campaigns[0] ? `/perf/campaigns/${campaigns[0].id}` : undefined} />
-        {!row.readonly ? <StatCard icon="users" tone="ai" label={<Bi en="People" fa="اعضا" />} value={members.length} /> : null}
+        {campaigns.length > 0 ? (
+          <Button variant="ghost" className="btn-sm" to={campaigns[0] ? `/perf/campaigns/${campaigns[0].id}` : "/perf/campaigns"}>
+            <Bi en="Campaigns" fa="کمپین" /> ({campaigns.length})
+          </Button>
+        ) : null}
       </div>
       <div className="section-head">
         <Segmented
@@ -493,32 +493,68 @@ export function ProjectPage() {
             {designs.length + shoots.length === 0 ? (
               <Muted as="p"><Bi en="Design drafts and shoot days show up here." fa="پیش‌نویس طرح و نوبت فیلم‌برداری اینجا دیده می‌شود." /></Muted>
             ) : (
-              <ul className="record-subs">
+              <>
+              <div className="meta-row">
                 {designs.map((item) => (
-                  <li key={item.id} className="record-line">
-                    <strong>{item.title}</strong>
-                    {canEdit ? (
-                      <Select value={item.status} onChange={(event) => requestsApi.patchDesign(id, item.id, event.target.value).then(refresh)}>
-                        {Object.entries(DESIGN_STATUS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                      </Select>
-                    ) : (
-                      <span className="meta-chip">{DESIGN_STATUS[item.status] || item.status}</span>
-                    )}
-                  </li>
+                  <button key={item.id} type="button" className="chip" onClick={() => setDesignPop(item)}>
+                    <Badge>{DESIGN_STATUS[item.status] || item.status}</Badge>
+                    {item.title}
+                  </button>
                 ))}
                 {shoots.map((item) => (
-                  <li key={item.id} className="record-line">
-                    <strong>{item.title}</strong>
-                    {canEdit ? (
-                      <Select value={item.status} onChange={(event) => requestsApi.patchShoot(id, item.id, event.target.value).then(refresh)}>
+                  <button key={item.id} type="button" className="chip" onClick={() => setShootPop(item)}>
+                    <Badge tone="warn">{SHOOT_STATUS[item.status] || item.status}</Badge>
+                    {item.title}
+                  </button>
+                ))}
+              </div>
+              {designPop ? (
+                <Dialog onClose={() => setDesignPop(null)} className="form-pop" labelledBy="design-pop-title" closeLabel={bi("Close", "بستن")}>
+                  <SectionHeader title={<span id="design-pop-title">{designPop.title}</span>} />
+                  {canEdit ? (
+                    <Field label={<Bi en="Status" fa="وضعیت" />}>
+                      <Select
+                        value={designPop.status}
+                        onChange={(event) => {
+                          const status = event.target.value;
+                          void requestsApi.patchDesign(id, designPop.id, status).then(() => {
+                            refresh();
+                            setDesignPop({ ...designPop, status });
+                          });
+                        }}
+                      >
+                        {Object.entries(DESIGN_STATUS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                      </Select>
+                    </Field>
+                  ) : (
+                    <Muted>{DESIGN_STATUS[designPop.status] || designPop.status}</Muted>
+                  )}
+                </Dialog>
+              ) : null}
+              {shootPop ? (
+                <Dialog onClose={() => setShootPop(null)} className="form-pop" labelledBy="shoot-pop-title" closeLabel={bi("Close", "بستن")}>
+                  <SectionHeader title={<span id="shoot-pop-title">{shootPop.title}</span>} />
+                  {canEdit ? (
+                    <Field label={<Bi en="Status" fa="وضعیت" />}>
+                      <Select
+                        value={shootPop.status}
+                        onChange={(event) => {
+                          const status = event.target.value;
+                          void requestsApi.patchShoot(id, shootPop.id, status).then(() => {
+                            refresh();
+                            setShootPop({ ...shootPop, status });
+                          });
+                        }}
+                      >
                         {Object.entries(SHOOT_STATUS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                       </Select>
-                    ) : (
-                      <span className="meta-chip">{SHOOT_STATUS[item.status] || item.status}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                    </Field>
+                  ) : (
+                    <Muted>{SHOOT_STATUS[shootPop.status] || shootPop.status}</Muted>
+                  )}
+                </Dialog>
+              ) : null}
+              </>
             )}
             {canEdit ? (
               <div className="stack">

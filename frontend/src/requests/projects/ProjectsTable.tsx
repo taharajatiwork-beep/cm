@@ -1,4 +1,4 @@
-import { Badge, Button, Muted, QueryState, Table, type Column } from "../../components/ui";
+import { Badge, Button, EmptyState, Muted, QueryState, Table, type Column } from "../../components/ui";
 import { DateText } from "../../components/DateText";
 import type { WorkProject } from "../api";
 import { LIST_PAGE_SIZE, PROJECT_STATUS_LABEL, STATUS_TONE } from "./constants";
@@ -98,8 +98,27 @@ export function ProjectsTable({ url, onPatch, rows, total, isLoading, error, onR
     },
   ];
 
+  const hasFilters = Boolean(url.q || url.source || url.status || url.hide_done);
+
   return (
-    <QueryState isLoading={isLoading} error={error} isEmpty={rows.length === 0 && !isLoading}>
+    <QueryState
+      isLoading={isLoading}
+      error={error}
+      isEmpty={rows.length === 0 && !isLoading}
+      empty={
+        <EmptyState
+          titleEn="No projects match"
+          titleFa="پروژه‌ای پیدا نشد"
+          bodyEn="Try another lane or clear filters."
+          bodyFa="دسته یا فیلتر دیگری امتحان کنید."
+          onClearFilters={
+            hasFilters
+              ? () => onPatch({ q: "", source: "", status: "", hide_done: false, page: 1 })
+              : undefined
+          }
+        />
+      }
+    >
       <Table columns={columns} rows={rows} rowKey={(row) => row.id} onRowClick={(row) => onRowOpen(row.id)} />
       {total > LIST_PAGE_SIZE ? (
         <div className="projects-pager meta-row">

@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { DateText } from "../components/DateText";
-import { Badge, Button, Card, Dialog, ErrorMessage, LoadingState, Muted, PageHeader, SectionHeader, Select, Table } from "../components/ui";
+import { Badge, Button, Card, Dialog, ErrorMessage, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Select, Table } from "../components/ui";
 import { useToast } from "../components/ui/Toast";
 import { Bi, useBi } from "../i18n";
 import { downloadPerf, leadsLabel, perfApi, toman, type CampaignRow, type Sheet, type SmsSend, type Story } from "./api";
@@ -28,6 +28,7 @@ export function SheetPage() {
   const [syncOpen, setSyncOpen] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [sheetTab, setSheetTab] = useState<"campaign" | "sms" | "social" | "cost">("campaign");
   if (sheet.isLoading) return <LoadingState />;
   if (sheet.error || !sheet.data) return <ErrorMessage error={sheet.error ?? "شیت خوانده نشد"} />;
   const data = sheet.data;
@@ -77,7 +78,17 @@ export function SheetPage() {
           </div>
         }
       />
-      <FoundTable
+      <Segmented
+        value={sheetTab}
+        onChange={setSheetTab}
+        items={[
+          { key: "campaign", label: <Bi en="Campaign" fa="کمپین" />, count: campaigns.length },
+          { key: "sms", label: <Bi en="SMS" fa="پیامک" />, count: sms.length },
+          { key: "social", label: <Bi en="Social" fa="سوشال" />, count: stories.length },
+          { key: "cost", label: <Bi en="Cost" fa="هزینه" />, count: costs.length },
+        ]}
+      />
+      {sheetTab === "campaign" ? <FoundTable
         icon="megaphone"
         title={<Bi en="Campaigns" fa="کمپین" />}
         rows={campaigns}
@@ -104,8 +115,8 @@ export function SheetPage() {
             ),
           },
         ]}
-      />
-      <FoundTable
+      /> : null}
+      {sheetTab === "sms" ? <FoundTable
         icon="message"
         title={<Bi en="SMS" fa="پیامک" />}
         extra={<Button variant="ghost" to={focus ? `/perf/sms?campaign=${encodeURIComponent(focus)}` : "/perf/sms"}><Bi en="Open" fa="باز کردن" /></Button>}
@@ -132,8 +143,8 @@ export function SheetPage() {
             ),
           },
         ]}
-      />
-      <FoundTable
+      /> : null}
+      {sheetTab === "social" ? <FoundTable
         icon="layers"
         title={<Bi en="Social" fa="سوشال" />}
         extra={<Button variant="ghost" to={focus && byCode.get(focus) ? `/perf/social?campaign=${byCode.get(focus)?.id}` : "/perf/social"}><Bi en="Social" fa="سوشال" /></Button>}
@@ -161,8 +172,8 @@ export function SheetPage() {
             ),
           },
         ]}
-      />
-      <FoundTable
+      /> : null}
+      {sheetTab === "cost" ? <FoundTable
         icon="briefcase"
         title={<Bi en="Costs" fa="هزینه" />}
         extra={
@@ -194,7 +205,7 @@ export function SheetPage() {
             ),
           },
         ]}
-      />
+      /> : null}
       <Card>
         <SectionHeader icon="upload" title={<Bi en="Bring an old cost file" fa="آوردن فایل هزینهٔ قبلی" />} hint={<Bi en="Rows join this sheet." fa="ردیف‌ها به همین شیت می‌آیند." />} />
         <FilePick

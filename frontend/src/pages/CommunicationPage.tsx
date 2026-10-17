@@ -7,11 +7,13 @@ import {
   Avatar,
   Badge,
   Button,
+  Dialog,
   ErrorMessage,
   Icon,
   type IconName,
   Input,
   LoadingState,
+  MoreMenu,
   PageHeader,
   Select,
   TextArea,
@@ -162,6 +164,10 @@ export function CommunicationPage() {
     if (params.get("new") !== "1") return;
     setShowCompose(true);
     setTopic(params.get("topic") ?? "");
+    const peopleRaw = params.get("people");
+    if (peopleRaw) {
+      setWithIds(peopleRaw.split(",").map((id) => id.trim()).filter(Boolean));
+    }
     setPrefill({
       vehicle: params.get("vehicle") ?? "",
       case: params.get("case") ?? "",
@@ -170,7 +176,7 @@ export function CommunicationPage() {
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        for (const key of ["new", "topic", "vehicle", "case", "customer"]) next.delete(key);
+        for (const key of ["new", "topic", "vehicle", "case", "customer", "people"]) next.delete(key);
         return next;
       },
       { replace: true },
@@ -683,16 +689,18 @@ export function CommunicationPage() {
               </button>
             </nav>
             <Button
-              variant={showCompose ? "secondary" : "primary"}
+              variant="primary"
               className="btn-sm inbox-new-msg"
-              onClick={() => setShowCompose((v) => !v)}
+              onClick={() => setShowCompose(true)}
             >
-              <Icon name={showCompose ? "x" : "plus"} size={13} />
+              <Icon name="plus" size={13} />
               <Bi en="New message" fa="پیام جدید" />
             </Button>
           </div>
-          {showCompose && (
+          {showCompose ? (
+            <Dialog onClose={() => setShowCompose(false)} className="form-pop" labelledBy="compose-title" closeLabel={bi("Close", "بستن")}>
             <form className="compose-pop" onSubmit={create}>
+              <h3 id="compose-title" className="sr-only"><Bi en="New message" fa="پیام جدید" /></h3>
               <Input
                 autoFocus
                 placeholder={bi("What is it about?", "درباره چیست؟")}
@@ -760,7 +768,8 @@ export function CommunicationPage() {
                 </Button>
               </div>
             </form>
-          )}
+            </Dialog>
+          ) : null}
           <div className="inbox-scroll">{renderList()}</div>
         </section>
 
@@ -792,27 +801,6 @@ export function CommunicationPage() {
                   <span className="muted">{current ? withWhom(current) : ""}</span>
                 </div>
                 <div className="row">
-                  {showArchived && current ? (
-                    <Button
-                      variant="ghost"
-                      className="btn-sm"
-                      onClick={() => void unarchive(current)}
-                    >
-                      <Bi en="Restore" fa="برگرداندن" />
-                    </Button>
-                  ) : (
-                    <Button variant="ghost" className="btn-sm" onClick={() => void archiveCurrent()}>
-                      <Bi en="Archive" fa="بایگانی" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    className="btn-sm"
-                    onClick={() => setAddingTo(addingTo ? null : selected)}
-                  >
-                    <Icon name="plus" size={13} />
-                    <Bi en="Add person" fa="افزودن نفر" />
-                  </Button>
                   {current?.campaign_id ? (
                     <Badge>
                       <Icon name="megaphone" size={10} />
@@ -829,6 +817,21 @@ export function CommunicationPage() {
                       {workTitle(current.work_item_id) || bi("Related project", "پروژه مرتبط")}
                     </Button>
                   ) : null}
+                  <MoreMenu label={bi("More", "بیشتر")}>
+                    {showArchived && current ? (
+                      <Button variant="ghost" className="btn-sm" onClick={() => void unarchive(current)}>
+                        <Bi en="Restore" fa="برگرداندن" />
+                      </Button>
+                    ) : (
+                      <Button variant="ghost" className="btn-sm" onClick={() => void archiveCurrent()}>
+                        <Bi en="Archive" fa="بایگانی" />
+                      </Button>
+                    )}
+                    <Button variant="ghost" className="btn-sm" onClick={() => setAddingTo(addingTo ? null : selected)}>
+                      <Icon name="plus" size={13} />
+                      <Bi en="Add person" fa="افزودن نفر" />
+                    </Button>
+                  </MoreMenu>
                 </div>
               </header>
 

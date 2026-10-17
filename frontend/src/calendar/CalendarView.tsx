@@ -390,12 +390,16 @@ export function CalendarView() {
           {state.view === "table" ? (
             <ContentTable
               entries={visibleEntries}
-              readOnly={readOnly}
+              readOnly
               onPatch={(id, body) => patchEntry.mutate({ id, body })}
               onRemove={(id) => {
                 void confirmDialog("حذف ردیف", "این ردیف از تقویم حذف شود؟", DELETE_CONFIRM_LABEL, { danger: true }).then((ok) => {
                   if (ok) removeEntry.mutate(id);
                 });
+              }}
+              onOpen={(row) => {
+                setEditing(row);
+                setDialogOpen(true);
               }}
             />
           ) : null}

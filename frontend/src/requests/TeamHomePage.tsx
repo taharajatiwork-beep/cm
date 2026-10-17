@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { Button, Card, EmptyState, ErrorMessage, LoadingState, Muted, PageHeader, SectionHeader, StatCard, TitleCode } from "../components/ui";
+import { Button, Card, EmptyState, ErrorMessage, Icon, LoadingState, Muted, PageHeader, SectionHeader, TitleCode } from "../components/ui";
 import { Bi } from "../i18n";
 import { faNum } from "../fa";
 import { ApiError } from "../api";
@@ -32,6 +32,10 @@ export function TeamHomePage() {
     return <ErrorMessage error={message} />;
   }
   const data = home.data as TeamHome;
+  const nextRequest = data.requests[0];
+  const nextProject = data.projects.find((row) => row.status !== "done");
+  const nextHref = nextRequest ? `/requests/${nextRequest.id}` : nextProject ? `/projects/${nextProject.id}` : data.can_edit ? "/requests" : "/projects";
+  const nextTitle = nextRequest?.title ?? nextProject?.title ?? (data.can_edit ? "بررسی درخواست‌ها" : "پروژه‌ها");
   return (
     <>
       <PageHeader
@@ -51,20 +55,18 @@ export function TeamHomePage() {
           ) : undefined
         }
       />
-      <div className="kpi-row kpi-row--4">
-        {data.can_edit ? (
-          <StatCard icon="megaphone" tone="warn" label={<Bi en="Open requests" fa="درخواست باز" />} value={faNum(data.counts?.open_requests ?? data.requests.length)} to="/requests" />
-        ) : null}
-        <StatCard icon="layers" tone="accent" label={<Bi en="Projects in progress" fa="پروژه در جریان" />} value={faNum(data.counts?.active_projects ?? data.projects.length)} to="/projects" />
-        <StatCard icon="flag" tone="ai" label={<Bi en="Active campaigns" fa="کمپین فعال" />} value={faNum(data.counts?.active_campaigns ?? data.campaigns?.length ?? 0)} />
-        <StatCard icon="activity" tone="ok" label={<Bi en="Reports" fa="گزارش" />} value={<Bi en="Open" fa="باز کردن" />} to="/reports" />
-      </div>
-      <Card>
-        <SectionHeader title={<Bi en="In this section" fa="کارهای این بخش" />} />
-        <div className="row perf-actions">
-          <Link to="/projects"><Bi en="Projects" fa="پروژه‌ها" /></Link>
-          <Link to="/reports"><Bi en="Reports" fa="گزارش‌ها" /></Link>
+      <Card className={`next-step${nextRequest || nextProject ? "" : " is-clear"}`}>
+        <span className="next-step-icon">
+          <Icon name={nextRequest || nextProject ? "flag" : "circleCheck"} size={18} />
+        </span>
+        <div className="next-step-body">
+          <span className="next-step-label"><Bi en="Next" fa="قدم بعد" /></span>
+          <strong>{nextTitle}</strong>
         </div>
+        <Button to={nextHref}>
+          <Bi en="Open" fa="باز کردن" />
+          <Icon name="arrow" size={14} className="icon-arrow" />
+        </Button>
       </Card>
       {data.can_edit ? <Card>
         <SectionHeader title={<Bi en="Incoming requests" fa="درخواست‌های ورودی" />} count={data.requests.length} />
