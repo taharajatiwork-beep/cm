@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from datetime import timedelta
-
 from app.ai_lab.schemas import SocialInboxReviewIn
-from app.ai_lab.snapshots import _parse_day
 from app.perf.services.social_analytics import rollup_for_ai_lab, social_overview
 from app.perf.services.social_report import build_social_report
+
+
+def _parse_day(text: str) -> date:
+    try:
+        return date.fromisoformat(text.strip())
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid date: {text}") from None
 
 
 async def social_inbox_review_snapshot(db: AsyncSession, org: UUID, inp: SocialInboxReviewIn) -> dict:

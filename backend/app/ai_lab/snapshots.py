@@ -22,7 +22,6 @@ from app.ai_lab.schemas import (
     SocialInboxReviewIn,
     TeamLoadIn,
 )
-from app.ai_lab.snapshots_social import social_inbox_review_snapshot
 from app.ai_lab.snapshots_work import (
     finance_reconcile_snapshot,
     my_work_review_snapshot,
@@ -76,6 +75,8 @@ async def build_snapshot(
     elif kind == "sms_copy_review":
         snap = await _sms_copy_review(db, organization_id, SmsCopyReviewIn(**raw_input))
     elif kind == "social_inbox_review":
+        from app.ai_lab.snapshots_social import social_inbox_review_snapshot
+
         snap = await social_inbox_review_snapshot(db, organization_id, SocialInboxReviewIn(**raw_input))
     elif kind == "projects_health":
         snap = await projects_health_snapshot(db, organization_id, ProjectsHealthIn(**raw_input))
