@@ -835,22 +835,302 @@
 
 .sms-flow-steps {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.sms-flow-step {
-  padding: var(--space-2) var(--space-3);
+  align-items: center;
+  gap: 0;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
-  font-size: 0.85rem;
+}
+
+.sms-flow-step-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.sms-flow-step-wrap:first-child {
+  flex: 0 1 auto;
+}
+
+.sms-flow-step-line {
+  flex: 1;
+  height: 2px;
+  margin-inline: 0.55rem;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.sms-flow-step-line.is-done {
+  background: var(--accent);
+}
+
+.sms-flow-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 600 0.85rem/1 var(--font-body);
   cursor: pointer;
 }
 
+.sms-flow-step-num {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.75rem;
+}
+
+.sms-flow-step.is-done {
+  color: var(--ok);
+}
+
+.sms-flow-step.is-done .sms-flow-step-num {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: #fff;
+}
+
 .sms-flow-step.is-active {
-  border-color: var(--accent, #3b6fd8);
-  font-weight: 600;
+  color: var(--ink);
+}
+
+.sms-flow-step.is-active .sms-flow-step-num {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.sms-flow-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.sms-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 15rem;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.sms-compose .field,
+.sms-compose .field:has(textarea),
+.sms-compose .field textarea,
+.sms-compose textarea.control {
+  width: 100%;
+  max-width: none;
+}
+
+.sms-meter-track {
+  display: flex;
+  gap: 4px;
+  height: 0.55rem;
+  margin-top: var(--space-2);
+}
+
+.sms-meter-track span {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.sms-meter-track span::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--fill, 100%);
+  border-radius: inherit;
+  background: var(--accent-gradient);
+}
+
+.sms-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: var(--space-2);
+}
+
+.sms-chip {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--ink-2);
+  font-size: 0.75rem;
+}
+
+.sms-chip.is-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.sms-chip.is-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.sms-phone {
+  padding: 0.7rem 0.65rem 0.85rem;
+  border-radius: 28px;
+  background: var(--brand-gradient);
+  box-shadow: var(--shadow-brand);
+}
+
+.sms-phone-notch {
+  width: 38%;
+  height: 5px;
+  margin: 0 auto 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.sms-phone-screen {
+  min-height: 14rem;
+  padding: 0.7rem;
+  border-radius: 16px;
+  background: #f6f1ea;
+}
+
+.sms-phone-from {
+  margin-bottom: 0.4rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  direction: ltr;
+  text-align: start;
+}
+
+.sms-phone-bubble {
+  padding: 0.55rem 0.7rem;
+  border-radius: 4px 14px 14px 14px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  box-shadow: var(--shadow-sm);
+}
+
+.sms-kind-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-2);
+}
+
+.sms-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: start;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.sms-kind span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.sms-kind.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: var(--ring-accent);
+}
+
+.sms-audience-count {
+  margin: var(--space-3) 0 0;
+  font: 700 1.45rem/1 var(--font-display);
+  color: var(--ink);
+}
+
+.sms-audience-count span {
+  font: 500 0.8rem/1 var(--font-body);
+  color: var(--muted);
+}
+
+.sms-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, #ffffff 0%, #f6f1fb 62%, #fff6ef 100%);
+}
+
+.sms-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+}
+
+.sms-review-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.sms-review-text {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.sms-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.2rem 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.sms-check i {
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-style: normal;
+}
+
+.sms-check.is-ok i {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: #fff;
+}
+
+.sms-check.is-miss i {
+  border-color: var(--warn);
+  color: var(--warn);
 }
 
 .sms-flow-summary {
@@ -1029,6 +1309,13 @@
     order: -1;
   }
 
+  .sms-compose {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sms-phone {
+    max-width: 16rem;
+  }
 }
 
 /* هدف‌گیری محله — legacy aliases */

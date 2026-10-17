@@ -41,7 +41,7 @@ function PointPop({ items, series }: { items: ChartPoint[]; series?: string }) {
   );
 }
 
-/** نوارهای افقی. دسته سمت چپ است و نوار از چپ به راست پر می‌شود. */
+/** نوارهای افقی. در راست‌به‌چپ برچسب سمت راست است و نوار از راست پر می‌شود. */
 export function HBars({
   data,
   color = "var(--accent)",
@@ -56,11 +56,11 @@ export function HBars({
   }
   const max = Math.max(1, ...data.map((d) => d.value));
   return (
-    <div className="chart-hbars" dir="ltr">
-      {data.map((d) => (
+    <div className="chart-hbars">
+      {data.map((d, index) => (
         <div
           key={d.label}
-          className={d.items && d.items.length > 0 ? "chart-hbar-row chart-tip" : "chart-hbar-row"}
+          className={["chart-hbar-row", index === 0 ? "chart-hbar-row--lead" : "", d.items && d.items.length > 0 ? "chart-tip" : ""].filter(Boolean).join(" ")}
           tabIndex={d.items && d.items.length > 0 ? 0 : undefined}
           title={d.items && d.items.length > 0 ? undefined : `${d.label}: ${d.value}`}
         >
@@ -71,7 +71,7 @@ export function HBars({
               className="chart-hbar-fill"
               style={{
                 width: `${Math.max((d.value / max) * 100, d.value > 0 ? 2 : 0)}%`,
-                background: color,
+                background: `linear-gradient(to left, ${color}, color-mix(in srgb, ${color} 55%, white))`,
               }}
             />
           </span>
@@ -103,7 +103,7 @@ export function GroupedBars({
   return (
     <div className="chart-grouped" style={{ height }} dir="ltr">
       {legend && legend.length > 0 ? (
-        <div className="chart-legend">
+        <div className="chart-legend" dir="rtl">
           {legend.map((item, i) => (
             <span key={item} className="chart-legend-item">
               <i style={{ background: colors[i] ?? "var(--accent)" }} />

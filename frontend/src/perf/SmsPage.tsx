@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,7 +15,6 @@ import {
   Select,
   Table,
   TextArea,
-  TitleCode,
 } from "../components/ui";
 import { isForbiddenError } from "../lib/apiError";
 import { useConfirm } from "../components/ui/ConfirmDialog";
@@ -43,18 +42,34 @@ export function smsShape(text: string) {
   const part = persian ? 67 : 153;
   const pages = units === 0 ? 0 : units <= single ? 1 : Math.ceil(units / part);
   const capacity = pages <= 1 ? single : part * pages;
-  return { chars: units, pages, room: capacity - units, language: persian ? "فارسی" : "انگلیسی" };
+  return {
+    chars: units,
+    pages,
+    room: capacity - units,
+    language: persian ? "فارسی" : "انگلیسی",
+    pageCap: pages <= 1 ? single : part,
+  };
 }
 
 function Meter({ text, recipients, tariff }: { text: string; recipients: number; tariff: number }) {
   const shape = smsShape(text);
   const cost = shape.pages * Math.max(0, recipients) * Math.max(0, tariff);
+  const shown = Math.max(shape.pages, 1);
+  const usedOnPage = shape.pages <= 1 ? shape.chars : Math.max(0, shape.pageCap - shape.room);
+  const fill = shape.pageCap ? Math.min(100, Math.round((usedOnPage / shape.pageCap) * 100)) : 0;
   return (
-    <p className="muted perf-meter">
-      {toman(shape.chars)} نویسه {shape.language} · {toman(shape.pages || 0)} صفحه
-      {shape.pages <= 1 ? ` · ${toman(shape.room)} نویسه تا دو برابر شدن هزینه` : ` · هزینه ${toman(shape.pages)} برابر یک صفحه`}
-      {cost ? ` · حدود ${toman(cost)} تومان` : ""}
-    </p>
+    <div className="sms-meter">
+      <div className="sms-meter-track" aria-hidden="true">
+        {Array.from({ length: shown }, (_, index) => (
+          <span key={index} style={{ "--fill": `${index === shown - 1 ? fill : 100}%` } as CSSProperties} />
+        ))}
+      </div>
+      <p className="muted perf-meter">
+        {toman(shape.chars)} نویسه {shape.language} · {toman(shape.pages || 0)} صفحه
+        {` · ${toman(shape.room)} نویسه تا صفحهٔ بعد`}
+        {cost ? ` · حدود ${toman(cost)} تومان` : ""}
+      </p>
+    </div>
   );
 }
 
@@ -176,11 +191,13 @@ export function SmsPage() {
                 serviceMobiles={serviceMobiles}
                 onServiceMobiles={setServiceMobiles}
                 senderLine={sender}
+                recipientCount={recipientCount}
               />
             ) : null}
             {flowStep === "send" ? (
               <SendStep
                 campaignId={campaignId}
+                campaign={picked}
                 body={body}
                 panelId={panelId}
                 onPanelId={setPanelId}
@@ -194,6 +211,7 @@ export function SmsPage() {
                 smartPreview={smartPreview}
               />
             ) : null}
+            <FlowNav step={flowStep} onStep={setFlowStep} missing={missingItems} />
           </div>
           <aside className="sms-flow-summary">
             <SmsSummary
@@ -213,25 +231,59 @@ export function SmsPage() {
   );
 }
 
+const FLOW_ORDER: FlowStep[] = ["message", "audience", "send"];
+
 function FlowStepNav({ step, onStep }: { step: FlowStep; onStep: (s: FlowStep) => void }) {
   const items: Array<{ key: FlowStep; label: string }> = [
-    { key: "message", label: "۱ پیام" },
-    { key: "audience", label: "۲ مخاطب" },
-    { key: "send", label: "۳ ارسال" },
+    { key: "message", label: "پیام" },
+    { key: "audience", label: "مخاطب" },
+    { key: "send", label: "ارسال" },
   ];
+  const current = FLOW_ORDER.indexOf(step);
   return (
     <nav className="sms-flow-steps" aria-label="قدم‌ها">
-      {items.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          className={item.key === step ? "sms-flow-step is-active" : "sms-flow-step"}
-          onClick={() => onStep(item.key)}
-        >
-          {item.label}
-        </button>
+      {items.map((item, index) => (
+        <span key={item.key} className="sms-flow-step-wrap">
+          {index > 0 ? <span className={index <= current ? "sms-flow-step-line is-done" : "sms-flow-step-line"} /> : null}
+          <button
+            type="button"
+            className={["sms-flow-step", item.key === step ? "is-active" : "", index < current ? "is-done" : ""].filter(Boolean).join(" ")}
+            onClick={() => onStep(item.key)}
+          >
+            <span className="sms-flow-step-num">{index < current ? "✓" : toman(index + 1)}</span>
+            {item.label}
+          </button>
+        </span>
       ))}
     </nav>
+  );
+}
+
+function FlowNav({
+  step,
+  onStep,
+  missing,
+}: {
+  step: FlowStep;
+  onStep: (s: FlowStep) => void;
+  missing: Array<{ label: string; step: FlowStep }>;
+}) {
+  const index = FLOW_ORDER.indexOf(step);
+  const blocked = missing.filter((item) => item.step === step);
+  return (
+    <div className="sms-flow-nav">
+      {index > 0 ? (
+        <Button type="button" variant="secondary" onClick={() => onStep(FLOW_ORDER[index - 1])}>
+          بازگشت
+        </Button>
+      ) : <span />}
+      <span className="muted">{blocked[0]?.label ?? ""}</span>
+      {index < FLOW_ORDER.length - 1 ? (
+        <Button type="button" disabled={blocked.length > 0} onClick={() => onStep(FLOW_ORDER[index + 1])}>
+          بعدی
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -337,32 +389,39 @@ function MessageStep({
             ))}
           </Select>
         </Field>
-        <Field className="span-all" label={<Bi en="Message" fa="متن" />}>
-          <TextArea value={body} onChange={(e) => onBody(e.target.value)} rows={6} />
-          <Meter text={body} recipients={recipients === "" ? 0 : Number(recipients)} tariff={panels.data?.[0]?.tariff_toman || 0} />
-          {check.data || check.isPending || check.isError ? (
-            <div className="perf-check perf-check--inline">
-              {check.isPending ? <Muted as="p">در حال چک قوانین…</Muted> : null}
-              {check.isError ? (
-                <Muted as="p">{check.error instanceof Error ? check.error.message : "چک قوانین انجام نشد."}</Muted>
-              ) : null}
-              {check.data ? (
-                <>
-                  <Badge tone={check.data.ok ? "ok" : "warn"}>
+        <div className="span-all sms-compose">
+          <Field label={<Bi en="Message" fa="متن" />}>
+            <TextArea value={body} onChange={(e) => onBody(e.target.value)} rows={6} />
+            <Meter text={body} recipients={recipients === "" ? 0 : Number(recipients)} tariff={panels.data?.[0]?.tariff_toman || 0} />
+            {check.data || check.isPending || check.isError ? (
+              <div className="sms-chips">
+                {check.isPending ? <span className="sms-chip">در حال چک قوانین…</span> : null}
+                {check.isError ? (
+                  <span className="sms-chip is-warn">{check.error instanceof Error ? check.error.message : "چک قوانین انجام نشد."}</span>
+                ) : null}
+                {check.data ? (
+                  <span className={check.data.ok ? "sms-chip is-ok" : "sms-chip is-warn"}>
                     {toman(check.data.pages)} صفحه، {toman(check.data.chars)} نویسه
                     {check.data.estimated_cost_toman ? `، حدود ${toman(check.data.estimated_cost_toman)} تومان` : ""}
-                  </Badge>
-                  {check.data.issues.map((issue) => (
-                    <Muted key={issue} as="p">{issue}</Muted>
-                  ))}
-                  {(check.data.warnings || []).map((issue) => (
-                    <Muted key={`w-${issue}`} as="p">{issue}</Muted>
-                  ))}
-                </>
-              ) : null}
+                  </span>
+                ) : null}
+                {check.data?.issues.map((issue) => (
+                  <span key={issue} className="sms-chip is-warn">{issue}</span>
+                ))}
+                {(check.data?.warnings || []).map((issue) => (
+                  <span key={`w-${issue}`} className="sms-chip">{issue}</span>
+                ))}
+              </div>
+            ) : null}
+          </Field>
+          <div className="sms-phone" aria-label="پیش‌نمایش پیام">
+            <div className="sms-phone-notch" />
+            <div className="sms-phone-screen">
+              <div className="sms-phone-from">{panels.data?.[0]?.sender_line || "ستوده"}</div>
+              <div className="sms-phone-bubble">{body || "متن پیام اینجا دیده می‌شود"}</div>
             </div>
-          ) : null}
-        </Field>
+          </div>
+        </div>
         <div className="span-all perf-actions">
           <Button type="button" variant="secondary" onClick={() => check.mutate({ text: body, brand, recipients: recipients === "" ? 0 : Number(recipients), panel_id: panels.data?.[0]?.id })}>
             <Bi en="Check rules" fa="چک قوانین" />
@@ -428,6 +487,7 @@ function AudienceStep({
   serviceMobiles,
   onServiceMobiles,
   senderLine,
+  recipientCount,
 }: {
   kind: AudienceKind;
   onKind: (k: AudienceKind) => void;
@@ -441,6 +501,7 @@ function AudienceStep({
   serviceMobiles: string;
   onServiceMobiles: (v: string) => void;
   senderLine: string;
+  recipientCount: number;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -477,16 +538,29 @@ function AudienceStep({
   return (
     <Card>
       <SectionHeader icon="users" title={<Bi en="Audience" fa="مخاطب" />} />
-      <Segmented
-        value={kind}
-        onChange={onKind}
-        items={[
-          { key: "list", label: <Bi en="Our list" fa="لیست خودمان" /> },
-          { key: "smart", label: <Bi en="Smart area" fa="محلهٔ هوشمند" /> },
-          { key: "postal", label: <Bi en="Postal zone" fa="منطقهٔ کدپستی" /> },
-          { key: "isms", label: <Bi en="Service numbers" fa="شماره‌های خدماتی" /> },
-        ]}
-      />
+      <div className="sms-kind-grid" role="radiogroup" aria-label="نوع مخاطب">
+        {([
+          ["list", "لیست خودمان", "فایل دیدار یا لیست آماده"],
+          ["smart", "محلهٔ هوشمند", "شمارش محله و برآورد تعرفه"],
+          ["postal", "منطقهٔ کدپستی", "ارسال از پنل پیشگام"],
+          ["isms", "شماره‌های خدماتی", "تا ۲۰ شماره با آی‌اس‌ام‌اس"],
+        ] as const).map(([key, title, desc]) => (
+          <button
+            key={key}
+            type="button"
+            role="radio"
+            aria-checked={kind === key}
+            className={kind === key ? "sms-kind is-on" : "sms-kind"}
+            onClick={() => onKind(key)}
+          >
+            <strong>{title}</strong>
+            <span>{desc}</span>
+          </button>
+        ))}
+      </div>
+      <p className="sms-audience-count">
+        {toman(recipientCount)} <span>نفر</span>
+      </p>
       {kind === "list" ? (
         <div className="sms-flow-audience-panel">
           <FilePick accept=".xlsx" label={<Bi en="Didar Excel" fa="فایل دیدار" />} hint=".xlsx" busy={prepare.isPending} onFile={(file) => prepare.mutate(file)} />
@@ -555,6 +629,7 @@ function AudienceStep({
 
 function SendStep({
   campaignId,
+  campaign,
   body,
   panelId,
   onPanelId,
@@ -568,6 +643,7 @@ function SendStep({
   smartPreview,
 }: {
   campaignId: string;
+  campaign?: { code: string; title: string };
   body: string;
   panelId: string;
   onPanelId: (id: string) => void;
@@ -605,9 +681,23 @@ function SendStep({
     onError: (error: Error) => toast(error.message),
   });
 
+  const audienceName =
+    audienceKind === "list" ? "لیست خودمان" :
+    audienceKind === "smart" ? "محلهٔ هوشمند" :
+    audienceKind === "postal" ? "کدپستی (پنل)" : "خدماتی";
+  const shape = smsShape(body);
+  const cost = shape.pages * Math.max(0, recipientCount) * Math.max(0, panel?.tariff_toman || 0);
   return (
     <Card>
       <SectionHeader icon="send" title={<Bi en="Send" fa="ارسال" />} />
+      <div className="sms-review">
+        <div className="sms-review-grid">
+          <div><span>کمپین</span><b>{campaign ? `${campaign.code} — ${campaign.title}` : "انتخاب نشده"}</b></div>
+          <div><span>مخاطب</span><b>{audienceName} · {toman(recipientCount)} نفر</b></div>
+          <div><span>برآورد هزینه</span><b>{cost ? `${toman(cost)} تومان` : "—"}</b></div>
+        </div>
+        <div className="sms-review-text">{body || "متنی نیست"}</div>
+      </div>
       <div className="form-grid">
         <Field label={<Bi en="Panel" fa="پنل" />}>
           <Select value={panelId} onChange={(e) => onPanelId(e.target.value)}>
@@ -729,31 +819,31 @@ function SmsSummary({
     audienceKind === "postal" ? "کدپستی (پنل)" : "خدماتی";
   const estimate = smartPreview?.estimates?.tariff_total;
   const credit = smartPreview?.credit;
+  const panelReady = !missing.some((item) => item.step === "send");
+  const audienceReady = audienceKind === "postal" || !missing.some((item) => item.step === "audience");
+  const checks: Array<{ ok: boolean; label: string; step: FlowStep }> = [
+    { ok: Boolean(campaign), label: campaign ? `${campaign.title}` : "کمپین انتخاب نشده", step: "message" },
+    { ok: shape.chars > 0, label: shape.chars ? `${toman(shape.chars)} نویسه · ${toman(shape.pages)} صفحه` : "متن خالی است", step: "message" },
+    { ok: hasCancel, label: hasCancel ? "لغو۱۱ در متن هست" : "لغو۱۱ در متن نیست", step: "message" },
+    { ok: audienceReady, label: `${audienceLabel} · ${toman(recipientCount)} نفر`, step: "audience" },
+    { ok: panelReady, label: panelReady ? "پنل انتخاب شده" : "پنل انتخاب نشده", step: "send" },
+  ];
   return (
     <Card className="sms-flow-summary-card">
       <SectionHeader icon="sparkles" title={<Bi en="Summary" fa="خلاصه" />} />
       <ul className="sms-flow-summary-list">
-        <li><strong>کمپین:</strong> {campaign ? <TitleCode title={campaign.title} code={campaign.code} /> : "—"}</li>
-        <li><strong>متن:</strong> {toman(shape.chars)} نویسه · {toman(shape.pages)} صفحه</li>
-        <li><strong>لغو۱۱:</strong> {hasCancel ? <Badge tone="ok">بله</Badge> : <Badge tone="warn">خیر</Badge>}</li>
-        <li><strong>مخاطب:</strong> {audienceLabel} · {toman(recipientCount)} نفر</li>
+        {checks.map((item) => (
+          <li key={item.label}>
+            <button type="button" className={item.ok ? "sms-check is-ok" : "sms-check is-miss"} onClick={() => onJump(item.step)}>
+              <i>{item.ok ? "✓" : "!"}</i>
+              <span>{item.label}</span>
+            </button>
+          </li>
+        ))}
         {estimate != null ? <li><strong>برآورد (تعرفه):</strong> <span className="perf-num">{toman(estimate)}</span> ریال</li> : null}
         {credit != null ? <li><strong>موجودی پیشگام:</strong> <span className="perf-num">{toman(credit)}</span> ریال</li> : null}
       </ul>
-      {missing.length ? (
-        <div className="sms-flow-missing">
-          <Muted as="p">موارد کم:</Muted>
-          <ul>
-            {missing.map((item) => (
-              <li key={item.label}>
-                <button type="button" className="sms-flow-missing-link" onClick={() => onJump(item.step)}>{item.label}</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <Badge tone="ok">آمادهٔ ثبت یا ارسال</Badge>
-      )}
+      {missing.length === 0 ? <Badge tone="ok">آمادهٔ ثبت یا ارسال</Badge> : null}
     </Card>
   );
 }
