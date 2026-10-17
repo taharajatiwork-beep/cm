@@ -79,6 +79,8 @@ FILES = [
     "frontend/src/pages/CommunicationPage.tsx",
     "frontend/src/requests/mizitoLanes.ts",
     "frontend/src/perf/ConnectionsPage.tsx",
+    "frontend/src/perf/ConnectionsPanelTile.tsx",
+    "frontend/src/perf/PerfRoutes.tsx",
     "backend/app/ai_lab/access.py",
     "backend/app/ai_lab/workspaces.py",
     "backend/app/ai_lab/routes.py",

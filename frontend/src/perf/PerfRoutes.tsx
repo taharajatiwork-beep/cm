@@ -5,7 +5,7 @@ import { CampaignsPage } from "./CampaignsPage";
 import { MoneyPage } from "./MoneyPage";
 import { PerfHomePage } from "./PerfHomePage";
 import { SheetPage } from "./SheetPage";
-import { ConnectionsPage } from "./ConnectionsPage";
+import ConnectionsPage from "./ConnectionsPage";
 import { SmsPage } from "./SmsPage";
 import { SocialFlowPage } from "./SocialPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
