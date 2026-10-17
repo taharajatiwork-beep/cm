@@ -274,7 +274,8 @@ export function HomePage() {
               <Button type="button" onClick={() => setInquiryOpen(true)}>
                 <Bi en="New inquiry" fa="استعلام جدید" />
               </Button>
-            ) : isRequester ? (
+            ) : null}
+            {isRequester ? (
               <Button to="/requests">
                 <Bi en="My requests" fa="درخواست‌های من" />
               </Button>

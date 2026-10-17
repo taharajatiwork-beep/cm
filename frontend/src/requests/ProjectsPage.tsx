@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import "../perf/perf.css";
 import { Button, Card, Dialog, EmptyState, Field, Input, Muted, PageHeader, SectionHeader, Select } from "../components/ui";
@@ -36,14 +36,16 @@ export function ProjectsPage() {
   const [requestId, setRequestId] = useState("");
   const [laneChoice, setLaneChoice] = useState("");
 
+  const requesterBoot = useRef(false);
   useEffect(() => {
-    if (!requester) return;
+    if (!requester || requesterBoot.current) return;
+    requesterBoot.current = true;
     const next: Partial<typeof url> = {};
     if (url.view !== "list") next.view = "list";
     if (url.lane) next.lane = "";
     if (url.source === "mizito") next.source = "";
     if (Object.keys(next).length) patch(next);
-  }, [requester, url.view, url.lane, url.source, patch]);
+  }, [requester, patch, url.lane, url.source, url.view]);
 
   const lanes = useQuery({
     queryKey: ["requests", "mizito-lanes", "counts"],
@@ -200,6 +202,7 @@ export function ProjectsPage() {
           onPatch={patch}
           lanes={lanes.data ?? []}
           triage={triage}
+          requester={requester}
           syncPending={syncStatus.data?.pending_count}
           syncFinishedAt={syncStatus.data?.last_run?.finished_at}
           syncOk={syncStatus.data?.last_run?.ok}
@@ -214,6 +217,7 @@ export function ProjectsPage() {
             cmMode={cmBoard}
             laneCount={lanes.data?.find((lane) => lane.slug === url.lane)?.project_count}
             onShowArchive={() => patch({ archive: true })}
+            onShowList={() => patch({ view: "list" })}
           />
         ) : (
           <div className="projects-list">
@@ -225,6 +229,7 @@ export function ProjectsPage() {
               isLoading={listPage.isLoading}
               error={listPage.error as Error | null}
               onRowOpen={openProject}
+              requester={requester}
             />
           </div>
         )}

@@ -27,7 +27,7 @@ import {
   Table,
   TextArea,
 } from "../components/ui";
-import { faNum, tomanText } from "../fa";
+import { faDigits, faNum, faYear, tomanText } from "../fa";
 import { Bi, useBi } from "../i18n";
 import { useToast } from "../components/ui/Toast";
 import { nextCursor } from "../lib/pagination";
@@ -541,7 +541,7 @@ export function VehiclesPage() {
                         {vehicleLabel(String(v.brand))} {vehicleLabel(String(v.model))}
                       </strong>
                       <div className="cell-sub">
-                        {faNum(Number(v.year))}
+                        {faYear(v.year as number | string)}
                         {v.trim ? ` · ${vehicleLabel(String(v.trim))}` : ""}
                         {v.stock_number ? ` · #${String(v.stock_number)}` : ""}
                       </div>
@@ -858,7 +858,7 @@ export function VehicleDetailPage() {
             </span>
             <span>
               {vehicleLabel(String(v.brand))} {vehicleLabel(String(v.model))}{" "}
-              <Muted>{faNum(Number(v.year))}</Muted>
+              <Muted>{faYear(v.year as number | string)}</Muted>
             </span>
           </span>
         }
@@ -937,8 +937,8 @@ export function VehicleDetailPage() {
               <Spec label={bi("Fuel", "سوخت")} value={v.fuel_type} formatValue={vehicleLabel} />
               <Spec label={bi("Engine", "موتور")} value={v.engine} formatValue={formatEngine} />
               <Spec label={bi("Plate", "پلاک")} value={v.plate_number} />
-              <Spec label={bi("Doors", "درب")} value={v.doors != null ? faNum(Number(v.doors)) : null} />
-              <Spec label={bi("Seats", "صندلی")} value={v.seats} />
+              <Spec label={bi("Doors", "درب")} value={v.doors != null ? faDigits(String(v.doors)) : null} />
+              <Spec label={bi("Seats", "صندلی")} value={v.seats != null && v.seats !== "" ? faDigits(String(v.seats)) : null} />
               <Spec label={bi("Exterior", "بیرونی")} value={v.exterior_condition} />
               <Spec label={bi("Interior", "داخلی")} value={v.interior_condition} />
               <Spec label={bi("Chassis (VIN)", "شماره شاسی")} value={v.vin} />

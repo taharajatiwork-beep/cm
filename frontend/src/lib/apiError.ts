@@ -8,6 +8,9 @@ export function isForbiddenError(error: unknown): boolean {
     s.includes("not authorized") ||
     s.includes("missing permission") ||
     s.includes("missing one of permissions") ||
-    s.includes("دسترسی به این کمپین")
+    s.includes("دسترسی به این کمپین") ||
+    s.includes("forbidden") ||
+    s.includes("دسترسی ندارید") ||
+    s.includes("missing one of permissions")
   );
 }

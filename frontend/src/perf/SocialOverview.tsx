@@ -41,7 +41,7 @@ export function SocialOverviewPanel({
         hint={
           <Bi
             en={data.cached ? `Cached · ${data.rollup_at ?? ""}` : `Refreshed · ${data.rollup_at ?? ""}`}
-            fa={data.cached ? `از cache · ${data.rollup_at ?? ""}` : `تازه · ${data.rollup_at ?? ""}`}
+            fa={data.cached ? `از ذخیرهٔ قبلی · ${data.rollup_at ?? ""}` : `تازه · ${data.rollup_at ?? ""}`}
           />
         }
         action={

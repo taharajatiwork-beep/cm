@@ -12,6 +12,7 @@ type Props = {
   isLoading: boolean;
   error: Error | null;
   onRowOpen: (id: string) => void;
+  requester?: boolean;
 };
 
 function SortHeader({
@@ -39,7 +40,7 @@ function SortHeader({
   );
 }
 
-export function ProjectsTable({ url, onPatch, rows, total, isLoading, error, onRowOpen }: Props) {
+export function ProjectsTable({ url, onPatch, rows, total, isLoading, error, onRowOpen, requester = false }: Props) {
   const pageCount = Math.max(1, Math.ceil(total / LIST_PAGE_SIZE));
   const columns: Column<WorkProject>[] = [
     {
@@ -108,9 +109,24 @@ export function ProjectsTable({ url, onPatch, rows, total, isLoading, error, onR
       empty={
         <EmptyState
           titleEn="No projects match"
-          titleFa="پروژه‌ای پیدا نشد"
-          bodyEn="Try another lane or clear filters."
-          bodyFa="دسته یا فیلتر دیگری امتحان کنید."
+          titleFa={requester ? "هنوز پروژه‌ای برای درخواست‌های شما نیست" : "پروژه‌ای پیدا نشد"}
+          bodyEn={
+            requester
+              ? "When the team converts your requests into projects, they will appear here."
+              : "Try another lane or clear filters."
+          }
+          bodyFa={
+            requester
+              ? "وقتی تیم درخواست شما را به پروژه تبدیل کند، اینجا می‌بینید. وضعیت درخواست‌ها را در «درخواست‌های من» دنبال کنید."
+              : "دسته یا فیلتر دیگری امتحان کنید."
+          }
+          action={
+            requester && !hasFilters ? (
+              <Button to="/requests">
+                درخواست‌های من
+              </Button>
+            ) : undefined
+          }
           onClearFilters={
             hasFilters
               ? () => onPatch({ q: "", source: "", status: "", hide_done: false, page: 1 })

@@ -72,7 +72,7 @@ function StatusLight({ tone, label }: { tone: Tone; label: string }) {
 
 export function ConnectionsPage() {
   const { has } = useAuth();
-  const perfTools = has("perf.read") || has("perf.write");
+  const perfTools = has("perf.read") || has("perf.write") || has("perf.approve") || has("price.approve");
   const canEditSecrets = has("request.triage") || has("request.manage") || has("org.admin");
   const qc = useQueryClient();
   const [token, setToken] = useState("");
@@ -82,6 +82,10 @@ export function ConnectionsPage() {
   // صفحه فقط وضعیت ذخیره‌شده را می‌خواند (بدون کال بیرونی). بررسی زنده فقط با دکمه.
   const saved = useSavedConnections(perfTools);
   const live = useLiveConnections();
+
+  if (!perfTools) {
+    return <ForbiddenState />;
+  }
 
   function checkNow() {
     void live.refetch().then((result) => {
@@ -113,7 +117,7 @@ export function ConnectionsPage() {
     });
   }
 
-  // بعد از ذخیرهٔ توکن یا API، نتیجهٔ بررسی زندهٔ قبلی دیگر معتبر نیست: کنار می‌رود و وضعیت ذخیره‌شده دوباره خوانده می‌شود.
+  // بعد از ذخیرهٔ کلید یا API، نتیجهٔ بررسی زندهٔ قبلی دیگر معتبر نیست: کنار می‌رود و وضعیت ذخیره‌شده دوباره خوانده می‌شود.
   // بررسی زندهٔ تازه خودکار نیست.
   function refreshSaved() {
     qc.removeQueries({ queryKey: liveConnectionsQuery.queryKey, exact: true });
@@ -411,7 +415,7 @@ export function ConnectionsPage() {
           <summary><Bi en="Technical details" fa="جزئیات فنی" /></summary>
           <ol className="perf-steps">
             <li>در پنل نوین‌هاب به تنظیمات امنیتی بروید.</li>
-            <li>«توکن وب‌سرویس (برای توسعه‌دهندگان)» را بسازید یا کپی کنید.</li>
+            <li>«کلید وب‌سرویس (برای توسعه‌دهندگان)» را در پنل نوین‌هاب بسازید یا کپی کنید.</li>
             <li>اینجا بچسبانید و ذخیره کنید؛ سپس بالای صفحه «بررسی همین حالا» را بزنید.</li>
           </ol>
           {canEditSecrets ? (

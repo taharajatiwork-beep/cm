@@ -11,6 +11,7 @@ type Props = {
   onPatch: (next: Partial<ProjectsUrlState>) => void;
   lanes: Lane[];
   triage: boolean;
+  requester?: boolean;
   syncPending?: number;
   syncFinishedAt?: string | null;
   syncOk?: boolean;
@@ -24,6 +25,7 @@ export function ProjectsToolbar({
   onPatch,
   lanes,
   triage,
+  requester = false,
   syncPending,
   syncFinishedAt,
   syncOk,
@@ -45,18 +47,20 @@ export function ProjectsToolbar({
 
   return (
     <div className="projects-toolbar">
-      <div className="projects-lanes">
-        <Segmented
-          ariaLabel="دستهٔ پروژه"
-          value={url.lane === "" ? "__all__" : url.lane || "__all__"}
-          onChange={(lane) => onPatch({ lane: lane === "__all__" ? "" : lane, page: 1 })}
-          items={[
-            { key: "__all__", label: "همه" },
-            { key: "none", label: "بدون دسته" },
-            ...lanes.map((lane) => ({ key: lane.slug, label: lane.title, count: lane.project_count })),
-          ]}
-        />
-      </div>
+      {!requester ? (
+        <div className="projects-lanes">
+          <Segmented
+            ariaLabel="دستهٔ پروژه"
+            value={url.lane === "" ? "__all__" : url.lane || "__all__"}
+            onChange={(lane) => onPatch({ lane: lane === "__all__" ? "" : lane, page: 1 })}
+            items={[
+              { key: "__all__", label: "همه" },
+              { key: "none", label: "بدون دسته" },
+              ...lanes.map((lane) => ({ key: lane.slug, label: lane.title, count: lane.project_count })),
+            ]}
+          />
+        </div>
+      ) : null}
       <div className="projects-toolbar-row">
         <div className="projects-search">
           <Icon name="search" size={14} />
@@ -72,15 +76,17 @@ export function ProjectsToolbar({
             <Icon name="clock" size={12} />
             {syncFinishedAt ? <DateText value={syncFinishedAt} withTime /> : "بدون همگام‌سازی"}
           </span>
-          <Segmented
-            ariaLabel="نمای پروژه‌ها"
-            value={url.view}
-            onChange={(view) => onPatch({ view })}
-            items={[
-              { key: "board", label: "کانبان" },
-              { key: "list", label: "فهرست" },
-            ]}
-          />
+          {!requester ? (
+            <Segmented
+              ariaLabel="نمای پروژه‌ها"
+              value={url.view}
+              onChange={(view) => onPatch({ view })}
+              items={[
+                { key: "board", label: "کانبان" },
+                { key: "list", label: "فهرست" },
+              ]}
+            />
+          ) : null}
           <MoreMenu label={<Bi en="Filters" fa="فیلترها" />}>
             <FieldRow label={<Bi en="Source" fa="منبع" />}>
               <Select aria-label="منبع" value={url.source} onChange={(event) => onPatch({ source: event.target.value, page: 1 })}>

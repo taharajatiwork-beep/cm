@@ -133,7 +133,7 @@ export function CalendarToolbar({
         </div>
         <div className="cal2-toolbar-end row">
           {secondaryLabel ? <span className="cal2-view-pill cal2-view-pill--desktop">{secondaryLabel}</span> : null}
-          <MoreMenu label={secondaryLabel ? "نمای دیگر" : "هفته / روز / جدول"}>
+          <MoreMenu label={<span className="cal2-more-menu-label">{secondaryLabel ? "نمای دیگر" : "هفته / روز / جدول"}</span>}>
             {SECONDARY_VIEWS.map((row) => (
               <Button
                 key={row.key}

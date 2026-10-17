@@ -51,6 +51,14 @@ export function faNum(value: number | null | undefined, digits = 0): string {
   }).format(Number(value));
 }
 
+/** سال یا شمارهٔ کوچک بدون جداکنندهٔ هزارگان (مثلاً ۲۰۲۰ نه ۲٬۰۲۰). */
+export function faYear(value: number | string | null | undefined): string {
+  if (value == null || value === "") return "—";
+  const n = Math.trunc(Number(value));
+  if (Number.isNaN(n)) return faDigits(String(value));
+  return faDigits(String(n));
+}
+
 /** مبلغ به تومان، بدون واحد. واحد را با `tomanText` بچسبانید. */
 export function toman(value: number | null | undefined): string {
   if (value == null || Number.isNaN(Number(value))) return "—";

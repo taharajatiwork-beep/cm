@@ -5986,6 +5986,22 @@ html[dir="rtl"] .tag-list li {
     display: none;
   }
 
+  .cal2-toolbar-end .more-menu-trigger {
+    min-width: 2.75rem;
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+
+  .cal2-more-menu-label {
+    display: inline;
+  }
+
+  .cal2-toolbar-primary .segmented .seg {
+    min-width: 2.5rem;
+    font-size: 0.8rem;
+    padding-inline: 0.45rem;
+  }
+
   .cal2-toolbar-filters {
     flex-direction: column;
     align-items: stretch;

@@ -72,8 +72,8 @@ export function SocialInsightsPage() {
         title={<Bi en="Social insights" fa="تحلیل سوشال" />}
         description={
           <Bi
-            en="KPIs and 7-day trend from periodic hub sync. Drill down on Novin Hub / Vardast pages."
-            fa="شاخص و روند ۷ روزه از همگام‌سازی دوره‌ای. جزئیات در صفحات نوین‌هاب و وردست."
+            en="KPIs and 7-day trend from periodic hub updates. Drill down on Novin Hub / Vardast pages."
+            fa="شاخص و روند ۷ روزه از به‌روزرسانی دوره‌ای. جزئیات در صفحات نوین‌هاب و وردست."
           />
         }
         actions={
@@ -215,7 +215,7 @@ export function SocialInsightsPage() {
             ]}
           />
         ) : (
-          <p className="muted fine"><Bi en="Connect Vardast or sync." fa="وردست را وصل کنید یا sync کنید." /></p>
+          <p className="muted fine"><Bi en="Connect Vardast or refresh data." fa="وردست را در اتصالات وصل کنید یا «تازه‌سازی داده» بزنید." /></p>
         )}
       </Card>
     </>

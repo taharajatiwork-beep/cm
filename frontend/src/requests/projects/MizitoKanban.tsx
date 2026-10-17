@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { EmptyState, Muted, QueryState } from "../../components/ui";
+import { Button, EmptyState, Muted, QueryState } from "../../components/ui";
+import { Bi } from "../../i18n";
 import { faNum } from "../../fa";
 import { requestsApi, type MizitoKanbanCardBrief, type MizitoKanbanResponse, type WorkProject } from "../api";
 import { CM_STATUS_COLUMNS } from "./constants";
@@ -14,6 +15,7 @@ type Props = {
   cmMode?: boolean;
   laneCount?: number;
   onShowArchive?: () => void;
+  onShowList?: () => void;
 };
 
 function KanbanSkeleton() {
@@ -124,7 +126,7 @@ function CmStatusBoard({
   );
 }
 
-export function MizitoKanban({ url, onOpenCard, cmMode, laneCount, onShowArchive }: Props) {
+export function MizitoKanban({ url, onOpenCard, cmMode, laneCount, onShowArchive, onShowList }: Props) {
   const qc = useQueryClient();
   const kanban = useQuery({
     queryKey: [
@@ -172,9 +174,16 @@ export function MizitoKanban({ url, onOpenCard, cmMode, laneCount, onShowArchive
     return (
       <EmptyState
         titleEn="Choose a Mizito lane"
-        titleFa="دستهٔ میزیتو را انتخاب کنید"
-        bodyEn="Kanban columns come from that Mizito project's boards."
-        bodyFa="ستون‌های کانبان از بردهای همان پروژه در میزیتو ساخته می‌شوند."
+        titleFa="یک دسته از بالا انتخاب کنید"
+        bodyEn="Pick a lane tab above, or open the list of all projects."
+        bodyFa="از تب‌های بالا یک دسته را بزنید، یا همهٔ پروژه‌ها را در فهرست ببینید."
+        action={
+          onShowList ? (
+            <Button type="button" variant="secondary" onClick={onShowList}>
+              <Bi en="Open list" fa="رفتن به فهرست" />
+            </Button>
+          ) : undefined
+        }
       />
     );
   }

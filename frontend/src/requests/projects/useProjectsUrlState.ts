@@ -28,7 +28,7 @@ export function useProjectsUrlState() {
 
   const state: ProjectsUrlState = useMemo(
     () => ({
-      view: params.get("view") === "list" ? "list" : "board",
+      view: params.get("view") === "board" ? "board" : "list",
       lane: params.get("lane") ?? "",
       q: params.get("q") ?? "",
       hide_done: readBool(params, "hide_done"),
@@ -48,7 +48,7 @@ export function useProjectsUrlState() {
       setParams((prev) => {
         const p = new URLSearchParams(prev);
         const current: ProjectsUrlState = {
-          view: prev.get("view") === "list" ? "list" : "board",
+          view: prev.get("view") === "board" ? "board" : "list",
           lane: prev.get("lane") ?? "",
           q: prev.get("q") ?? "",
           hide_done: readBool(prev, "hide_done"),
