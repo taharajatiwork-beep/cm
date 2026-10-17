@@ -7,6 +7,8 @@ import { PerfHomePage } from "./PerfHomePage";
 import { SheetPage } from "./SheetPage";
 import ConnectionsPage from "./ConnectionsPage";
 import { SmsPage } from "./SmsPage";
+import { NovinHubPage } from "./NovinHubPage";
+import { VardastPage } from "./VardastPage";
 import { SocialFlowPage } from "./SocialPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 
@@ -19,6 +21,8 @@ export function PerfRoutes() {
       <Route path="sms" element={<SmsPage />} />
       <Route path="money" element={<MoneyPage />} />
       <Route path="social" element={<SocialFlowPage />} />
+      <Route path="novinhub" element={<NovinHubPage />} />
+      <Route path="vardast" element={<VardastPage />} />
       <Route path="stories" element={<Navigate to="/perf/social" replace />} />
       <Route path="sheet" element={<SheetPage />} />
       <Route path="connections" element={<ConnectionsPage />} />

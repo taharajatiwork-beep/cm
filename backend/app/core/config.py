@@ -138,6 +138,11 @@ class Settings(BaseSettings):
     # Mizito session. Empty token means no network call. Read-only.
     perf_mizito_base: str = "https://app.mizito.ir"
     perf_mizito_token: str = ""
+    # Novin Hub web-service token. Panel DB is primary; this is dev fallback when DB is empty.
+    novinhub_api_token: str = ""
+    perf_novinhub_api_base: str = "https://api.novinhub.com/token/v2"
+    vardast_api_key: str = ""
+    perf_vardast_api_base: str = "https://apigw.vardast.chat/uaa/public"
     # Mizito triage: an active card unchanged for more than this many days is "stuck" (1..365).
     perf_mizito_stuck_days: int = 14
     # Optional: the Mizito workspace id, only used to build "open in Mizito" links (no API call).

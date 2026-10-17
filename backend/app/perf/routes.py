@@ -57,6 +57,8 @@ from app.perf.schemas import (
     SheetSyncIn,
     MizitoRequestApprove,
     MizitoTokenIn,
+    NovinHubTokenIn,
+    VardastTokenIn,
     SmsCheckIn,
     SmsDraftIn,
     SmsSendIn,
@@ -93,7 +95,14 @@ from app.perf.services.mizito import mizito_missing, refresh_mizito, saved_mizit
 from app.perf.services.mizito_finance import mizito_finance
 from app.perf.services import mizito_requests as mizito_inbox
 from app.perf.services.mizito_triage import mizito_triage
-from app.perf.services.connections import _panel_auth, connection_status, save_mizito_token
+from app.perf.services.connections import (
+    _panel_auth,
+    connection_status,
+    save_mizito_token,
+    save_novinhub_token,
+    save_vardast_token,
+)
+from app.perf.services.vardast import read_vardast
 from app.perf.services.payments import advance, notify_requested
 from app.perf.services.remove import drop_campaign, drop_list, drop_page, drop_payment, drop_send, drop_story
 from app.perf.services.reports import booked_cost, build_report, load_settlement, placement_live, story_rates
@@ -1970,6 +1979,37 @@ async def save_mizito(
     _write(ctx)
     hint = await save_mizito_token(db, ctx.organization_id, body.token)
     return {"saved": bool(body.token.strip()), "hint": hint}
+
+
+@router.put("/connections/novinhub")
+async def save_novinhub(
+    body: NovinHubTokenIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _write(ctx)
+    hint = await save_novinhub_token(db, ctx.organization_id, body.token)
+    return {"saved": bool(body.token.strip()), "hint": hint}
+
+
+@router.put("/connections/vardast")
+async def save_vardast(
+    body: VardastTokenIn,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _write(ctx)
+    hint = await save_vardast_token(db, ctx.organization_id, body.token)
+    return {"saved": bool(body.token.strip()), "hint": hint}
+
+
+@router.get("/integrations/vardast")
+async def vardast_integration(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await read_vardast(db, ctx.organization_id)
 
 
 @router.get("/integrations/mizito")

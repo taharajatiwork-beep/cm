@@ -154,6 +154,8 @@ const PERF_TOOL_ORDER = [
   "/perf/campaigns",
   "/perf/sms",
   "/perf/social",
+  "/perf/novinhub",
+  "/perf/vardast",
   "/perf/sheet",
   "/ai-lab",
   "/perf/money",

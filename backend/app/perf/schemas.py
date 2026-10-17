@@ -246,3 +246,11 @@ class SheetSyncIn(BaseModel):
 
 class MizitoTokenIn(BaseModel):
     token: str = ""
+
+
+class NovinHubTokenIn(BaseModel):
+    token: str = ""
+
+
+class VardastTokenIn(BaseModel):
+    token: str = ""

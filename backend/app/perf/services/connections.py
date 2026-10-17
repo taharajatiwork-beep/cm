@@ -36,6 +36,94 @@ async def mizito_token_for(db: AsyncSession, organization_id: UUID) -> str:
     return get_settings().perf_mizito_token.strip()
 
 
+async def novinhub_token_for(db: AsyncSession, organization_id: UUID) -> str:
+    row = await db.scalar(select(PmIntegration).where(PmIntegration.organization_id == organization_id))
+    saved = (row.novinhub_token if row else "").strip()
+    if saved:
+        return decrypt_secret(saved)
+    return get_settings().novinhub_api_token.strip()
+
+
+async def save_novinhub_token(db: AsyncSession, organization_id: UUID, token: str) -> str:
+    row = await db.scalar(select(PmIntegration).where(PmIntegration.organization_id == organization_id))
+    if row is None:
+        row = PmIntegration(organization_id=organization_id, novinhub_token=encrypt_secret(token.strip()))
+        db.add(row)
+    else:
+        row.novinhub_token = encrypt_secret(token.strip()) if token.strip() else ""
+    row.updated_at = now()
+    await db.flush()
+    plain = decrypt_secret(row.novinhub_token) if row.novinhub_token else ""
+    return _mask(plain)
+
+
+async def vardast_token_for(db: AsyncSession, organization_id: UUID) -> str:
+    row = await db.scalar(select(PmIntegration).where(PmIntegration.organization_id == organization_id))
+    saved = (row.vardast_token if row else "").strip()
+    if saved:
+        return decrypt_secret(saved)
+    return get_settings().vardast_api_key.strip()
+
+
+async def save_vardast_token(db: AsyncSession, organization_id: UUID, token: str) -> str:
+    row = await db.scalar(select(PmIntegration).where(PmIntegration.organization_id == organization_id))
+    if row is None:
+        row = PmIntegration(organization_id=organization_id, vardast_token=encrypt_secret(token.strip()))
+        db.add(row)
+    else:
+        row.vardast_token = encrypt_secret(token.strip()) if token.strip() else ""
+    row.updated_at = now()
+    await db.flush()
+    plain = decrypt_secret(row.vardast_token) if row.vardast_token else ""
+    return _mask(plain)
+
+
+def _vardast_status(token: str, snapshot: dict) -> dict:
+    if not token:
+        reason = "کلید API وردست ذخیره نشده است. از پنل اتصالات کلید Public API را بچسبانید."
+        connected = False
+    elif snapshot.get("probed_at"):
+        connected = bool(snapshot.get("probed_ok"))
+        reason = "" if connected else str(snapshot.get("probe_reason") or "وردست جواب نداد.")
+    elif str(snapshot.get("last_error") or "").strip():
+        reason = str(snapshot.get("last_error") or "").strip()
+        connected = False
+    else:
+        reason = str(snapshot.get("probe_reason") or "هنوز وردست بررسی نشده است.")
+        connected = False
+    return {
+        "saved": bool(token),
+        "hint": _mask(token),
+        "connected": connected,
+        "reason": reason,
+        "checked_at": snapshot.get("probed_at") or snapshot.get("last_error_at"),
+        "channel_count": int(snapshot.get("channel_count") or 0),
+    }
+
+
+def _novinhub_status(token: str, snapshot: dict) -> dict:
+    if not token:
+        reason = "توکن نوین‌هاب ذخیره نشده است. از پنل اتصالات توکن وب‌سرویس را بچسبانید."
+        connected = False
+    elif snapshot.get("probed_at"):
+        connected = bool(snapshot.get("probed_ok"))
+        reason = "" if connected else str(snapshot.get("probe_reason") or "نوین‌هاب جواب نداد.")
+    elif str(snapshot.get("last_error") or "").strip():
+        reason = str(snapshot.get("last_error") or "").strip()
+        connected = False
+    else:
+        reason = str(snapshot.get("probe_reason") or "هنوز نوین‌هاب بررسی نشده است.")
+        connected = False
+    return {
+        "saved": bool(token),
+        "hint": _mask(token),
+        "connected": connected,
+        "reason": reason,
+        "checked_at": snapshot.get("probed_at") or snapshot.get("last_error_at"),
+        "account_count": int(snapshot.get("account_count") or 0),
+    }
+
+
 async def save_mizito_token(db: AsyncSession, organization_id: UUID, token: str) -> str:
     row = await db.scalar(select(PmIntegration).where(PmIntegration.organization_id == organization_id))
     if row is None:
@@ -158,6 +246,18 @@ async def connection_status(db: AsyncSession, organization_id: UUID, *, live: bo
     if live and token:
         await probe_mizito(db, organization_id)
     snapshot = await saved_mizito(db, organization_id)
+    nh_token = await novinhub_token_for(db, organization_id)
+    from app.perf.services.novinhub import probe_novinhub, saved_novinhub
+
+    if live and nh_token:
+        await probe_novinhub(db, organization_id)
+    nh_snapshot = await saved_novinhub(db, organization_id)
+    vd_key = await vardast_token_for(db, organization_id)
+    from app.perf.services.vardast import probe_vardast, saved_vardast
+
+    if live and vd_key:
+        await probe_vardast(db, organization_id)
+    vd_snapshot = await saved_vardast(db, organization_id)
     panels = list(
         (await db.scalars(select(PmPanel).where(PmPanel.organization_id == organization_id))).all()
     )
@@ -184,6 +284,8 @@ async def connection_status(db: AsyncSession, organization_id: UUID, *, live: bo
         "sheets": checked,
         "sheet_sync": sheet_sync,
         "mizito": _mizito_status(token, snapshot),
+        "novinhub": _novinhub_status(nh_token, nh_snapshot),
+        "vardast": _vardast_status(vd_key, vd_snapshot),
         "panels": [
             {
                 "id": str(row.id),

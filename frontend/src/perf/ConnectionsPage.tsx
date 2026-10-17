@@ -75,6 +75,8 @@ export function ConnectionsPage() {
   const canEditSecrets = has("request.triage") || has("request.manage") || has("org.admin");
   const qc = useQueryClient();
   const [token, setToken] = useState("");
+  const [novinhubToken, setNovinhubToken] = useState("");
+  const [vardastToken, setVardastToken] = useState("");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // صفحه فقط وضعیت ذخیره‌شده را می‌خواند (بدون کال بیرونی). بررسی زنده فقط با دکمه.
   const saved = useSavedConnections(perfTools);
@@ -90,11 +92,22 @@ export function ConnectionsPage() {
       const mizitoLine = result.data.mizito.connected
         ? `میزیتو: وصل${result.data.mizito.hint ? ` (${result.data.mizito.hint})` : ""}.`
         : `میزیتو: وصل نیست. ${result.data.mizito.reason || "دلیلی از سرور نیامد."}`;
-      const ok = SHEETS.every((item) => result.data.sheets[item.key]?.connected) && Boolean(result.data.mizito.connected);
+      const nh = result.data.novinhub;
+      const novinhubLine = nh?.connected
+        ? `نوین‌هاب: وصل${nh.hint ? ` (${nh.hint})` : ""}${nh.account_count != null ? ` · ${nh.account_count} اکانت` : ""}.`
+        : `نوین‌هاب: وصل نیست. ${nh?.reason || "دلیلی از سرور نیامد."}`;
+      const vd = result.data.vardast;
+      const vardastLine = vd?.connected
+        ? `وردست: وصل${vd.hint ? ` (${vd.hint})` : ""}${vd.channel_count != null ? ` · ${vd.channel_count} کانال` : ""}.`
+        : `وردست: وصل نیست. ${vd?.reason || "دلیلی از سرور نیامد."}`;
+      const ok =
+        SHEETS.every((item) => result.data.sheets[item.key]?.connected) &&
+        Boolean(result.data.mizito.connected) &&
+        Boolean(nh?.connected);
       setOutcome({
         ok,
         title: ok ? "بررسی اتصال‌ها موفق بود" : "بررسی اتصال‌ها ناموفق بود",
-        detail: [...lines, mizitoLine].join("\n"),
+        detail: [...lines, mizitoLine, novinhubLine, vardastLine].join("\n"),
       });
     });
   }
@@ -104,6 +117,38 @@ export function ConnectionsPage() {
   function refreshSaved() {
     qc.removeQueries({ queryKey: liveConnectionsQuery.queryKey, exact: true });
     void qc.invalidateQueries({ queryKey: savedConnectionsQuery.queryKey });
+  }
+
+  function saveVardast(next: string) {
+    perfApi.saveVardast(next).then((result) => {
+      setVardastToken("");
+      refreshSaved();
+      setOutcome({
+        ok: true,
+        title: result.saved ? "ذخیرهٔ کلید وردست موفق بود" : "پاک‌کردن کلید وردست موفق بود",
+        detail: result.saved
+          ? `کلید در دیتابیس این سازمان رمزنگاری شد${result.hint ? ` (${result.hint})` : ""}. با «بررسی همین حالا» اتصال را تست کنید.`
+          : "کلید وردست از سرور پاک شد.",
+      });
+    }).catch((error: unknown) => {
+      setOutcome({ ok: false, title: "ذخیرهٔ کلید وردست ناموفق بود", detail: exactError(error) });
+    });
+  }
+
+  function saveNovinhub(next: string) {
+    perfApi.saveNovinHub(next).then((result) => {
+      setNovinhubToken("");
+      refreshSaved();
+      setOutcome({
+        ok: true,
+        title: result.saved ? "ذخیرهٔ توکن نوین‌هاب موفق بود" : "پاک‌کردن توکن نوین‌هاب موفق بود",
+        detail: result.saved
+          ? `توکن در دیتابیس این سازمان رمزنگاری شد${result.hint ? ` (${result.hint})` : ""}. با «بررسی همین حالا» اتصال را تست کنید.`
+          : "توکن نوین‌هاب از سرور پاک شد.",
+      });
+    }).catch((error: unknown) => {
+      setOutcome({ ok: false, title: "ذخیرهٔ توکن نوین‌هاب ناموفق بود", detail: exactError(error) });
+    });
   }
 
   function save(next: string) {
@@ -163,6 +208,8 @@ export function ConnectionsPage() {
   const liveReady = Boolean(live.data);
   const checking = live.isFetching;
   const mizito = data.mizito;
+  const novinhub = data.novinhub ?? { saved: false, hint: "", connected: false, reason: "وضعیت نوین‌هاب از سرور نیامد." };
+  const vardast = data.vardast ?? { saved: false, hint: "", connected: false, reason: "وضعیت وردست از سرور نیامد." };
   const checkedAt = live.dataUpdatedAt ? new Date(live.dataUpdatedAt).toISOString() : null;
 
   return (
@@ -313,6 +360,126 @@ export function ConnectionsPage() {
                 {mizito.saved ? <Button type="button" variant="secondary" onClick={() => save("")}><Bi en="Clear" fa="پاک کردن" /></Button> : null}
                 <Button type="button" variant="secondary" onClick={tryMizito}><Bi en="Read cards" fa="خواندن کارت‌ها" /></Button>
                 <Button type="button" variant="secondary" onClick={syncMizitoProjects}><Bi en="Sync projects" fa="همگام‌سازی پروژه‌ها" /></Button>
+              </div>
+            </div>
+          ) : (
+            <Muted>ذخیرهٔ کلید فقط برای سرپرست و ادمین است.</Muted>
+          )}
+        </details>
+      </Card> : null}
+
+      {perfTools ? <Card>
+        <SectionHeader
+          icon="message"
+          title={<Bi en="Novin Hub" fa="نوین هاب" />}
+          hint={novinhub.saved ? <Bi en={`Saved ${novinhub.hint}`} fa={`توکن ذخیره شده ${novinhub.hint}`} /> : <Bi en="No token yet" fa="هنوز توکنی ذخیره نشده" />}
+          action={checking && !liveReady
+            ? <Badge tone="warn"><Bi en="Checking" fa="در حال بررسی" /></Badge>
+            : novinhub.connected
+              ? <Badge tone="ok"><Bi en="Connected" fa="وصل" /></Badge>
+              : <Badge tone="danger"><Bi en="Not connected" fa="وصل نیست" /></Badge>}
+        />
+        <StatusLight
+          tone={checking && !liveReady ? "busy" : novinhub.connected ? "ok" : "danger"}
+          label={
+            novinhub.connected
+              ? `نوین‌هاب وصل است — ${toman(novinhub.account_count ?? 0)} اکانت در آخرین بررسی.`
+              : novinhub.saved
+                ? "توکن ذخیره شده اما آخرین بررسی وصل نبود."
+                : "توکن وب‌سرویس ذخیره نشده — از جزئیات فنی بچسبانید."
+          }
+        />
+        <article className="conn-tile" data-tone={checking && !liveReady ? "busy" : novinhub.connected ? "ok" : "danger"}>
+          <p className="conn-help">
+            فقط خواندن از API نوین‌هاب (کامنت، دایرکت، گزارش). توکن وب‌سرویس در دیتابیس همین سرور رمزنگاری می‌شود؛ CM هیچ پاسخ یا انتشاری به نوین‌هاب نمی‌فرستد.
+          </p>
+          {novinhub.connected ? (
+            <Muted>
+              {toman(novinhub.account_count ?? 0)} اکانت
+              {novinhub.checked_at ? <> · <DateText value={novinhub.checked_at} withTime /></> : null}
+              {" · "}
+              <Link to="/perf/novinhub">صفحهٔ نوین هاب</Link>
+            </Muted>
+          ) : (
+            <ErrorMessage friendly={false} message={novinhub.reason || "وضعیت نوین‌هاب مشخص نیست."} />
+          )}
+          {novinhub.checked_at ? <Muted>آخرین بررسی: <DateText value={novinhub.checked_at} withTime /></Muted> : <Muted>هنوز بررسی زنده نکرده‌اید.</Muted>}
+        </article>
+        <details className="conn-tech">
+          <summary><Bi en="Technical details" fa="جزئیات فنی" /></summary>
+          <ol className="perf-steps">
+            <li>در پنل نوین‌هاب به تنظیمات امنیتی بروید.</li>
+            <li>«توکن وب‌سرویس (برای توسعه‌دهندگان)» را بسازید یا کپی کنید.</li>
+            <li>اینجا بچسبانید و ذخیره کنید؛ سپس بالای صفحه «بررسی همین حالا» را بزنید.</li>
+          </ol>
+          {canEditSecrets ? (
+            <div className="form-grid">
+              <Field label={<Bi en="Web service token" fa="توکن وب‌سرویس" />}>
+                <Input type="password" autoComplete="off" value={novinhubToken} placeholder="Bearer توکن نوین‌هاب" onChange={(event) => setNovinhubToken(event.target.value)} />
+              </Field>
+              <div className="row perf-actions">
+                <Button type="button" disabled={!novinhubToken.trim()} onClick={() => saveNovinhub(novinhubToken)}><Bi en="Save" fa="ذخیره" /></Button>
+                {novinhub.saved ? <Button type="button" variant="secondary" onClick={() => saveNovinhub("")}><Bi en="Clear" fa="پاک کردن" /></Button> : null}
+              </div>
+            </div>
+          ) : (
+            <Muted>ذخیرهٔ توکن فقط برای سرپرست و ادمین است.</Muted>
+          )}
+        </details>
+      </Card> : null}
+
+      {perfTools ? <Card>
+        <SectionHeader
+          icon="sparkles"
+          title={<Bi en="Vardast" fa="وردست" />}
+          hint={vardast.saved ? <Bi en={`Saved ${vardast.hint}`} fa={`کلید ذخیره شده ${vardast.hint}`} /> : <Bi en="No key yet" fa="هنوز کلیدی ذخیره نشده" />}
+          action={checking && !liveReady
+            ? <Badge tone="warn"><Bi en="Checking" fa="در حال بررسی" /></Badge>
+            : vardast.connected
+              ? <Badge tone="ok"><Bi en="Connected" fa="وصل" /></Badge>
+              : <Badge tone="danger"><Bi en="Not connected" fa="وصل نیست" /></Badge>}
+        />
+        <StatusLight
+          tone={checking && !liveReady ? "busy" : vardast.connected ? "ok" : "danger"}
+          label={
+            vardast.connected
+              ? `وردست وصل است — ${toman(vardast.channel_count ?? 0)} کانال در آخرین بررسی.`
+              : vardast.saved
+                ? "کلید ذخیره شده اما آخرین بررسی وصل نبود."
+                : "کلید Public API ذخیره نشده — از جزئیات فنی بچسبانید."
+          }
+        />
+        <article className="conn-tile" data-tone={checking && !liveReady ? "busy" : vardast.connected ? "ok" : "danger"}>
+          <p className="conn-help">
+            فقط خواندن از Public API وردست (لیست کانال‌ها و مصرف). کلید در دیتابیس رمزنگاری می‌شود؛ CM پیامی به وردست ارسال نمی‌کند.
+          </p>
+          {vardast.connected ? (
+            <Muted>
+              {toman(vardast.channel_count ?? 0)} کانال
+              {vardast.checked_at ? <> · <DateText value={vardast.checked_at} withTime /></> : null}
+              {" · "}
+              <Link to="/perf/vardast">صفحهٔ وردست</Link>
+            </Muted>
+          ) : (
+            <ErrorMessage friendly={false} message={vardast.reason || "وضعیت وردست مشخص نیست."} />
+          )}
+          {vardast.checked_at ? <Muted>آخرین بررسی: <DateText value={vardast.checked_at} withTime /></Muted> : <Muted>هنوز بررسی زنده نکرده‌اید.</Muted>}
+        </article>
+        <details className="conn-tech">
+          <summary><Bi en="Technical details" fa="جزئیات فنی" /></summary>
+          <ol className="perf-steps">
+            <li>در پنل وردست تنظیمات کانال را باز کنید.</li>
+            <li>کلید <strong>Public API</strong> را بسازید یا کپی کنید.</li>
+            <li>اینجا بچسبانید و ذخیره کنید؛ سپس «بررسی همین حالا» را بزنید.</li>
+          </ol>
+          {canEditSecrets ? (
+            <div className="form-grid">
+              <Field label={<Bi en="Public API key" fa="کلید Public API" />}>
+                <Input type="password" autoComplete="off" value={vardastToken} placeholder="X-API-Key وردست" onChange={(event) => setVardastToken(event.target.value)} />
+              </Field>
+              <div className="row perf-actions">
+                <Button type="button" disabled={!vardastToken.trim()} onClick={() => saveVardast(vardastToken)}><Bi en="Save" fa="ذخیره" /></Button>
+                {vardast.saved ? <Button type="button" variant="secondary" onClick={() => saveVardast("")}><Bi en="Clear" fa="پاک کردن" /></Button> : null}
               </div>
             </div>
           ) : (

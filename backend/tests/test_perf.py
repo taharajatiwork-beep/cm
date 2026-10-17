@@ -698,6 +698,86 @@ async def test_saved_mizito_list_is_what_the_page_reads(client, seeded, db):
     assert "secret-token-value" not in page.text
 
 
+async def test_novinhub_token_is_saved_without_being_shown(client, seeded, db):
+    await _nadia(db, seeded)
+    token = await login(client, "nadia-test@autoco.example")
+    secret = "novinhub-secret-token-value"
+    saved = await client.put("/perf/connections/novinhub", headers=auth(token), json={"token": secret})
+    assert saved.status_code == 200
+    assert secret not in saved.text
+    assert saved.json()["saved"] is True
+    page = await client.get("/perf/connections", headers=auth(token))
+    assert page.status_code == 200
+    body = page.json()
+    assert body["novinhub"]["saved"] is True
+    assert body["novinhub"]["connected"] is False
+    assert secret not in page.text
+    assert "توکن نوین‌هاب" in body["novinhub"]["reason"] or body["novinhub"]["reason"]
+    cleared = await client.put("/perf/connections/novinhub", headers=auth(token), json={"token": ""})
+    assert cleared.json()["saved"] is False
+    again = await client.get("/perf/connections", headers=auth(token))
+    assert again.json()["novinhub"]["saved"] is False
+
+
+async def test_vardast_token_is_saved_without_being_shown(client, seeded, db):
+    await _nadia(db, seeded)
+    token = await login(client, "nadia-test@autoco.example")
+    secret = "vardast-secret-api-key-value"
+    saved = await client.put("/perf/connections/vardast", headers=auth(token), json={"token": secret})
+    assert saved.status_code == 200
+    assert secret not in saved.text
+    assert saved.json()["saved"] is True
+    page = await client.get("/perf/connections", headers=auth(token))
+    assert page.status_code == 200
+    body = page.json()
+    assert body["vardast"]["saved"] is True
+    assert body["vardast"]["connected"] is False
+    assert secret not in page.text
+    cleared = await client.put("/perf/connections/vardast", headers=auth(token), json={"token": ""})
+    assert cleared.json()["saved"] is False
+    again = await client.get("/perf/connections", headers=auth(token))
+    assert again.json()["vardast"]["saved"] is False
+
+
+async def test_read_vardast_sends_only_get(db, seeded):
+    import httpx
+    from unittest.mock import patch
+
+    from app.perf.services.vardast import read_vardast
+
+    methods: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        methods.append(request.method)
+        if "channel" in request.url.path:
+            return httpx.Response(200, json=[{"id": "1", "name": "Ch", "platform": "TELEGRAM"}])
+        return httpx.Response(200, json={"credit": 1})
+
+    async def token_for(_db, _org_id):
+        return "api-key-test"
+
+    original_client = httpx.AsyncClient
+
+    class ClientFactory:
+        def __init__(self, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            self._client = original_client(**kwargs)
+
+        async def __aenter__(self):
+            return await self._client.__aenter__()
+
+        async def __aexit__(self, *args):
+            return await self._client.__aexit__(*args)
+
+    with patch("app.perf.services.connections.vardast_token_for", token_for):
+        with patch("app.perf.services.vardast.httpx.AsyncClient", ClientFactory):
+            out = await read_vardast(db, seeded["org"].id)
+
+    assert out["connected"] is True
+    assert len(out["channels"]) == 1
+    assert methods == ["GET", "GET"]
+
+
 async def test_mizito_token_is_saved_without_being_shown(client, seeded, db):
     await _nadia(db, seeded)
     token = await login(client, "nadia-test@autoco.example")

@@ -298,6 +298,10 @@ class PmIntegration(Base):
     mizito_token: Mapped[str] = mapped_column(Text, default="")
     mizito_snapshot: Mapped[str] = mapped_column(Text, default="")
     mizito_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    novinhub_token: Mapped[str] = mapped_column(Text, default="")
+    novinhub_snapshot: Mapped[str] = mapped_column(Text, default="")
+    vardast_token: Mapped[str] = mapped_column(Text, default="")
+    vardast_snapshot: Mapped[str] = mapped_column(Text, default="")
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 

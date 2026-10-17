@@ -191,6 +191,11 @@ export const perfApi = {
   connections: (live = false) => request<Connections>(`/perf/connections?live=${live ? "true" : "false"}`),
   saveMizito: (token: string) =>
     request<{ saved: boolean; hint: string }>("/perf/connections/mizito", { method: "PUT", body: JSON.stringify({ token }) }),
+  saveNovinHub: (token: string) =>
+    request<{ saved: boolean; hint: string }>("/perf/connections/novinhub", { method: "PUT", body: JSON.stringify({ token }) }),
+  saveVardast: (token: string) =>
+    request<{ saved: boolean; hint: string }>("/perf/connections/vardast", { method: "PUT", body: JSON.stringify({ token }) }),
+  vardast: () => request<VardastSnapshot>("/perf/integrations/vardast"),
   isms: (body: Record<string, unknown>) =>
     request<Record<string, unknown>>("/perf/integrations/isms", { method: "POST", body: JSON.stringify(body) }),
   pishgamBalance: (panelId: string) =>
@@ -514,6 +519,15 @@ export type MizitoSnapshot = {
   card_url_prefix?: string;
 };
 
+export type VardastChannel = { id: string; name: string; platform: string };
+
+export type VardastSnapshot = {
+  connected: boolean;
+  reason: string;
+  channels: VardastChannel[];
+  usage: Record<string, unknown> | null;
+};
+
 export type SheetLink = { configured: boolean; connected: boolean; title: string; reason: string };
 
 export type SheetSyncState = {
@@ -539,6 +553,22 @@ export type Connections = {
     last_error_at?: string | null;
     checked_at?: string | null;
     open_count?: number;
+  };
+  novinhub: {
+    saved: boolean;
+    hint: string;
+    connected?: boolean;
+    reason?: string;
+    checked_at?: string | null;
+    account_count?: number;
+  };
+  vardast: {
+    saved: boolean;
+    hint: string;
+    connected?: boolean;
+    reason?: string;
+    checked_at?: string | null;
+    channel_count?: number;
   };
   panels: PanelStatus[];
   insight: { ready: boolean; provider: string };
