@@ -49,6 +49,7 @@ const KIND_LABEL: Record<AiTaskKind, { en: string; fa: string }> = {
   campaign_review: { en: "Campaign review", fa: "تحلیل کمپین" },
   channel_budget: { en: "Budget split", fa: "تقسیم بودجه" },
   sms_copy_review: { en: "SMS copy review", fa: "بررسی متن پیامک" },
+  social_inbox_review: { en: "Social inbox", fa: "اینباکس سوشال" },
   projects_health: { en: "Project health", fa: "سلامت پروژه‌ها" },
   team_load: { en: "Team load", fa: "بار کاری تیم" },
   finance_reconcile: { en: "Finance reconcile", fa: "تطبیق مالی" },
@@ -127,7 +128,8 @@ export function AiLabPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [kind, setKind] = useState<AiTaskKind>("period_review");
+  const urlKind = params.get("kind") as AiTaskKind | null;
+  const [kind, setKind] = useState<AiTaskKind>(urlKind === "social_inbox_review" ? "social_inbox_review" : "period_review");
   const [lane, setLane] = useState("");
   const [staleDays, setStaleDays] = useState("14");
   const [fromDate, setFromDate] = useState(weekAgoIso());
@@ -152,8 +154,20 @@ export function AiLabPage() {
     setFilterKind("");
   }, [activeWs?.key, activeWs?.kinds, kind]);
 
+  useEffect(() => {
+    if (urlKind === "social_inbox_review" && wsKinds.includes("social_inbox_review")) {
+      setKind("social_inbox_review");
+      setCreateOpen(true);
+      const next = new URLSearchParams(params);
+      next.delete("kind");
+      setParams(next, { replace: true });
+    }
+  }, [urlKind, wsKinds, params, setParams]);
+
   const inputPayload = useMemo(() => {
-    if (kind === "period_review" || kind === "sms_copy_review") return { from_date: fromDate, to_date: toDate, brand };
+    if (kind === "period_review" || kind === "sms_copy_review" || kind === "social_inbox_review") {
+      return { from_date: fromDate, to_date: toDate, brand };
+    }
     if (kind === "campaign_review") return { campaign_id: campaignId };
     if (kind === "channel_budget") {
       return {
@@ -391,7 +405,7 @@ export function AiLabPage() {
               ))}
             </Select>
           </Field>
-          {(kind === "period_review" || kind === "sms_copy_review") && (
+          {(kind === "period_review" || kind === "sms_copy_review" || kind === "social_inbox_review") && (
             <>
               <Field label={<Bi en="From" fa="از" />}><Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} /></Field>
               <Field label={<Bi en="To" fa="تا" />}><Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} /></Field>

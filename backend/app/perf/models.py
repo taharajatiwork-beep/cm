@@ -302,7 +302,57 @@ class PmIntegration(Base):
     novinhub_snapshot: Mapped[str] = mapped_column(Text, default="")
     vardast_token: Mapped[str] = mapped_column(Text, default="")
     vardast_snapshot: Mapped[str] = mapped_column(Text, default="")
+    social_rollup_json: Mapped[str] = mapped_column(Text, default="")
+    social_rollup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PmSocialSyncRun(Base):
+    __tablename__ = "pm_social_sync_run"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+
+
+class PmSocialDaily(Base):
+    __tablename__ = "pm_social_daily"
+    __table_args__ = (UniqueConstraint("organization_id", "day", name="uq_pm_social_daily_org_day"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    comments_open_est: Mapped[int] = mapped_column(Integer, default=0)
+    conversations_open_est: Mapped[int] = mapped_column(Integer, default=0)
+    comments_sampled: Mapped[int] = mapped_column(Integer, default=0)
+    conversations_sampled: Mapped[int] = mapped_column(Integer, default=0)
+    accounts_needing_login: Mapped[int] = mapped_column(Integer, default=0)
+    vardast_chat_credit: Mapped[int | None] = mapped_column(Integer)
+    vardast_channel_count: Mapped[int] = mapped_column(Integer, default=0)
+    metrics_json: Mapped[str] = mapped_column(Text, default="")
+
+
+class PmSocialAccountLink(Base):
+    __tablename__ = "pm_social_account_link"
+    __table_args__ = (UniqueConstraint("organization_id", "novinhub_account_id", name="uq_pm_social_account_link"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    novinhub_account_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    page_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pm_page.id", ondelete="SET NULL"))
+
+
+class PmVardastChannelLink(Base):
+    __tablename__ = "pm_vardast_channel_link"
+    __table_args__ = (UniqueConstraint("organization_id", "vardast_channel_id", name="uq_pm_vardast_channel_link"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    vardast_channel_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pm_campaign.id", ondelete="SET NULL"))
 
 
 class PmMizitoCursor(Base):

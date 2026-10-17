@@ -23,7 +23,7 @@ def _is_performance_user(auth: AuthContext) -> bool:
         and PermissionCode.ORG_ADMIN not in perms
     )
 
-PERF_KINDS = ("period_review", "campaign_review", "channel_budget", "sms_copy_review")
+PERF_KINDS = ("period_review", "campaign_review", "channel_budget", "sms_copy_review", "social_inbox_review")
 MANAGER_KINDS = ("projects_health", "team_load")
 FINANCE_KINDS = ("finance_reconcile",)
 TEAM_KINDS = ("my_work_review",)

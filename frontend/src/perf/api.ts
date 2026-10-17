@@ -68,6 +68,7 @@ export const perfApi = {
     request<CampaignRow>(`/perf/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteCampaign: (id: string) => request<void>(`/perf/campaigns/${id}`, { method: "DELETE" }),
   campaign: (id: string) => request<CampaignDetail>(`/perf/campaigns/${id}`),
+  campaignSocial: (id: string) => request<CampaignSocialContext>(`/perf/campaigns/${id}/social`),
   campaignThread: (id: string) =>
     request<{ id: string }>(`/perf/campaigns/${id}/thread`, { method: "POST", body: "{}" }),
   briefDraft: (id: string) =>
@@ -218,6 +219,14 @@ export const perfApi = {
     request<VardastList<VardastReportContact>>(
       `/perf/integrations/vardast/channel-contacts?channel_id=${encodeURIComponent(channelId)}&page=${page}&page_size=${pageSize}`,
     ),
+  socialOverview: (refresh = false) =>
+    request<SocialOverviewSnapshot>(`/perf/integrations/social/overview${refresh ? "?refresh=true" : ""}`),
+  socialSync: () => request<{ ok: boolean; day?: string; reason?: string }>("/perf/integrations/social/sync", { method: "POST", body: "{}" }),
+  socialReport: (fromDate: string, toDate: string) =>
+    request<SocialReport>(`/perf/reports/social?from_date=${encodeURIComponent(fromDate)}&to_date=${encodeURIComponent(toDate)}`),
+  socialLinks: () => request<SocialLinksPayload>("/perf/integrations/social/links"),
+  saveSocialLinks: (body: SocialLinksSave) =>
+    request<SocialLinksPayload>("/perf/integrations/social/links", { method: "PUT", body: JSON.stringify(body) }),
   novinhub: () => request<NovinHubSnapshot>("/perf/integrations/novinhub"),
   novinhubAutomation: () => request<NovinHubAutomationSnapshot>("/perf/integrations/novinhub/automation"),
   novinhubComments: (limit = 30) => request<NovinHubList<NovinHubComment>>(`/perf/integrations/novinhub/comments?limit=${limit}`),
@@ -588,6 +597,105 @@ export type NovinHubAutomationSnapshot = {
   fetched_at: string;
   comments: NovinHubList<NovinHubComment>;
   conversations: NovinHubList<NovinHubConversation>;
+};
+
+export type SocialSnippet = { account: string; status?: number | string | null; snippet: string };
+
+export type SocialOverviewSnapshot = {
+  cached: boolean;
+  rollup_at: string | null;
+  last_sync_at?: string | null;
+  fetched_at: string;
+  notes?: string;
+  novinhub: {
+    connected: boolean;
+    reason: string;
+    account_count: number;
+    accounts_needing_login: number;
+    comments_sampled: number;
+    comments_open_est: number;
+    comments_by_status: Record<string, number>;
+    comments_by_account: Array<{ account: string; count: number }>;
+    conversations_sampled: number;
+    conversations_open_est: number;
+    conversations_by_status: Record<string, number>;
+    conversations_by_account: Array<{ account: string; count: number }>;
+    comment_snippets: SocialSnippet[];
+    direct_snippets: SocialSnippet[];
+    api_total_comments?: number | null;
+    api_total_conversations?: number | null;
+  };
+  vardast: {
+    connected: boolean;
+    reason: string;
+    channel_count: number;
+    assistant_count: number;
+    contacts_total_api?: number | null;
+    usage: {
+      total_chats?: number | null;
+      chat_credit?: number | null;
+      total_contacts?: number | null;
+      contact_credit?: number | null;
+      next_due_date?: string;
+    };
+    low_chat_credit: boolean;
+    low_contact_credit: boolean;
+    channels: VardastChannel[];
+  };
+};
+
+export type SocialReportPeriod = {
+  from: string;
+  to: string;
+  days_with_data?: number;
+  avg_comments_open?: number | null;
+  avg_conversations_open?: number | null;
+  max_comments_open?: number | null;
+  max_conversations_open?: number | null;
+  total_accounts_needing_login?: number;
+};
+
+export type SocialReportDay = {
+  day: string;
+  comments_open_est: number;
+  conversations_open_est: number;
+  comments_sampled: number;
+  conversations_sampled: number;
+  accounts_needing_login: number;
+  vardast_chat_credit: number | null;
+  vardast_channel_count: number;
+};
+
+export type SocialReport = {
+  period: { from: string; to: string };
+  previous_period: SocialReportPeriod;
+  current: SocialReportPeriod;
+  days: SocialReportDay[];
+  links: {
+    novinhub_accounts: Array<{ account_id: string; page_id: string | null; page_name?: string | null }>;
+    vardast_channels: Array<{ channel_id: string; campaign_id: string | null; campaign_code?: string | null }>;
+  };
+  notes: string;
+};
+
+export type SocialLinksSave = {
+  novinhub_accounts: Array<{ account_id: string; page_id: string | null }>;
+  vardast_channels: Array<{ channel_id: string; campaign_id: string | null }>;
+};
+
+export type SocialLinksPayload = SocialLinksSave & {
+  pages: Array<{ id: string; name: string }>;
+  campaigns: Array<{ id: string; code: string; title: string }>;
+};
+
+export type CampaignSocialContext = {
+  campaign_id: string;
+  campaign_code: string;
+  novinhub_accounts: Array<{ account_id: string; page_id: string; page_name?: string | null }>;
+  vardast_channels: Array<{ channel_id: string }>;
+  latest_daily: SocialReportDay | null;
+  rollup_at: string | null;
+  has_links: boolean;
 };
 
 export type VardastReportContact = { id: string; name: string; phone: string };

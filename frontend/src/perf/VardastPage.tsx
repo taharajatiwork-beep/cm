@@ -16,6 +16,7 @@ import {
 } from "../components/ui";
 import { Bi } from "../i18n";
 import { perfApi, toman, type VardastContact } from "./api";
+import { SocialOverviewPanel } from "./SocialOverview";
 
 type Tab = "overview" | "contacts" | "assistants" | "inbox" | "reports" | "activity";
 
@@ -107,6 +108,7 @@ export function VardastPage() {
   return (
     <>
       <PageHeader title={<Bi en="Vardast" fa="وردست" />} actions={<Button variant="ghost" to="/perf/connections"><Bi en="Connections" fa="اتصالات" /></Button>} />
+      <SocialOverviewPanel compact showAiLink />
       <Segmented<Tab>
         value={tab}
         onChange={setTab}

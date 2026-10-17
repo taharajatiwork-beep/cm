@@ -430,6 +430,19 @@ async def run_ai_lab_daily(session_factory: async_sessionmaker[AsyncSession]) ->
     return {"followups": followups, **stats}
 
 
+async def run_social_sync(session_factory: async_sessionmaker[AsyncSession]) -> dict[str, int]:
+    """نوین‌هاب/وردست: GET + rollup + pm_social_daily برای هر org با توکن."""
+    from app.perf.services.social_sync import run_all_social_sync
+
+    settings = get_settings()
+    if not settings.social_sync_enabled:
+        return {"orgs": 0}
+    async with session_factory() as db:
+        stats = await run_all_social_sync(db)
+        await db.commit()
+    return stats
+
+
 async def run_mizito_sync(session_factory: async_sessionmaker[AsyncSession]) -> dict[str, int]:
     """هر سازمانی که توکن میزیتو در پنل دارد: یک خواندن و diff پروژه‌ها."""
     from app.perf.models import PmIntegration
@@ -594,6 +607,24 @@ class Worker:
                     log.warning("worker_mizito_sync_error", error=str(e))
                 await asyncio.sleep(minutes * 60)
 
+        async def _social_sync_loop():
+            while True:
+                settings = get_settings()
+                minutes = max(15, int(settings.social_sync_minutes or 60))
+                try:
+                    if settings.social_sync_enabled and await acquire_job("social_sync", ttl_seconds=minutes * 60):
+                        try:
+                            stats = await run_social_sync(self.session_factory)
+                            if stats.get("orgs"):
+                                log.info("social_sync", **stats)
+                        finally:
+                            await release_job("social_sync")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    log.warning("worker_social_sync_error", error=str(e))
+                await asyncio.sleep(minutes * 60)
+
         self._tasks.append(asyncio.create_task(_outbox_loop(), name="worker-outbox"))
         self._tasks.append(asyncio.create_task(_sla_loop(), name="worker-sla"))
         self._tasks.append(asyncio.create_task(_snapshot_loop(), name="worker-kpi-snapshot"))
@@ -618,6 +649,9 @@ class Worker:
 
         if settings.mizito_sync_enabled:
             self._tasks.append(asyncio.create_task(_mizito_loop(), name="worker-mizito-sync"))
+
+        if settings.social_sync_enabled:
+            self._tasks.append(asyncio.create_task(_social_sync_loop(), name="worker-social-sync"))
 
         log.info("worker_started", tasks=[t.get_name() for t in self._tasks])
 

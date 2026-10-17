@@ -12,6 +12,7 @@ TASK_KINDS = (
     "campaign_review",
     "channel_budget",
     "sms_copy_review",
+    "social_inbox_review",
     "projects_health",
     "team_load",
     "finance_reconcile",
@@ -23,6 +24,7 @@ TaskKindLiteral = Literal[
     "campaign_review",
     "channel_budget",
     "sms_copy_review",
+    "social_inbox_review",
     "projects_health",
     "team_load",
     "finance_reconcile",
@@ -47,6 +49,12 @@ class ChannelBudgetIn(BaseModel):
 
 
 class SmsCopyReviewIn(BaseModel):
+    from_date: str
+    to_date: str
+    brand: str = ""
+
+
+class SocialInboxReviewIn(BaseModel):
     from_date: str
     to_date: str
     brand: str = ""

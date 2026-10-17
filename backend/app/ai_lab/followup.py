@@ -50,7 +50,7 @@ async def metrics_for_scope(
     if kind == "channel_budget" and input_data.get("reference_from"):
         start = _parse_day(input_data["reference_from"])
         end = _parse_day(input_data.get("reference_to") or end.isoformat())
-    elif kind in ("period_review", "sms_copy_review") and input_data.get("from_date"):
+    elif kind in ("period_review", "sms_copy_review", "social_inbox_review") and input_data.get("from_date"):
         start = _parse_day(input_data["from_date"])
         end = _parse_day(input_data.get("to_date") or end.isoformat())
         if brand:

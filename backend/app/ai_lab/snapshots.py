@@ -19,8 +19,10 @@ from app.ai_lab.schemas import (
     PeriodReviewIn,
     ProjectsHealthIn,
     SmsCopyReviewIn,
+    SocialInboxReviewIn,
     TeamLoadIn,
 )
+from app.ai_lab.snapshots_social import social_inbox_review_snapshot
 from app.ai_lab.snapshots_work import (
     finance_reconcile_snapshot,
     my_work_review_snapshot,
@@ -73,6 +75,8 @@ async def build_snapshot(
         snap = await _channel_budget(db, organization_id, ChannelBudgetIn(**raw_input))
     elif kind == "sms_copy_review":
         snap = await _sms_copy_review(db, organization_id, SmsCopyReviewIn(**raw_input))
+    elif kind == "social_inbox_review":
+        snap = await social_inbox_review_snapshot(db, organization_id, SocialInboxReviewIn(**raw_input))
     elif kind == "projects_health":
         snap = await projects_health_snapshot(db, organization_id, ProjectsHealthIn(**raw_input))
     elif kind == "team_load":
@@ -176,12 +180,30 @@ async def _period_review(db: AsyncSession, org: UUID, inp: PeriodReviewIn) -> di
         for c in campaigns
         if c.status == "active"
     ]
+    social_automation: dict | None = None
+    try:
+        from app.perf.services.social_analytics import social_overview
+
+        overview = await social_overview(db, org, refresh=False)
+        nh = overview.get("novinhub") if isinstance(overview.get("novinhub"), dict) else {}
+        vd = overview.get("vardast") if isinstance(overview.get("vardast"), dict) else {}
+        if nh.get("connected") or vd.get("connected"):
+            social_automation = {
+                "rollup_at": overview.get("rollup_at"),
+                "comments_open_est": nh.get("comments_open_est"),
+                "conversations_open_est": nh.get("conversations_open_est"),
+                "accounts_needing_login": nh.get("accounts_needing_login"),
+                "vardast_chat_credit": (vd.get("usage") or {}).get("chat_credit") if vd else None,
+            }
+    except (ValueError, TypeError, KeyError):
+        social_automation = None
     return {
         "kind": "period_review",
         "period": {"from": inp.from_date, "to": inp.to_date, "brand_filter": inp.brand.strip()},
         "current": current,
         "previous_period": {"from": prev_start.isoformat(), "to": prev_end.isoformat(), **previous},
         "active_campaigns": active,
+        "social_automation": social_automation,
         "notes": "Aggregated perf data only; no phone numbers or payment identifiers.",
     }
 

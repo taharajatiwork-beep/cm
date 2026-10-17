@@ -50,6 +50,9 @@ export function PerfHomePage() {
               <Button variant="ghost" to="/perf/sheet">
                 <Bi en="Sheet" fa="شیت" />
               </Button>
+              <Button variant="ghost" to="/perf/insights">
+                <Bi en="Social insights" fa="تحلیل سوشال" />
+              </Button>
               <Button variant="ghost" to="/perf/connections">
                 <Bi en="Connections" fa="اتصالات" />
               </Button>

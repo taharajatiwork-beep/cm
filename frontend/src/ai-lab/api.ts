@@ -37,6 +37,7 @@ export type AiTaskKind =
   | "campaign_review"
   | "channel_budget"
   | "sms_copy_review"
+  | "social_inbox_review"
   | "projects_health"
   | "team_load"
   | "finance_reconcile"

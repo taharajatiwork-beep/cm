@@ -139,6 +139,7 @@ export function canSeeNavPath(
       path.startsWith("/perf/campaigns/") ||
       path === "/perf/sms" ||
       path === "/perf/social" ||
+      path === "/perf/insights" ||
       path === "/perf/novinhub" ||
       path === "/perf/vardast" ||
       path === "/perf/sheet" ||

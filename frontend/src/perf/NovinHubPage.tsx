@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Badge, Button, Card, ErrorMessage, LoadingState, Muted, PageHeader, SectionHeader, Segmented, Table } from "../components/ui";
 import { Bi } from "../i18n";
 import { perfApi, toman } from "./api";
+import { SocialOverviewPanel } from "./SocialOverview";
 
 type Tab = "accounts" | "comments" | "directs" | "automation";
 
@@ -59,6 +60,7 @@ export function NovinHubPage() {
   return (
     <>
       <PageHeader title={<Bi en="Novin Hub" fa="نوین هاب" />} actions={<Button variant="ghost" to="/perf/connections"><Bi en="Connections" fa="اتصالات" /></Button>} />
+      <SocialOverviewPanel compact showAiLink />
       <Segmented<Tab>
         value={tab}
         onChange={setTab}

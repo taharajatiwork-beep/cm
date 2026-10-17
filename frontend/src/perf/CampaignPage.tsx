@@ -14,6 +14,7 @@ import { FilePick } from "./bits";
 import { ArrangeBar, ShowMore, useArrange, type SortOption } from "./browse";
 import { CampaignEdit, RowActions, useRemove } from "./edit";
 import { MizitoCardDialog, MizitoOpenButton, type MizitoCardLike } from "./MizitoCardDialog";
+import { CampaignSocialCard } from "./CampaignSocialCard";
 
 export function CampaignPage() {
   const { id = "" } = useParams();
@@ -216,6 +217,7 @@ export function CampaignPage() {
           <ChannelShare channels={report.channels} />
         </Card>
       </Disclosure>
+      <CampaignSocialCard campaignId={data.id} />
       <div className="no-print">
       <BestPages pages={report.pages} campaignId={data.id} />
       </div>

@@ -108,6 +108,14 @@ from app.perf.services.novinhub import (
     novinhub_automation_summary,
     read_novinhub,
 )
+from app.perf.services.social_analytics import social_home_hints, social_overview
+from app.perf.services.social_report import (
+    build_social_report,
+    campaign_social_context,
+    load_social_links_payload,
+    save_social_links,
+)
+from app.perf.services.social_sync import last_sync_at, run_org_social_sync
 from app.perf.services.vardast import (
     list_vardast_assistants,
     list_vardast_channel_contacts,
@@ -342,12 +350,14 @@ async def home(ctx: AuthContext = Depends(get_current_user), db: AsyncSession = 
     active = [row for row in campaigns if row.status == "active"]
     cars = list((await db.scalars(select(PmCarRequest).where(PmCarRequest.organization_id == org))).all())
     stories = list((await db.scalars(select(PmStory).where(PmStory.organization_id == org))).all())
+    social_next = await social_home_hints(db, org)
+    merged_next = social_next + next_steps(campaigns, panel_rows, len(payments), cars, stories, sends)
     return {
         "active_campaigns": [_campaign_out(row) for row in active],
         "panels": panel_rows,
         "waiting_payments": len(payments),
         "payments": [_payment_out(row) for row in payments],
-        "next": next_steps(campaigns, panel_rows, len(payments), cars, stories, sends),
+        "next": merged_next[:8],
     }
 
 
@@ -524,6 +534,17 @@ async def get_campaign(
     except Exception:
         report = await build_report(db, row)
     return {**_campaign_out(row), "report": report}
+
+
+@router.get("/campaigns/{campaign_id}/social")
+async def get_campaign_social(
+    campaign_id: UUID,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    row = await _campaign(db, ctx, campaign_id)
+    return await campaign_social_context(db, ctx.organization_id, row.id)
 
 
 @router.patch("/campaigns/{campaign_id}")
@@ -2096,6 +2117,66 @@ async def vardast_channel_contacts(
     return await list_vardast_channel_contacts(
         db, ctx.organization_id, channel_id=channel_id, page=page, page_size=page_size
     )
+
+
+@router.get("/integrations/social/overview")
+async def social_integration_overview(
+    refresh: bool = False,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    out = await social_overview(db, ctx.organization_id, refresh=refresh)
+    out["last_sync_at"] = await last_sync_at(db, ctx.organization_id)
+    return out
+
+
+@router.post("/integrations/social/sync")
+async def social_integration_sync(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _write(ctx)
+    result = await run_org_social_sync(db, ctx.organization_id)
+    await db.commit()
+    return result
+
+
+@router.get("/integrations/social/links")
+async def social_integration_links(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await load_social_links_payload(db, ctx.organization_id)
+
+
+@router.put("/integrations/social/links")
+async def social_integration_links_save(
+    body: dict,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _write(ctx)
+    out = await save_social_links(
+        db,
+        ctx.organization_id,
+        novinhub_accounts=list(body.get("novinhub_accounts") or []),
+        vardast_channels=list(body.get("vardast_channels") or []),
+    )
+    await db.commit()
+    return out
+
+
+@router.get("/reports/social")
+async def social_report(
+    from_date: str,
+    to_date: str,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _read(ctx)
+    return await build_social_report(db, ctx.organization_id, from_date, to_date)
 
 
 @router.get("/integrations/novinhub")
