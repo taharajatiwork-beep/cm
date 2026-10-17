@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import {
   Badge,
@@ -8,7 +8,6 @@ import {
   Card,
   CardTitle,
   EmptyState,
-  ErrorMessage,
   Field,
   Input,
   List,
@@ -17,10 +16,11 @@ import {
   PageHeader,
 } from "../components/ui";
 import { DELETE_CONFIRM_LABEL, useConfirm } from "../components/ui/ConfirmDialog";
-import { useToast } from "../components/ui/Toast";
 import { Bi, LangSwitch, useBi } from "../i18n";
 import { useAuth } from "../auth";
 import { queryKeys } from "../lib/queryKeys";
+import { BrowserNotifyCard } from "./settings/BrowserNotifyCard";
+import { TotpCard } from "./settings/TotpCard";
 
 type Section = "org" | "knowledge" | "language" | "telegram";
 
@@ -36,47 +36,6 @@ type TgStatus = {
   digest_enabled: boolean;
   deep_link_template: string | null;
 };
-
-function BrowserNotifyCard() {
-  const bi = useBi();
-  const toast = useToast();
-  const [perm, setPerm] = useState<NotificationPermission | "unsupported">(() =>
-    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported",
-  );
-
-  async function enable() {
-    if (!("Notification" in window)) return;
-    const next = await Notification.requestPermission();
-    setPerm(next);
-    if (next === "granted") {
-      localStorage.setItem("cm-browser-notify", "1");
-      toast(bi("Browser notifications enabled", "اعلان مرورگر فعال شد"));
-    } else if (next === "denied") {
-      toast(bi("Blocked in browser settings", "در تنظیمات مرورگر مسدود شده"));
-    }
-  }
-
-  if (perm === "unsupported") {
-    return (
-      <Muted>
-        <Bi en="This browser does not support notifications." fa="این مرورگر اعلان را پشتیبانی نمی‌کند." />
-      </Muted>
-    );
-  }
-
-  return (
-    <div className="row">
-      <Badge tone={perm === "granted" ? "ok" : perm === "denied" ? "danger" : ""}>
-        {perm === "granted" ? bi("Allowed", "مجاز") : perm === "denied" ? bi("Blocked", "مسدود") : bi("Not asked", "هنوز پرسیده نشده")}
-      </Badge>
-      {perm !== "granted" ? (
-        <Button type="button" className="btn-sm" variant="secondary" onClick={() => void enable()}>
-          <Bi en="Allow in browser" fa="اجازه در مرورگر" />
-        </Button>
-      ) : null}
-    </div>
-  );
-}
 
 const DEFAULT_PREFS: Record<string, boolean> = {
   task_assigned: true,
@@ -550,93 +509,4 @@ export function SettingsPage() {
   );
 }
 
-function TotpCard() {
-  const toast = useToast();
-  const bi = useBi();
-  const qc = useQueryClient();
-  const [secret, setSecret] = useState("");
-  const [otpauth, setOtpauth] = useState("");
-  const [code, setCode] = useState("");
-
-  const reveal = useMutation({
-    mutationFn: () => api.totp.setup(),
-    onSuccess: (row) => {
-      setSecret(row.secret);
-      setOtpauth(row.otpauth);
-    },
-    onError: () => {
-      toast(bi("Could not load the secret", "دریافت رمز ناموفق بود"));
-    },
-  });
-
-  const enable = useMutation({
-    mutationFn: () => api.totp.enable(code),
-    onSuccess: () => {
-      setCode("");
-      setSecret("");
-      setOtpauth("");
-      void qc.invalidateQueries({ queryKey: queryKeys.telegramStatus });
-      toast(bi("Two-factor login enabled", "ورود دو مرحله‌ای فعال شد"));
-    },
-    onError: () => {
-      toast(bi("Invalid code", "کد نامعتبر است"));
-    },
-  });
-
-  return (
-    <Card>
-      <h2>
-        <Bi en="Two-factor login" fa="ورود دو مرحله‌ای" />
-      </h2>
-      {!otpauth ? (
-        <Button
-          variant="secondary"
-          disabled={reveal.isPending}
-          onClick={() => reveal.mutate()}
-        >
-          <Bi en="Show secret" fa="نمایش رمز" />
-        </Button>
-      ) : (
-        <>
-          <p>
-            <Bi
-              en="Add this key to your authenticator app, then enter the 6-digit code it shows."
-              fa="این کلید را در اپ احراز هویت خود ثبت کنید، سپس کد ۶ رقمی آن را وارد کنید."
-            />
-          </p>
-          {/* کلید و URI لاتین‌اند؛ بدون جهت LTR کاراکترها جابه‌جا می‌شوند */}
-          <p className="mono ltr-value">{secret}</p>
-          <details>
-            <summary>
-              <Bi en="Show setup URI" fa="نمایش URI راه‌اندازی" />
-            </summary>
-            <p className="mono ltr-value">{otpauth}</p>
-          </details>
-          <Field label={<Bi en="6-digit code" fa="کد ۶ رقمی" />}>
-            <Input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              pattern="[0-9]{6}"
-              placeholder="000000"
-              disabled={enable.isPending}
-            />
-          </Field>
-          <ErrorMessage error={enable.isError ? String((enable.error as Error).message) : ""} />
-          <Button
-            onClick={() => enable.mutate()}
-            disabled={enable.isPending || !/^[0-9]{6}$/.test(code)}
-          >
-            {enable.isPending ? (
-              <Bi en="Enabling…" fa="در حال فعال‌سازی…" />
-            ) : (
-              <Bi en="Enable" fa="فعال‌سازی" />
-            )}
-          </Button>
-        </>
-      )}
-    </Card>
-  );
-}
+export default SettingsPage;

@@ -18,7 +18,7 @@ import { PeoplePage } from "./pages/PeoplePage";
 import { PricingPage } from "./pages/PricingPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SearchPage } from "./pages/SearchPage";
-import { SettingsPage } from "./pages/SettingsPage";
+import SettingsPage from "./pages/SettingsPage";
 import { CasesPage } from "./pages/CasesPage";
 import { VehiclesPage, VehicleDetailPage } from "./pages/VehiclesPage";
 import { PerfRoutes } from "./perf/PerfRoutes";

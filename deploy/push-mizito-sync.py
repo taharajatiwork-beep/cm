@@ -102,6 +102,8 @@ FILES = [
     "frontend/src/pages/HomePage.tsx",
     "frontend/src/pages/ReportsPage.tsx",
     "frontend/src/pages/SettingsPage.tsx",
+    "frontend/src/pages/settings/BrowserNotifyCard.tsx",
+    "frontend/src/pages/settings/TotpCard.tsx",
     "frontend/src/requests/RequestsPage.tsx",
     "frontend/src/requests/TeamHomePage.tsx",
     "frontend/src/perf/CampaignsPage.tsx",
